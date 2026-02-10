@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/session_storage.dart';
-import 'home_placeholder_page.dart';
+import 'home/home_page.dart';
+
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -47,9 +48,10 @@ class _LoginPageState extends State<LoginPage> {
 
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomePlaceholderPage()),
+      Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const HomePage()),
     );
+
   }
 
   @override
@@ -63,7 +65,7 @@ class _LoginPageState extends State<LoginPage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              theme.colorScheme.primary.withValues(alpha: 0.22),
+              theme.colorScheme.primary.withValues(alpha: 1),
               theme.colorScheme.secondary.withValues(alpha: 0.14),
             ],
           ),
