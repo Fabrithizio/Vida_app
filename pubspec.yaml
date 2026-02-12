@@ -2,7 +2,7 @@ name: vida_app
 description: "A new Flutter project."
 
 # Versão do app (major.minor.patch+build)
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.10.7

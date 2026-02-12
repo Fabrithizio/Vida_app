@@ -1,14 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
-class ProfileTab extends StatelessWidget {
+class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
 
   @override
+  State<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<ProfileTab> {
+  PackageInfo? _info;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _info = info);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final versionText = _info == null ? '...' : '${_info!.version}+${_info!.buildNumber}';
+
     return ListView(
       padding: const EdgeInsets.all(12),
-      children: const [
-        Card(
+      children: [
+        const Card(
           child: ListTile(
             leading: Icon(Icons.person_outline),
             title: Text('Perfil (mock)'),
@@ -17,9 +37,9 @@ class ProfileTab extends StatelessWidget {
         ),
         Card(
           child: ListTile(
-            leading: Icon(Icons.lock_outline),
-            title: Text('Segurança'),
-            subtitle: Text('Trocar senha, biometria (depois).'),
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Versão do app'),
+            subtitle: Text(versionText),
           ),
         ),
       ],
