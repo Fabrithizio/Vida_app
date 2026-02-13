@@ -1,3 +1,4 @@
+// lib/presentation/pages/home/tabs/day_tab.dart
 import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/timeline_block.dart';
 import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
@@ -7,6 +8,7 @@ import 'package:vida_app/services/notifications/notification_service.dart';
 import 'timeline/create_block_sheet.dart';
 import 'timeline/edit_block_sheet.dart';
 import 'timeline/timeline_day_view.dart';
+import 'timeline/timeline_summary_view.dart';
 
 enum TimelineRange { day, week, month, year }
 
@@ -58,6 +60,12 @@ class _DayTabState extends State<DayTab> {
       if (!mounted) return;
       setState(() => _loading = false);
     });
+  }
+
+  DateTime _startOfWeek(DateTime d) {
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = day.weekday - DateTime.monday; // monday=1
+    return day.subtract(Duration(days: diff));
   }
 
   Future<void> _pickDate() async {
@@ -117,13 +125,44 @@ class _DayTabState extends State<DayTab> {
     }
   }
 
+  Widget _buildRangeBody() {
+    final weekStart = _startOfWeek(_selected);
+    final weekEnd = weekStart.add(const Duration(days: 7));
+
+    final monthStart = DateTime(_selected.year, _selected.month, 1);
+    final monthEnd = DateTime(_selected.year, _selected.month + 1, 1);
+
+    final yearStart = DateTime(_selected.year, 1, 1);
+    final yearEnd = DateTime(_selected.year + 1, 1, 1);
+
+    return switch (_range) {
+      TimelineRange.day => TimelineDayView(
+          items: _store.itemsForDay(_selected),
+          onTapBlock: _openEditBlock,
+        ),
+      TimelineRange.week => TimelineSummaryView(
+          title: 'Semana',
+          items: _store.itemsBetween(weekStart, weekEnd),
+          onTapItem: _openEditBlock,
+        ),
+      TimelineRange.month => TimelineSummaryView(
+          title: 'Mês',
+          items: _store.itemsBetween(monthStart, monthEnd),
+          onTapItem: _openEditBlock,
+        ),
+      TimelineRange.year => TimelineSummaryView(
+          title: 'Ano',
+          items: _store.itemsBetween(yearStart, yearEnd),
+          onTapItem: _openEditBlock,
+        ),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-
-    final items = _store.itemsForDay(_selected);
 
     return Scaffold(
       body: SafeArea(
@@ -160,17 +199,7 @@ class _DayTabState extends State<DayTab> {
                 child: Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: _range == TimelineRange.day
-                        ? TimelineDayView(
-                            items: items,
-                            onTapBlock: _openEditBlock,
-                          )
-                        : Center(
-                            child: Text(
-                              'MVP: ${_range.name} ainda é só resumo.\n\n(Depois a gente desenha bonito)',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
+                    child: _buildRangeBody(),
                   ),
                 ),
               ),

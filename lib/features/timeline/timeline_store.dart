@@ -54,4 +54,14 @@ class TimelineStore {
     if (changed) await _persist();
     return changed;
   }
+
+  List<TimelineBlock> itemsBetween(DateTime start, DateTime endExclusive) {
+  final list = _items
+      .where((e) => !e.start.isBefore(start) && e.start.isBefore(endExclusive))
+      .toList();
+
+  list.sort((a, b) => a.start.compareTo(b.start));
+  return list;
+}
+
 }
