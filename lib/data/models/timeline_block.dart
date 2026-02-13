@@ -10,7 +10,6 @@ class TimelineBlock {
     required this.title,
     required this.start,
     this.end,
-    
   });
 
   final String id;
@@ -20,18 +19,17 @@ class TimelineBlock {
   final DateTime? end;
 
   TimelineBlock copyWith({
-  TimelineBlockType? type,
-  String? title,
-  DateTime? start,
-  DateTime? end,
-}) {
-  return TimelineBlock(
-    id: id,
-    type: type ?? this.type,
-    title: title ?? this.title,
-    start: start ?? this.start,
-    end: end ?? this.end,
-  );
-}
-
+    TimelineBlockType? type,
+    String? title,
+    DateTime? start,
+    DateTime? end,
+  }) {
+    return TimelineBlock(
+      id: id,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      start: start ?? this.start,
+      end: end ?? this.end,
+    );
+  }
 }

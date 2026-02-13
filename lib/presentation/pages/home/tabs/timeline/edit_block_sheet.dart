@@ -21,16 +21,27 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
   late TimelineBlockType _type;
   late TextEditingController _title;
 
+  late DateTime _day;
   late TimeOfDay _start;
   late TimeOfDay _end;
 
   @override
   void initState() {
     super.initState();
+
     _type = widget.block.type;
     _title = TextEditingController(text: widget.block.title);
 
-    _start = TimeOfDay(hour: widget.block.start.hour, minute: widget.block.start.minute);
+    _day = DateTime(
+      widget.block.start.year,
+      widget.block.start.month,
+      widget.block.start.day,
+    );
+
+    _start = TimeOfDay(
+      hour: widget.block.start.hour,
+      minute: widget.block.start.minute,
+    );
 
     final end = widget.block.end ?? widget.block.start.add(const Duration(minutes: 30));
     _end = TimeOfDay(hour: end.hour, minute: end.minute);
@@ -40,6 +51,17 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
   void dispose() {
     _title.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDay() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() => _day = picked);
   }
 
   Future<void> _pickStart() async {
@@ -63,9 +85,8 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
       return;
     }
 
-    final d = widget.block.start;
-    final start = DateTime(d.year, d.month, d.day, _start.hour, _start.minute);
-    final end = DateTime(d.year, d.month, d.day, _end.hour, _end.minute);
+    final start = DateTime(_day.year, _day.month, _day.day, _start.hour, _start.minute);
+    final end = DateTime(_day.year, _day.month, _day.day, _end.hour, _end.minute);
 
     final updated = widget.block.copyWith(
       type: _type,
@@ -84,6 +105,8 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final dateLabel =
+        '${_day.day.toString().padLeft(2, '0')}/${_day.month.toString().padLeft(2, '0')}/${_day.year}';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + bottom),
@@ -108,6 +131,18 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
               labelText: 'Título',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _pickDay,
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  label: Text('Data: $dateLabel'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(

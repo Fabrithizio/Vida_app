@@ -1,10 +1,28 @@
-import '../../data/models/timeline_block.dart';
+import 'package:vida_app/data/models/timeline_block.dart';
+
+import 'timeline_repository.dart';
 
 class TimelineStore {
+  TimelineStore({required TimelineRepository repo}) : _repo = repo;
+
+  final TimelineRepository _repo;
   final List<TimelineBlock> _items = [];
 
-  void add(TimelineBlock block) {
+  List<TimelineBlock> get all => List.unmodifiable(_items);
+
+  Future<void> load() async {
+    _items
+      ..clear()
+      ..addAll(await _repo.loadAll());
+  }
+
+  Future<void> _persist() async {
+    await _repo.saveAll(_items);
+  }
+
+  Future<void> add(TimelineBlock block) async {
     _items.add(block);
+    await _persist();
   }
 
   List<TimelineBlock> itemsForDay(DateTime day) {
@@ -21,16 +39,19 @@ class TimelineStore {
     return list;
   }
 
-  bool update(TimelineBlock updated) {
+  Future<bool> update(TimelineBlock updated) async {
     final i = _items.indexWhere((e) => e.id == updated.id);
     if (i == -1) return false;
     _items[i] = updated;
+    await _persist();
     return true;
   }
 
-  bool removeById(String id) {
+  Future<bool> removeById(String id) async {
     final before = _items.length;
     _items.removeWhere((e) => e.id == id);
-    return _items.length != before;
+    final changed = _items.length != before;
+    if (changed) await _persist();
+    return changed;
   }
 }

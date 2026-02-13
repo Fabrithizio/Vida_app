@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:vida_app/data/models/timeline_block.dart';
+import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
+import 'package:vida_app/features/timeline/timeline_store.dart';
+import 'package:vida_app/services/notifications/notification_service.dart';
 
-import '../../../../data/models/timeline_block.dart';
-import '../../../../features/timeline/timeline_store.dart';
 import 'timeline/create_block_sheet.dart';
 import 'timeline/edit_block_sheet.dart';
 import 'timeline/timeline_day_view.dart';
@@ -16,7 +18,8 @@ class DayTab extends StatefulWidget {
 }
 
 class _DayTabState extends State<DayTab> {
-  final TimelineStore _store = TimelineStore();
+  late final TimelineStore _store;
+  bool _loading = true;
 
   TimelineRange _range = TimelineRange.day;
   DateTime _selected = DateTime.now();
@@ -25,25 +28,36 @@ class _DayTabState extends State<DayTab> {
   void initState() {
     super.initState();
 
-    final now = DateTime.now();
-    _store.add(
-      TimelineBlock(
-        id: 'b1',
-        type: TimelineBlockType.event,
-        title: 'Consulta médica',
-        start: DateTime(now.year, now.month, now.day, 10, 0),
-        end: DateTime(now.year, now.month, now.day, 11, 0),
-      ),
-    );
-    _store.add(
-      TimelineBlock(
-        id: 'b2',
-        type: TimelineBlockType.goal,
-        title: 'Treino (meta)',
-        start: DateTime(now.year, now.month, now.day, 18, 30),
-        end: DateTime(now.year, now.month, now.day, 19, 10),
-      ),
-    );
+    _store = TimelineStore(repo: HiveTimelineRepository());
+
+    Future.microtask(() async {
+      await _store.load();
+
+      if (_store.all.isEmpty) {
+        final now = DateTime.now();
+        await _store.add(
+          TimelineBlock(
+            id: 'b1',
+            type: TimelineBlockType.event,
+            title: 'Consulta médica',
+            start: DateTime(now.year, now.month, now.day, 10, 0),
+            end: DateTime(now.year, now.month, now.day, 11, 0),
+          ),
+        );
+        await _store.add(
+          TimelineBlock(
+            id: 'b2',
+            type: TimelineBlockType.goal,
+            title: 'Treino (meta)',
+            start: DateTime(now.year, now.month, now.day, 18, 30),
+            end: DateTime(now.year, now.month, now.day, 19, 10),
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      setState(() => _loading = false);
+    });
   }
 
   Future<void> _pickDate() async {
@@ -66,7 +80,12 @@ class _DayTabState extends State<DayTab> {
     );
 
     if (created == null) return;
-    setState(() => _store.add(created));
+
+    await _store.add(created);
+    if (!mounted) return;
+    setState(() {});
+
+    await NotificationService.instance.scheduleTenMinutesBefore(created);
   }
 
   Future<void> _openEditBlock(TimelineBlock block) async {
@@ -79,19 +98,31 @@ class _DayTabState extends State<DayTab> {
 
     if (result == null) return;
 
-    setState(() {
-      if (result.delete) {
-        _store.removeById(block.id);
-        return;
-      }
-      if (result.updated != null) {
-        _store.update(result.updated!);
-      }
-    });
+    if (result.delete) {
+      await _store.removeById(block.id);
+      await NotificationService.instance.cancelForBlock(block.id);
+      if (!mounted) return;
+      setState(() {});
+      return;
+    }
+
+    final updated = result.updated;
+    if (updated != null) {
+      await _store.update(updated);
+      await NotificationService.instance.cancelForBlock(block.id);
+      await NotificationService.instance.scheduleTenMinutesBefore(updated);
+
+      if (!mounted) return;
+      setState(() {});
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     final items = _store.itemsForDay(_selected);
 
     return Scaffold(
