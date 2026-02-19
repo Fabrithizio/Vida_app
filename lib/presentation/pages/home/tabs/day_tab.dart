@@ -64,7 +64,7 @@ class _DayTabState extends State<DayTab> {
 
   DateTime _startOfWeek(DateTime d) {
     final day = DateTime(d.year, d.month, d.day);
-    final diff = day.weekday - DateTime.monday; // monday=1
+    final diff = day.weekday - DateTime.monday;
     return day.subtract(Duration(days: diff));
   }
 
@@ -88,6 +88,16 @@ class _DayTabState extends State<DayTab> {
     );
 
     if (created == null) return;
+
+    if (_store.hasConflict(created)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conflito: já existe algo nesse horário.'),
+        ),
+      );
+      return;
+    }
 
     await _store.add(created);
     if (!mounted) return;
@@ -115,6 +125,17 @@ class _DayTabState extends State<DayTab> {
     }
 
     final updated = result.updated;
+
+    if (updated != null && _store.hasConflict(updated, excludeId: block.id)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conflito: já existe algo nesse horário.'),
+        ),
+      );
+      return;
+    }
+
     if (updated != null) {
       await _store.update(updated);
       await NotificationService.instance.cancelForBlock(block.id);
@@ -137,24 +158,24 @@ class _DayTabState extends State<DayTab> {
 
     return switch (_range) {
       TimelineRange.day => TimelineDayView(
-          items: _store.itemsForDay(_selected),
-          onTapBlock: _openEditBlock,
-        ),
+        items: _store.itemsForDay(_selected),
+        onTapBlock: _openEditBlock,
+      ),
       TimelineRange.week => TimelineSummaryView(
-          title: 'Semana',
-          items: _store.itemsBetween(weekStart, weekEnd),
-          onTapItem: _openEditBlock,
-        ),
+        title: 'Semana',
+        items: _store.itemsBetween(weekStart, weekEnd),
+        onTapItem: _openEditBlock,
+      ),
       TimelineRange.month => TimelineSummaryView(
-          title: 'Mês',
-          items: _store.itemsBetween(monthStart, monthEnd),
-          onTapItem: _openEditBlock,
-        ),
+        title: 'Mês',
+        items: _store.itemsBetween(monthStart, monthEnd),
+        onTapItem: _openEditBlock,
+      ),
       TimelineRange.year => TimelineSummaryView(
-          title: 'Ano',
-          items: _store.itemsBetween(yearStart, yearEnd),
-          onTapItem: _openEditBlock,
-        ),
+        title: 'Ano',
+        items: _store.itemsBetween(yearStart, yearEnd),
+        onTapItem: _openEditBlock,
+      ),
     };
   }
 
@@ -175,13 +196,26 @@ class _DayTabState extends State<DayTab> {
                   Expanded(
                     child: SegmentedButton<TimelineRange>(
                       segments: const [
-                        ButtonSegment(value: TimelineRange.day, label: Text('Dia')),
-                        ButtonSegment(value: TimelineRange.week, label: Text('Semana')),
-                        ButtonSegment(value: TimelineRange.month, label: Text('Mês')),
-                        ButtonSegment(value: TimelineRange.year, label: Text('Ano')),
+                        ButtonSegment(
+                          value: TimelineRange.day,
+                          label: Text('Dia'),
+                        ),
+                        ButtonSegment(
+                          value: TimelineRange.week,
+                          label: Text('Semana'),
+                        ),
+                        ButtonSegment(
+                          value: TimelineRange.month,
+                          label: Text('Mês'),
+                        ),
+                        ButtonSegment(
+                          value: TimelineRange.year,
+                          label: Text('Ano'),
+                        ),
                       ],
                       selected: {_range},
-                      onSelectionChanged: (s) => setState(() => _range = s.first),
+                      onSelectionChanged: (s) =>
+                          setState(() => _range = s.first),
                     ),
                   ),
                   const SizedBox(width: 10),

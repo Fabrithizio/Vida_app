@@ -30,9 +30,22 @@ class TimelineStore {
     final d1 = d0.add(const Duration(days: 1));
 
     final list = _items
-        .where((e) =>
-            e.start.isAfter(d0.subtract(const Duration(seconds: 1))) &&
-            e.start.isBefore(d1))
+        .where(
+          (e) =>
+              e.start.isAfter(d0.subtract(const Duration(seconds: 1))) &&
+              e.start.isBefore(d1),
+        )
+        .toList();
+
+    list.sort((a, b) => a.start.compareTo(b.start));
+    return list;
+  }
+
+  List<TimelineBlock> itemsBetween(DateTime start, DateTime endExclusive) {
+    final list = _items
+        .where(
+          (e) => !e.start.isBefore(start) && e.start.isBefore(endExclusive),
+        )
         .toList();
 
     list.sort((a, b) => a.start.compareTo(b.start));
@@ -55,13 +68,22 @@ class TimelineStore {
     return changed;
   }
 
-  List<TimelineBlock> itemsBetween(DateTime start, DateTime endExclusive) {
-  final list = _items
-      .where((e) => !e.start.isBefore(start) && e.start.isBefore(endExclusive))
-      .toList();
+  DateTime _endOrDefault(TimelineBlock b) =>
+      b.end ?? b.start.add(const Duration(minutes: 30));
 
-  list.sort((a, b) => a.start.compareTo(b.start));
-  return list;
-}
+  bool _overlaps(TimelineBlock a, TimelineBlock b) {
+    final aStart = a.start;
+    final aEnd = _endOrDefault(a);
+    final bStart = b.start;
+    final bEnd = _endOrDefault(b);
+    return aStart.isBefore(bEnd) && bStart.isBefore(aEnd);
+  }
 
+  bool hasConflict(TimelineBlock candidate, {String? excludeId}) {
+    for (final e in _items) {
+      if (excludeId != null && e.id == excludeId) continue;
+      if (_overlaps(e, candidate)) return true;
+    }
+    return false;
+  }
 }
