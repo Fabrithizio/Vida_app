@@ -8,7 +8,6 @@ import 'areas/area_detail_page.dart';
 import 'areas/areas_balloon_config.dart';
 import 'areas/areas_catalog.dart';
 import 'areas/areas_model_assets.dart';
-import 'areas/balloon_connector_painter.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({super.key});
@@ -18,11 +17,29 @@ class AreasTab extends StatefulWidget {
 }
 
 class _AreasTabState extends State<AreasTab> {
-  UserSex _sex = UserSex.female; // toggle de teste
+  UserSex _sex = UserSex.female;
 
   final AreasStore _store = AreasStore();
 
-  void _openArea(
+  late List<BalloonSpec> _specs;
+  late Future<Map<String, AreaStatus?>> _statusesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _specs = AreasBalloonConfig.specs(_sex);
+    _statusesFuture = _loadStatuses(_specs);
+  }
+
+  void _setSex(UserSex sex) {
+    setState(() {
+      _sex = sex;
+      _specs = AreasBalloonConfig.specs(_sex);
+      _statusesFuture = _loadStatuses(_specs);
+    });
+  }
+
+  Future<void> _openArea(
     BuildContext context, {
     required String areaId,
     required String title,
@@ -32,12 +49,16 @@ class _AreasTabState extends State<AreasTab> {
         builder: (_) => AreaDetailPage(areaId: areaId, title: title),
       ),
     );
+
     if (!mounted) return;
-    setState(() {}); // atualiza balões ao voltar
+    setState(() {
+      // atualiza status ao voltar
+      _statusesFuture = _loadStatuses(_specs);
+    });
   }
 
   ({String areaId, String title})? _mapHitToArea(String hitId) {
-    final key = hitId.trim(); // NÃO precisa lowerCase agora
+    final key = hitId.trim();
     switch (key) {
       case 'head':
         return (areaId: 'head', title: 'Cabeça');
@@ -95,12 +116,9 @@ class _AreasTabState extends State<AreasTab> {
     final base = AreasModelAssets.baseImage(_sex);
     final hitmap = AreasModelAssets.hitmapSvg(_sex);
 
-    final specs = AreasBalloonConfig.specs(_sex);
-
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        // Toggle de teste (depois liga no onboarding/perfil)
         Row(
           children: [
             Expanded(
@@ -110,20 +128,19 @@ class _AreasTabState extends State<AreasTab> {
                   ButtonSegment(value: UserSex.male, label: Text('Homem')),
                 ],
                 selected: {_sex},
-                onSelectionChanged: (s) => setState(() => _sex = s.first),
+                onSelectionChanged: (s) => _setSex(s.first),
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: AspectRatio(
               aspectRatio: 9 / 16,
               child: FutureBuilder<Map<String, AreaStatus?>>(
-                future: _loadStatuses(specs),
+                future: _statusesFuture,
                 builder: (context, snap) {
                   if (snap.connectionState != ConnectionState.done) {
                     return const Center(child: CircularProgressIndicator());
@@ -136,6 +153,7 @@ class _AreasTabState extends State<AreasTab> {
                       ),
                     );
                   }
+
                   final statusByArea =
                       snap.data ?? const <String, AreaStatus?>{};
 
@@ -148,7 +166,7 @@ class _AreasTabState extends State<AreasTab> {
 
                       return Stack(
                         children: [
-                          // 1) BodyMap embaixo (desenha a imagem + lê o hitmap)
+                          // 1) BodyMap embaixo (imagem + hitmap)
                           Positioned.fill(
                             child: BodyMap(
                               imageAsset: base,
@@ -165,23 +183,20 @@ class _AreasTabState extends State<AreasTab> {
                             ),
                           ),
 
-                          // 2) Linhas por cima
-                          for (final b in specs)
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: BalloonConnectorPainter(
-                                  from: toPx(b.from),
-                                  to: toPx(b.to),
-                                  color: _statusColor(
-                                    statusByArea[b.areaId],
-                                    context,
-                                  ),
-                                ),
+                          // 2) Um painter único para todas as linhas (melhor performance)
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: _AllConnectorsPainter(
+                                specs: _specs,
+                                toPx: toPx,
+                                colorForAreaId: (areaId) =>
+                                    _statusColor(statusByArea[areaId], context),
                               ),
                             ),
+                          ),
 
-                          // 3) Balões por cima (clicáveis)
-                          for (final b in specs)
+                          // 3) Balões por cima
+                          for (final b in _specs)
                             Positioned(
                               left: (b.to.dx * w) - (w * b.maxWidthFactor / 2),
                               top: (b.to.dy * h) - 22,
@@ -209,5 +224,45 @@ class _AreasTabState extends State<AreasTab> {
         ),
       ],
     );
+  }
+}
+
+class _AllConnectorsPainter extends CustomPainter {
+  _AllConnectorsPainter({
+    required this.specs,
+    required this.toPx,
+    required this.colorForAreaId,
+  });
+
+  final List<BalloonSpec> specs;
+  final Offset Function(Offset) toPx;
+  final Color Function(String areaId) colorForAreaId;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final b in specs) {
+      final from = toPx(b.from);
+      final to = toPx(b.to);
+      final color = colorForAreaId(b.areaId);
+
+      final p = Paint()
+        ..color = color.withValues(alpha: 0.85)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke;
+
+      final path = Path()
+        ..moveTo(from.dx, from.dy)
+        ..quadraticBezierTo((from.dx + to.dx) / 2, from.dy, to.dx, to.dy);
+
+      canvas.drawPath(path, p);
+
+      final dotPaint = Paint()..color = color.withValues(alpha: 0.95);
+      canvas.drawCircle(from, 3.5, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AllConnectorsPainter oldDelegate) {
+    return oldDelegate.specs != specs;
   }
 }
