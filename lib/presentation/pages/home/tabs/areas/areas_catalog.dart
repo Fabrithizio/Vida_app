@@ -41,6 +41,13 @@ class AreasCatalog {
           AreaItemDef(id: 'treino', title: 'Treino'),
           AreaItemDef(id: 'flexibilidade', title: 'Flexibilidade'),
         ];
+
+      case 'pelvis':
+        return const [
+          AreaItemDef(id: 'cuidados_intimos', title: 'Cuidados íntimos'),
+          AreaItemDef(id: 'higiene', title: 'Higiene'),
+          AreaItemDef(id: 'dor_desconforto', title: 'Dor / Desconforto'),
+        ];
       default:
         return const [AreaItemDef(id: 'geral', title: 'Geral')];
     }

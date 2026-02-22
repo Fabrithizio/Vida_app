@@ -1,4 +1,3 @@
-// lib/features/areas/areas_store.dart
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_status.dart';
@@ -31,5 +30,41 @@ class AreasStore {
   Future<void> clearAssessment(String areaId, String itemId) async {
     final box = await _open();
     await box.delete(_key(areaId, itemId));
+  }
+
+  /// Status geral da área baseado nos itens do catálogo.
+  /// Regras (simples/MVP):
+  /// - Se tiver algum "ruim" => ruim
+  /// - Senão se tiver algum "bom" => bom
+  /// - Senão se tiver algum "otimo" => otimo
+  /// - Se não tiver nada avaliado => null
+  Future<AreaStatus?> overallStatus(String areaId, List<String> itemIds) async {
+    final box = await _open();
+
+    bool anyOtimo = false;
+    bool anyBom = false;
+    bool anyRuim = false;
+    bool any = false;
+
+    for (final itemId in itemIds) {
+      final raw = box.get(_key(areaId, itemId));
+      if (raw is! Map) continue;
+      any = true;
+
+      final m = Map<String, dynamic>.from(raw);
+      final statusName = m['status'] as String?;
+      if (statusName == null) continue;
+
+      final s = AreaStatus.values.byName(statusName);
+      if (s == AreaStatus.ruim) anyRuim = true;
+      if (s == AreaStatus.bom) anyBom = true;
+      if (s == AreaStatus.otimo) anyOtimo = true;
+    }
+
+    if (!any) return null;
+    if (anyRuim) return AreaStatus.ruim;
+    if (anyBom) return AreaStatus.bom;
+    if (anyOtimo) return AreaStatus.otimo;
+    return null;
   }
 }

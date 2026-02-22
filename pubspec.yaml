@@ -2,7 +2,7 @@ name: vida_app
 description: "A new Flutter project."
 
 # Versão do app (major.minor.patch+build)
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: ^3.10.7
@@ -43,3 +43,6 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/models/
+    - assets/models/female/
+    - assets/models/male/
