@@ -26,19 +26,19 @@ class AreasBalloonConfig {
         BalloonSpec(
           areaId: 'head',
           title: 'Cabeça',
-          from: Offset(0.50, 0.12),
+          from: Offset(0.50, 0.09),
           to: Offset(0.18, 0.18),
         ),
         BalloonSpec(
           areaId: 'chest',
           title: 'Peito',
-          from: Offset(0.50, 0.30),
+          from: Offset(0.55, 0.28),
           to: Offset(0.82, 0.24),
         ),
         BalloonSpec(
           areaId: 'abdomen',
           title: 'Abdômen',
-          from: Offset(0.50, 0.46),
+          from: Offset(0.50, 0.38),
           to: Offset(0.18, 0.48),
         ),
         BalloonSpec(
@@ -69,7 +69,7 @@ class AreasBalloonConfig {
         BalloonSpec(
           areaId: 'pelvis',
           title: 'Pelve',
-          from: Offset(0.50, 0.58),
+          from: Offset(0.50, 0.50),
           to: Offset(0.82, 0.52),
         ),
       ];
@@ -79,19 +79,19 @@ class AreasBalloonConfig {
       BalloonSpec(
         areaId: 'head',
         title: 'Cabeça',
-        from: Offset(0.50, 0.12),
+        from: Offset(0.50, 0.09),
         to: Offset(0.18, 0.18),
       ),
       BalloonSpec(
         areaId: 'chest',
         title: 'Peito',
-        from: Offset(0.50, 0.30),
+        from: Offset(0.50, 0.28),
         to: Offset(0.82, 0.24),
       ),
       BalloonSpec(
         areaId: 'abdomen',
         title: 'Abdômen',
-        from: Offset(0.50, 0.46),
+        from: Offset(0.50, 0.38),
         to: Offset(0.18, 0.48),
       ),
       BalloonSpec(
@@ -121,7 +121,7 @@ class AreasBalloonConfig {
       BalloonSpec(
         areaId: 'pelvis',
         title: 'Pelve',
-        from: Offset(0.50, 0.58),
+        from: Offset(0.50, 0.50),
         to: Offset(0.82, 0.52),
       ),
     ];

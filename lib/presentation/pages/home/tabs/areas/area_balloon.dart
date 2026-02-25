@@ -33,18 +33,18 @@ class AreaBalloon extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Material(
-        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.82),
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.20),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: border.withValues(alpha: 0.9),
-                width: 2,
+                color: border.withValues(alpha: 0.3),
+                width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
@@ -57,13 +57,20 @@ class AreaBalloon extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: _borderColor(context), // usa a cor do status
+                  ),
+                ),
+                const SizedBox(height: 1),
                 Text(
                   subtitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelMedium,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: _borderColor(context), // reaproveita a mesma cor
+                  ),
                 ),
               ],
             ),
