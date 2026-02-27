@@ -25,19 +25,19 @@ class AreasBalloonConfig {
       return const [
         BalloonSpec(
           areaId: 'head',
-          title: 'Cabeça',
+          title: 'Psicológico',
           from: Offset(0.50, 0.09),
           to: Offset(0.18, 0.18),
         ),
         BalloonSpec(
           areaId: 'chest',
-          title: 'Peito',
+          title: 'Emoções',
           from: Offset(0.55, 0.28),
           to: Offset(0.82, 0.24),
         ),
         BalloonSpec(
           areaId: 'abdomen',
-          title: 'Abdômen',
+          title: 'Saúde',
           from: Offset(0.50, 0.38),
           to: Offset(0.18, 0.48),
         ),
@@ -65,10 +65,9 @@ class AreasBalloonConfig {
           from: Offset(0.54, 0.76),
           to: Offset(0.82, 0.74),
         ),
-        // Se você tiver área pélvica no catálogo/hitmap feminino:
         BalloonSpec(
           areaId: 'pelvis',
-          title: 'Pelve',
+          title: 'Saúde Íntima',
           from: Offset(0.50, 0.50),
           to: Offset(0.82, 0.52),
         ),
@@ -78,19 +77,19 @@ class AreasBalloonConfig {
     return const [
       BalloonSpec(
         areaId: 'head',
-        title: 'Cabeça',
+        title: 'Psicológico',
         from: Offset(0.50, 0.09),
         to: Offset(0.18, 0.18),
       ),
       BalloonSpec(
         areaId: 'chest',
-        title: 'Peito',
+        title: 'Emoções',
         from: Offset(0.50, 0.28),
         to: Offset(0.82, 0.24),
       ),
       BalloonSpec(
         areaId: 'abdomen',
-        title: 'Abdômen',
+        title: 'Saúde',
         from: Offset(0.50, 0.38),
         to: Offset(0.18, 0.48),
       ),
@@ -120,7 +119,7 @@ class AreasBalloonConfig {
       ),
       BalloonSpec(
         areaId: 'pelvis',
-        title: 'Pelve',
+        title: 'Saúde Íntima',
         from: Offset(0.50, 0.50),
         to: Offset(0.82, 0.52),
       ),
