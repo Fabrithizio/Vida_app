@@ -10,6 +10,10 @@ import 'timeline/edit_block_sheet.dart';
 import 'timeline/timeline_day_view.dart';
 import 'timeline/timeline_summary_view.dart';
 
+// ✅ NOVO
+import 'package:vida_app/features/shopping/shopping_list_store.dart';
+import 'shopping_list_sheet.dart';
+
 enum TimelineRange { day, week, month, year }
 
 class DayTab extends StatefulWidget {
@@ -21,6 +25,10 @@ class DayTab extends StatefulWidget {
 
 class _DayTabState extends State<DayTab> {
   late final TimelineStore _store;
+
+  // ✅ NOVO
+  final ShoppingListStore _shopping = ShoppingListStore();
+
   bool _loading = true;
 
   TimelineRange _range = TimelineRange.day;
@@ -34,6 +42,7 @@ class _DayTabState extends State<DayTab> {
 
     Future.microtask(() async {
       await _store.load();
+      await _shopping.load(); // ✅ NOVO
 
       if (_store.all.isEmpty) {
         final now = DateTime.now();
@@ -146,6 +155,95 @@ class _DayTabState extends State<DayTab> {
     }
   }
 
+  // ✅ NOVO
+  void _openShopping() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => ShoppingListSheet(store: _shopping),
+    );
+  }
+
+  // ✅ NOVO
+  Widget _buildShoppingPreviewCard() {
+    return AnimatedBuilder(
+      animation: _shopping,
+      builder: (context, _) {
+        final items = _shopping.items;
+        final pending = items.where((e) => !e.done).toList(growable: false);
+        final preview = pending.take(3).toList(growable: false);
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(Icons.shopping_cart_outlined),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Lista de compras',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            pending.isEmpty
+                                ? 'ok'
+                                : '${pending.length} pendente(s)',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.secondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      if (items.isEmpty)
+                        const Text('Toque em “Abrir” para adicionar itens.')
+                      else ...[
+                        for (final it in preview)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              '• ${it.text}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        if (pending.length > preview.length)
+                          Text('… +${pending.length - preview.length}'),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed: _openShopping,
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Abrir'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildRangeBody() {
     final weekStart = _startOfWeek(_selected);
     final weekEnd = weekStart.add(const Duration(days: 7));
@@ -219,6 +317,14 @@ class _DayTabState extends State<DayTab> {
                     ),
                   ),
                   const SizedBox(width: 10),
+
+                  // ✅ NOVO: atalho fácil
+                  IconButton(
+                    tooltip: 'Lista de compras',
+                    onPressed: _openShopping,
+                    icon: const Icon(Icons.shopping_cart_outlined),
+                  ),
+
                   IconButton(
                     tooltip: 'Escolher data',
                     onPressed: _pickDate,
@@ -227,6 +333,13 @@ class _DayTabState extends State<DayTab> {
                 ],
               ),
             ),
+
+            // ✅ NOVO: card “bonito e intuitivo”
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: _buildShoppingPreviewCard(),
+            ),
+
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
