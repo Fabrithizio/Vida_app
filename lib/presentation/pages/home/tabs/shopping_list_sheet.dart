@@ -28,6 +28,16 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
     _focus.requestFocus();
   }
 
+  Map<ShoppingCategory, List<ShoppingItem>> _groupByCategory(
+    List<ShoppingItem> items,
+  ) {
+    final map = <ShoppingCategory, List<ShoppingItem>>{};
+    for (final it in items) {
+      map.putIfAbsent(it.category, () => <ShoppingItem>[]).add(it);
+    }
+    return map;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
@@ -38,6 +48,12 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
         animation: widget.store,
         builder: (context, _) {
           final items = widget.store.items;
+          final groups = _groupByCategory(items);
+
+          final orderedCats = ShoppingCategory.values.where((c) {
+            final list = groups[c];
+            return list != null && list.isNotEmpty;
+          }).toList();
 
           return SafeArea(
             child: Column(
@@ -51,12 +67,23 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
                         ? 'Tudo em dia 🎉'
                         : '${widget.store.pendingCount} pendente(s)',
                   ),
-                  trailing: TextButton.icon(
-                    onPressed: items.any((e) => e.done)
-                        ? widget.store.clearDone
-                        : null,
-                    icon: const Icon(Icons.done_all),
-                    label: const Text('Limpar feitos'),
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'Opções',
+                    onSelected: (v) async {
+                      if (v == 'clear_done') await widget.store.clearDone();
+                      if (v == 'recategorize')
+                        await widget.store.recategorizeAll();
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'recategorize',
+                        child: Text('Reclassificar tudo'),
+                      ),
+                      PopupMenuItem(
+                        value: 'clear_done',
+                        child: Text('Limpar feitos'),
+                      ),
+                    ],
                   ),
                 ),
                 Padding(
@@ -72,7 +99,7 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
                           decoration: const InputDecoration(
                             prefixIcon: Icon(Icons.add_shopping_cart_outlined),
                             labelText: 'Adicionar item',
-                            hintText: 'Ex: leite, pão, frutas…',
+                            hintText: 'Ex: sabão em pó, banana, frango…',
                             border: OutlineInputBorder(),
                           ),
                         ),
@@ -92,31 +119,76 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
                   )
                 else
                   Flexible(
-                    child: ListView.separated(
+                    child: ListView.builder(
                       shrinkWrap: true,
                       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, i) {
-                        final it = items[i];
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Checkbox(
-                            value: it.done,
-                            onChanged: (_) => widget.store.toggle(it.id),
-                          ),
-                          title: Text(
-                            it.text,
-                            style: TextStyle(
-                              decoration: it.done
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
+                      itemCount: orderedCats.length,
+                      itemBuilder: (context, idx) {
+                        final cat = orderedCats[idx];
+                        final list = groups[cat]!;
+                        final pending = list.where((e) => !e.done).length;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          categoryLabel(cat),
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        pending == 0
+                                            ? 'ok'
+                                            : '$pending pendente(s)',
+                                        style: TextStyle(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.secondary,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...list.map((it) {
+                                    return ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: Checkbox(
+                                        value: it.done,
+                                        onChanged: (_) =>
+                                            widget.store.toggle(it.id),
+                                      ),
+                                      title: Text(
+                                        it.text,
+                                        style: TextStyle(
+                                          decoration: it.done
+                                              ? TextDecoration.lineThrough
+                                              : TextDecoration.none,
+                                        ),
+                                      ),
+                                      trailing: IconButton(
+                                        tooltip: 'Remover',
+                                        onPressed: () =>
+                                            widget.store.remove(it.id),
+                                        icon: const Icon(Icons.delete_outline),
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
                             ),
-                          ),
-                          trailing: IconButton(
-                            tooltip: 'Remover',
-                            onPressed: () => widget.store.remove(it.id),
-                            icon: const Icon(Icons.delete_outline),
                           ),
                         );
                       },
