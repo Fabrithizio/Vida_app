@@ -1,23 +1,26 @@
-// lib/presentation/pages/home/tabs/day_tab.dart
 import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/timeline_block.dart';
-import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
+import 'package:vida_app/features/shopping/shopping_list_store.dart';
 import 'package:vida_app/features/timeline/timeline_store.dart';
 import 'package:vida_app/services/notifications/notification_service.dart';
 
+import 'shopping_list_sheet.dart';
 import 'timeline/create_block_sheet.dart';
 import 'timeline/edit_block_sheet.dart';
 import 'timeline/timeline_day_view.dart';
 import 'timeline/timeline_summary_view.dart';
 
-// ✅ NOVO
-import 'package:vida_app/features/shopping/shopping_list_store.dart';
-import 'shopping_list_sheet.dart';
-
 enum TimelineRange { day, week, month, year }
 
 class DayTab extends StatefulWidget {
-  const DayTab({super.key});
+  const DayTab({
+    super.key,
+    required this.shoppingStore,
+    required this.timelineStore,
+  });
+
+  final ShoppingListStore shoppingStore;
+  final TimelineStore timelineStore;
 
   @override
   State<DayTab> createState() => _DayTabState();
@@ -25,10 +28,6 @@ class DayTab extends StatefulWidget {
 
 class _DayTabState extends State<DayTab> {
   late final TimelineStore _store;
-
-  // ✅ NOVO
-  final ShoppingListStore _shopping = ShoppingListStore();
-
   bool _loading = true;
 
   TimelineRange _range = TimelineRange.day;
@@ -38,11 +37,11 @@ class _DayTabState extends State<DayTab> {
   void initState() {
     super.initState();
 
-    _store = TimelineStore(repo: HiveTimelineRepository());
+    _store = widget.timelineStore;
 
     Future.microtask(() async {
       await _store.load();
-      await _shopping.load(); // ✅ NOVO
+      await widget.shoppingStore.load();
 
       if (_store.all.isEmpty) {
         final now = DateTime.now();
@@ -111,7 +110,6 @@ class _DayTabState extends State<DayTab> {
     await _store.add(created);
     if (!mounted) return;
     setState(() {});
-
     await NotificationService.instance.scheduleTenMinutesBefore(created);
   }
 
@@ -155,22 +153,20 @@ class _DayTabState extends State<DayTab> {
     }
   }
 
-  // ✅ NOVO
   void _openShopping() {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => ShoppingListSheet(store: _shopping),
+      builder: (_) => ShoppingListSheet(store: widget.shoppingStore),
     );
   }
 
-  // ✅ NOVO
   Widget _buildShoppingPreviewCard() {
     return AnimatedBuilder(
-      animation: _shopping,
+      animation: widget.shoppingStore,
       builder: (context, _) {
-        final items = _shopping.items;
+        final items = widget.shoppingStore.items;
         final pending = items.where((e) => !e.done).toList(growable: false);
         final preview = pending.take(3).toList(growable: false);
 
@@ -279,9 +275,7 @@ class _DayTabState extends State<DayTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
 
     return Scaffold(
       body: SafeArea(
@@ -317,14 +311,11 @@ class _DayTabState extends State<DayTab> {
                     ),
                   ),
                   const SizedBox(width: 10),
-
-                  // ✅ NOVO: atalho fácil
                   IconButton(
                     tooltip: 'Lista de compras',
                     onPressed: _openShopping,
                     icon: const Icon(Icons.shopping_cart_outlined),
                   ),
-
                   IconButton(
                     tooltip: 'Escolher data',
                     onPressed: _pickDate,
@@ -333,13 +324,10 @@ class _DayTabState extends State<DayTab> {
                 ],
               ),
             ),
-
-            // ✅ NOVO: card “bonito e intuitivo”
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: _buildShoppingPreviewCard(),
             ),
-
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),

@@ -158,6 +158,32 @@ class ShoppingListStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> addMany(Iterable<String> texts) async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+    final newItems = <ShoppingItem>[];
+    for (final raw in texts) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+
+      newItems.add(
+        ShoppingItem(
+          id: 's_${DateTime.now().microsecondsSinceEpoch}',
+          text: t,
+          done: false,
+          createdAtMs: nowMs,
+          category: ShoppingCategorizer.guessCategory(t),
+        ),
+      );
+    }
+
+    if (newItems.isEmpty) return;
+
+    _items = _sort([...newItems, ..._items]);
+    await _save();
+    notifyListeners();
+  }
+
   Future<void> toggle(String id) async {
     _items = _sort(
       _items
