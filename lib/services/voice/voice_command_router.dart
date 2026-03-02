@@ -167,7 +167,7 @@ class VoiceCommandRouter {
       'evento',
       'compromisso',
     ]) {
-      final p = RegExp('^' + RegExp.escape(prefix), caseSensitive: false);
+      final p = RegExp('^${RegExp.escape(prefix)}', caseSensitive: false);
       title = title.replaceFirst(p, '').trim();
       if (title != s) break;
     }

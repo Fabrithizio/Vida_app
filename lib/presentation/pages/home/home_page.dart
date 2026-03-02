@@ -73,7 +73,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: IndexedStack(index: _index, children: _tabs),
 
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.large(
         onPressed: _openVoiceHub,
         child: const Icon(Icons.mic),
       ),
@@ -103,7 +103,7 @@ class _HomePageState extends State<HomePage> {
                   _index == 1 ? Icons.favorite : Icons.favorite_border,
                 ),
               ),
-              const SizedBox(width: 52),
+              const SizedBox(width: 56), // espaço do botão central
               IconButton(
                 tooltip: 'Alertas',
                 onPressed: () => setState(() => _index = 2),
