@@ -14,6 +14,7 @@ enum ShoppingCategory {
   pharmacy,
   home,
   pet,
+  spices,
   other,
 }
 
@@ -41,6 +42,8 @@ String categoryLabel(ShoppingCategory c) {
       return 'Casa';
     case ShoppingCategory.pet:
       return 'Pet';
+    case ShoppingCategory.spices:
+      return 'Temperos';
     case ShoppingCategory.other:
       return 'Outros';
   }
@@ -203,6 +206,7 @@ class ShoppingListStore extends ChangeNotifier {
       ShoppingCategory.pharmacy => 8,
       ShoppingCategory.home => 9,
       ShoppingCategory.pet => 10,
+      ShoppingCategory.spices => 11,
       ShoppingCategory.other => 99,
     };
 
@@ -433,6 +437,18 @@ class ShoppingCategorizer {
       'petisco',
       'coleira',
       'shampoo pet',
+    ],
+
+    ShoppingCategory.spices: [
+      'curcuma',
+      'pimenta',
+      'orégano',
+      'oregano',
+      'canela',
+      'paprica',
+      'páprica',
+      'cominho',
+      'sal',
     ],
   };
 }
