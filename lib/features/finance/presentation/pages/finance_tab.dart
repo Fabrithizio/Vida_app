@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../data/models/finance_entry_type.dart';
+import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
+import 'add_transaction_page.dart';
 
 class FinanceTab extends StatefulWidget {
   const FinanceTab({super.key});
@@ -17,6 +19,7 @@ class _FinanceTabState extends State<FinanceTab> {
   void initState() {
     super.initState();
     _store = FinanceStore();
+    _store.load();
   }
 
   String _currency(double value) {
@@ -27,101 +30,163 @@ class _FinanceTabState extends State<FinanceTab> {
     return color.withAlpha(40);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _store,
-      builder: (context, _) {
-        final transactions = _store.recentTransactions;
+  Future<void> _openAddTransactionPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AddTransactionPage(store: _store)),
+    );
+  }
 
-        return ListView(
-          padding: const EdgeInsets.all(12),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Entrou',
-                    value: _currency(_store.totalIncome),
-                    icon: Icons.arrow_downward_rounded,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Saiu',
-                    value: _currency(_store.totalExpense),
-                    icon: Icons.arrow_upward_rounded,
-                  ),
-                ),
-              ],
+  Future<void> _confirmRemoveTransaction(FinanceTransaction transaction) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Excluir transação'),
+          content: Text('Deseja excluir a transação "${transaction.title}"?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
             ),
-            const SizedBox(height: 12),
-            _SummaryCard(
-              title: 'Saldo do período',
-              value: _currency(_store.balance),
-              icon: Icons.account_balance_wallet_outlined,
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Excluir'),
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Débito',
-                    value: _currency(_store.totalDebitExpense),
-                    icon: Icons.payments_outlined,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Crédito',
-                    value: _currency(_store.totalCreditExpense),
-                    icon: Icons.credit_card_outlined,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Movimentações recentes',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            if (transactions.isEmpty)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Nenhuma transação cadastrada ainda.'),
-                ),
-              )
-            else
-              ...transactions.map((transaction) {
-                final category = transaction.category;
-                final amountText = transaction.isIncome
-                    ? '+ ${_currency(transaction.amount)}'
-                    : '- ${_currency(transaction.amount)}';
-
-                return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: _softCategoryColor(category.color),
-                      child: Icon(category.icon, color: category.color),
-                    ),
-                    title: Text(transaction.title),
-                    subtitle: Text(
-                      '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
-                    ),
-                    trailing: Text(
-                      amountText,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                );
-              }),
           ],
         );
       },
+    );
+
+    if (confirmed != true) return;
+
+    await _store.removeTransaction(transaction.id);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Transação "${transaction.title}" excluída.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openAddTransactionPage,
+        child: const Icon(Icons.add),
+      ),
+      body: AnimatedBuilder(
+        animation: _store,
+        builder: (context, _) {
+          if (_store.isLoading && !_store.hasLoaded) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final transactions = _store.recentTransactions;
+
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Entrou',
+                      value: _currency(_store.totalIncome),
+                      icon: Icons.arrow_downward_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Saiu',
+                      value: _currency(_store.totalExpense),
+                      icon: Icons.arrow_upward_rounded,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _SummaryCard(
+                title: 'Saldo do período',
+                value: _currency(_store.balance),
+                icon: Icons.account_balance_wallet_outlined,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Débito',
+                      value: _currency(_store.totalDebitExpense),
+                      icon: Icons.payments_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Crédito',
+                      value: _currency(_store.totalCreditExpense),
+                      icon: Icons.credit_card_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Movimentações recentes',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (transactions.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Nenhuma transação cadastrada ainda.'),
+                  ),
+                )
+              else
+                ...transactions.map((transaction) {
+                  final category = transaction.category;
+                  final amountText = transaction.isIncome
+                      ? '+ ${_currency(transaction.amount)}'
+                      : '- ${_currency(transaction.amount)}';
+
+                  return Card(
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: _softCategoryColor(category.color),
+                        child: Icon(category.icon, color: category.color),
+                      ),
+                      title: Text(transaction.title),
+                      subtitle: Text(
+                        '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            amountText,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          IconButton(
+                            tooltip: 'Excluir transação',
+                            onPressed: () {
+                              _confirmRemoveTransaction(transaction);
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 80),
+            ],
+          );
+        },
+      ),
     );
   }
 

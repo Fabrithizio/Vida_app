@@ -4,20 +4,52 @@ import '../../data/local/finance_seed_data.dart';
 import '../../data/models/finance_category.dart';
 import '../../data/models/finance_entry_type.dart';
 import '../../data/models/finance_transaction.dart';
+import '../../data/repositories/finance_repository.dart';
+import '../../data/repositories/hive_finance_repository.dart';
 
 class FinanceStore extends ChangeNotifier {
-  FinanceStore() {
-    _categories = List<FinanceCategory>.from(FinanceSeedData.categories);
-    _transactions = List<FinanceTransaction>.from(
-      FinanceSeedData.sampleTransactions(),
-    );
-  }
+  FinanceStore({FinanceRepository? repository})
+    : _repository = repository ?? HiveFinanceRepository();
 
-  late final List<FinanceCategory> _categories;
-  late final List<FinanceTransaction> _transactions;
+  final FinanceRepository _repository;
+
+  final List<FinanceCategory> _categories = List<FinanceCategory>.from(
+    FinanceSeedData.categories,
+  );
+
+  final List<FinanceTransaction> _transactions = [];
+
+  bool _isLoading = false;
+  bool _hasLoaded = false;
 
   List<FinanceCategory> get categories => List.unmodifiable(_categories);
   List<FinanceTransaction> get transactions => List.unmodifiable(_transactions);
+
+  bool get isLoading => _isLoading;
+  bool get hasLoaded => _hasLoaded;
+
+  Future<void> load() async {
+    if (_isLoading) return;
+
+    _isLoading = true;
+    notifyListeners();
+
+    final savedItems = await _repository.loadAll();
+
+    _transactions
+      ..clear()
+      ..addAll(
+        savedItems.isEmpty ? FinanceSeedData.sampleTransactions() : savedItems,
+      );
+
+    if (savedItems.isEmpty) {
+      await _repository.saveAll(_transactions);
+    }
+
+    _isLoading = false;
+    _hasLoaded = true;
+    notifyListeners();
+  }
 
   double get totalIncome {
     return _transactions
@@ -75,13 +107,15 @@ class FinanceStore extends ChangeNotifier {
     }
   }
 
-  void addTransaction(FinanceTransaction transaction) {
+  Future<void> addTransaction(FinanceTransaction transaction) async {
     _transactions.add(transaction);
+    await _repository.saveAll(_transactions);
     notifyListeners();
   }
 
-  void removeTransaction(String id) {
+  Future<void> removeTransaction(String id) async {
     _transactions.removeWhere((transaction) => transaction.id == id);
+    await _repository.saveAll(_transactions);
     notifyListeners();
   }
 }
