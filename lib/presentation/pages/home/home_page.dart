@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
+import 'package:vida_app/features/shopping/shopping_list_store.dart';
 import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
 import 'package:vida_app/features/timeline/timeline_store.dart';
+import 'package:vida_app/presentation/voice/voice_hub_sheet.dart';
+import 'package:vida_app/services/voice/voice_command_router.dart';
 
 import '../../../data/local/session_storage.dart';
 import '../login_page.dart';
-import 'tabs/alerts_tab.dart';
 import 'tabs/areas_tab.dart';
 import 'tabs/day_tab.dart';
 import 'tabs/profile_tab.dart';
-
-import 'package:vida_app/features/shopping/shopping_list_store.dart';
-import 'package:vida_app/presentation/voice/voice_hub_sheet.dart';
-import 'package:vida_app/services/voice/voice_command_router.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -34,7 +33,7 @@ class _HomePageState extends State<HomePage> {
   late final List<Widget> _tabs = [
     DayTab(shoppingStore: _shopping, timelineStore: _timeline),
     const AreasTab(),
-    const AlertsTab(),
+    const FinanceTab(),
     const ProfileTab(),
   ];
 
@@ -58,7 +57,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = const ['Meu Dia', 'Áreas', 'Alertas', 'Perfil'];
+    final titles = const ['Meu Dia', 'Áreas', 'Finanças', 'Perfil'];
 
     return Scaffold(
       appBar: AppBar(
@@ -72,13 +71,11 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       body: IndexedStack(index: _index, children: _tabs),
-
       floatingActionButton: FloatingActionButton.large(
         onPressed: _openVoiceHub,
         child: const Icon(Icons.mic),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         notchMargin: 8,
@@ -103,12 +100,14 @@ class _HomePageState extends State<HomePage> {
                   _index == 1 ? Icons.favorite : Icons.favorite_border,
                 ),
               ),
-              const SizedBox(width: 56), // espaço do botão central
+              const SizedBox(width: 56),
               IconButton(
-                tooltip: 'Alertas',
+                tooltip: 'Finanças',
                 onPressed: () => setState(() => _index = 2),
                 icon: Icon(
-                  _index == 2 ? Icons.notifications : Icons.notifications_none,
+                  _index == 2
+                      ? Icons.account_balance_wallet
+                      : Icons.account_balance_wallet_outlined,
                 ),
               ),
               IconButton(
