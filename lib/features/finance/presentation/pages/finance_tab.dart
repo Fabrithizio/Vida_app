@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/models/finance_entry_type.dart';
+import '../../data/models/finance_filter_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
 import 'add_transaction_page.dart';
@@ -97,7 +98,7 @@ class _FinanceTabState extends State<FinanceTab> {
             return _EmptyFinanceState(onAddPressed: _openAddTransactionPage);
           }
 
-          final transactions = _store.recentTransactions;
+          final transactions = _store.filteredTransactions;
 
           return ListView(
             padding: const EdgeInsets.all(12),
@@ -148,50 +149,81 @@ class _FinanceTabState extends State<FinanceTab> {
                 ],
               ),
               const SizedBox(height: 20),
+              const Text(
+                'Filtros',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: FinanceFilterType.values.map((filter) {
+                  final selected = _store.selectedFilter == filter;
+
+                  return FilterChip(
+                    label: Text(filter.label),
+                    selected: selected,
+                    onSelected: (_) {
+                      _store.setFilter(filter);
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
               Text(
-                'Movimentações recentes (${_store.transactionCount})',
+                'Movimentações (${_store.filteredTransactionCount})',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 8),
-              ...transactions.map((transaction) {
-                final category = transaction.category;
-                final amountText = transaction.isIncome
-                    ? '+ ${_currency(transaction.amount)}'
-                    : '- ${_currency(transaction.amount)}';
-
-                return Card(
-                  child: ListTile(
-                    onTap: () => _openEditTransactionPage(transaction),
-                    leading: CircleAvatar(
-                      backgroundColor: _softCategoryColor(category.color),
-                      child: Icon(category.icon, color: category.color),
-                    ),
-                    title: Text(transaction.title),
-                    subtitle: Text(
-                      '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          amountText,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        IconButton(
-                          tooltip: 'Excluir transação',
-                          onPressed: () {
-                            _confirmRemoveTransaction(transaction);
-                          },
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                      ],
+              if (transactions.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'Nenhuma transação encontrada para este filtro.',
                     ),
                   ),
-                );
-              }),
+                )
+              else
+                ...transactions.map((transaction) {
+                  final category = transaction.category;
+                  final amountText = transaction.isIncome
+                      ? '+ ${_currency(transaction.amount)}'
+                      : '- ${_currency(transaction.amount)}';
+
+                  return Card(
+                    child: ListTile(
+                      onTap: () => _openEditTransactionPage(transaction),
+                      leading: CircleAvatar(
+                        backgroundColor: _softCategoryColor(category.color),
+                        child: Icon(category.icon, color: category.color),
+                      ),
+                      title: Text(transaction.title),
+                      subtitle: Text(
+                        '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            amountText,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          IconButton(
+                            tooltip: 'Excluir transação',
+                            onPressed: () {
+                              _confirmRemoveTransaction(transaction);
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
               const SizedBox(height: 80),
             ],
           );

@@ -3,13 +3,15 @@ import 'package:flutter/foundation.dart';
 import '../../data/local/finance_seed_data.dart';
 import '../../data/models/finance_category.dart';
 import '../../data/models/finance_entry_type.dart';
+import '../../data/models/finance_filter_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../../data/repositories/finance_repository.dart';
 import '../../data/repositories/hive_finance_repository.dart';
 
 class FinanceStore extends ChangeNotifier {
-  FinanceStore({FinanceRepository? repository})
-    : _repository = repository ?? HiveFinanceRepository();
+  FinanceStore({
+    FinanceRepository? repository,
+  }) : _repository = repository ?? HiveFinanceRepository();
 
   final FinanceRepository _repository;
 
@@ -21,6 +23,7 @@ class FinanceStore extends ChangeNotifier {
 
   bool _isLoading = false;
   bool _hasLoaded = false;
+  FinanceFilterType _selectedFilter = FinanceFilterType.all;
 
   List<FinanceCategory> get categories => List.unmodifiable(_categories);
   List<FinanceTransaction> get transactions => List.unmodifiable(_transactions);
@@ -28,6 +31,8 @@ class FinanceStore extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get hasLoaded => _hasLoaded;
   bool get isEmpty => _transactions.isEmpty;
+
+  FinanceFilterType get selectedFilter => _selectedFilter;
 
   Future<void> load() async {
     if (_isLoading) return;
@@ -86,6 +91,43 @@ class FinanceStore extends ChangeNotifier {
     final items = List<FinanceTransaction>.from(_transactions);
     items.sort((a, b) => b.date.compareTo(a.date));
     return items;
+  }
+
+  List<FinanceTransaction> get filteredTransactions {
+    final items = recentTransactions;
+
+    switch (_selectedFilter) {
+      case FinanceFilterType.all:
+        return items;
+      case FinanceFilterType.income:
+        return items.where((transaction) => transaction.isIncome).toList();
+      case FinanceFilterType.expense:
+        return items.where((transaction) => !transaction.isIncome).toList();
+      case FinanceFilterType.debit:
+        return items
+            .where(
+              (transaction) =>
+                  !transaction.isIncome &&
+                  _isImmediateOutflow(transaction.entryType),
+            )
+            .toList();
+      case FinanceFilterType.credit:
+        return items
+            .where(
+              (transaction) =>
+                  !transaction.isIncome &&
+                  transaction.entryType == FinanceEntryType.credit,
+            )
+            .toList();
+    }
+  }
+
+  int get filteredTransactionCount => filteredTransactions.length;
+
+  void setFilter(FinanceFilterType filter) {
+    if (_selectedFilter == filter) return;
+    _selectedFilter = filter;
+    notifyListeners();
   }
 
   bool _isImmediateOutflow(FinanceEntryType entryType) {
