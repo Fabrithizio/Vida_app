@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/finance_category.dart';
@@ -46,9 +45,7 @@ class HiveFinanceRepository implements FinanceRepository {
       'category': <String, dynamic>{
         'id': transaction.category.id,
         'name': transaction.category.name,
-        'iconCodePoint': transaction.category.icon.codePoint,
-        'iconFontFamily': transaction.category.icon.fontFamily,
-        'iconFontPackage': transaction.category.icon.fontPackage,
+        'iconKey': transaction.category.iconKey,
         'colorValue': transaction.category.colorValue,
         'isIncomeCategory': transaction.category.isIncomeCategory,
       },
@@ -65,11 +62,7 @@ class HiveFinanceRepository implements FinanceRepository {
     final category = FinanceCategory(
       id: categoryMap['id'] as String,
       name: categoryMap['name'] as String,
-      icon: IconData(
-        categoryMap['iconCodePoint'] as int,
-        fontFamily: categoryMap['iconFontFamily'] as String?,
-        fontPackage: categoryMap['iconFontPackage'] as String?,
-      ),
+      iconKey: (categoryMap['iconKey'] as String?) ?? 'expense',
       colorValue: categoryMap['colorValue'] as int,
       isIncomeCategory: categoryMap['isIncomeCategory'] as bool,
     );
