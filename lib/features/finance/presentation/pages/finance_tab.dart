@@ -99,6 +99,7 @@ class _FinanceTabState extends State<FinanceTab> {
           }
 
           final transactions = _store.filteredTransactions;
+          final topCategory = _store.topExpenseCategory;
 
           return ListView(
             padding: const EdgeInsets.all(12),
@@ -148,6 +149,46 @@ class _FinanceTabState extends State<FinanceTab> {
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+              const Text(
+                'Insights rápidos',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _InsightCard(
+                icon: Icons.insights_outlined,
+                title: 'Resumo',
+                description: _store.quickInsight,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _MiniStatCard(
+                      title: 'Transações',
+                      value: '${_store.transactionCount}',
+                      icon: Icons.receipt_long_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MiniStatCard(
+                      title: 'Maior gasto',
+                      value: topCategory == null ? '—' : topCategory.name,
+                      icon: Icons.local_fire_department_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              if (topCategory != null) ...[
+                const SizedBox(height: 12),
+                _InsightCard(
+                  icon: topCategory.icon,
+                  title: 'Categoria que mais pesou',
+                  description:
+                      '${topCategory.name} somou ${_currency(_store.topExpenseCategoryAmount)}.',
+                ),
+              ],
               const SizedBox(height: 20),
               const Text(
                 'Filtros',
@@ -326,6 +367,65 @@ class _SummaryCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MiniStatCard extends StatelessWidget {
+  const _MiniStatCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon),
+            const SizedBox(height: 10),
+            Text(title, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InsightCard extends StatelessWidget {
+  const _InsightCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(description),
       ),
     );
   }

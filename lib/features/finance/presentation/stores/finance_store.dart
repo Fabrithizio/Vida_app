@@ -9,9 +9,8 @@ import '../../data/repositories/finance_repository.dart';
 import '../../data/repositories/hive_finance_repository.dart';
 
 class FinanceStore extends ChangeNotifier {
-  FinanceStore({
-    FinanceRepository? repository,
-  }) : _repository = repository ?? HiveFinanceRepository();
+  FinanceStore({FinanceRepository? repository})
+    : _repository = repository ?? HiveFinanceRepository();
 
   final FinanceRepository _repository;
 
@@ -93,6 +92,10 @@ class FinanceStore extends ChangeNotifier {
     return items;
   }
 
+  List<FinanceTransaction> get expenseTransactions {
+    return _transactions.where((transaction) => !transaction.isIncome).toList();
+  }
+
   List<FinanceTransaction> get filteredTransactions {
     final items = recentTransactions;
 
@@ -123,6 +126,66 @@ class FinanceStore extends ChangeNotifier {
   }
 
   int get filteredTransactionCount => filteredTransactions.length;
+
+  FinanceCategory? get topExpenseCategory {
+    if (expenseTransactions.isEmpty) return null;
+
+    final totalsByCategory = <String, double>{};
+    final categoriesById = <String, FinanceCategory>{};
+
+    for (final transaction in expenseTransactions) {
+      final categoryId = transaction.category.id;
+      totalsByCategory[categoryId] =
+          (totalsByCategory[categoryId] ?? 0) + transaction.amount;
+      categoriesById[categoryId] = transaction.category;
+    }
+
+    String? winnerId;
+    double winnerTotal = 0;
+
+    totalsByCategory.forEach((categoryId, total) {
+      if (total > winnerTotal) {
+        winnerId = categoryId;
+        winnerTotal = total;
+      }
+    });
+
+    if (winnerId == null) return null;
+    return categoriesById[winnerId];
+  }
+
+  double get topExpenseCategoryAmount {
+    final topCategory = topExpenseCategory;
+    if (topCategory == null) return 0;
+
+    return expenseTransactions
+        .where((transaction) => transaction.category.id == topCategory.id)
+        .fold(0.0, (sum, transaction) => sum + transaction.amount);
+  }
+
+  String get quickInsight {
+    if (_transactions.isEmpty) {
+      return 'Adicione sua primeira transação para começar.';
+    }
+
+    if (totalExpense == 0 && totalIncome > 0) {
+      return 'Você registrou entradas, mas ainda não registrou saídas.';
+    }
+
+    if (totalIncome == 0 && totalExpense > 0) {
+      return 'Você registrou saídas, mas ainda não registrou entradas.';
+    }
+
+    if (totalCreditExpense > totalDebitExpense) {
+      return 'Seus gastos no crédito estão maiores que no débito.';
+    }
+
+    if (totalDebitExpense > totalCreditExpense) {
+      return 'Seus gastos no débito estão maiores que no crédito.';
+    }
+
+    return 'Seus gastos no crédito e no débito estão equilibrados.';
+  }
 
   void setFilter(FinanceFilterType filter) {
     if (_selectedFilter == filter) return;
