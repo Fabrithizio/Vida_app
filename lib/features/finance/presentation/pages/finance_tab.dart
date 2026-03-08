@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/finance_entry_type.dart';
 import '../../data/models/finance_filter_type.dart';
+import '../../data/models/finance_period_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
 import 'add_transaction_page.dart';
@@ -80,6 +81,13 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
+  String _formatDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,6 +112,27 @@ class _FinanceTabState extends State<FinanceTab> {
           return ListView(
             padding: const EdgeInsets.all(12),
             children: [
+              const Text(
+                'Período',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: FinancePeriodType.values.map((period) {
+                  final selected = _store.selectedPeriod == period;
+
+                  return ChoiceChip(
+                    label: Text(period.label),
+                    selected: selected,
+                    onSelected: (_) {
+                      _store.setPeriod(period);
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
@@ -145,6 +174,37 @@ class _FinanceTabState extends State<FinanceTab> {
                       title: 'Crédito',
                       value: _currency(_store.totalCreditExpense),
                       icon: Icons.credit_card_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Comparação',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _InsightCard(
+                icon: Icons.compare_arrows_outlined,
+                title: 'Comparação com período anterior',
+                description: _store.periodComparisonText,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _MiniStatCard(
+                      title: 'Saídas atuais',
+                      value: _currency(_store.totalExpense),
+                      icon: Icons.trending_up_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MiniStatCard(
+                      title: 'Saídas anteriores',
+                      value: _currency(_store.previousPeriodExpense),
+                      icon: Icons.history_outlined,
                     ),
                   ),
                 ],
@@ -224,7 +284,7 @@ class _FinanceTabState extends State<FinanceTab> {
                   child: Padding(
                     padding: EdgeInsets.all(16),
                     child: Text(
-                      'Nenhuma transação encontrada para este filtro.',
+                      'Nenhuma transação encontrada para este período/filtro.',
                     ),
                   ),
                 )
@@ -244,7 +304,7 @@ class _FinanceTabState extends State<FinanceTab> {
                       ),
                       title: Text(transaction.title),
                       subtitle: Text(
-                        '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
+                        '${_formatDate(transaction.date)} • ${category.name} • ${_entryTypeLabel(transaction.entryType)}',
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,

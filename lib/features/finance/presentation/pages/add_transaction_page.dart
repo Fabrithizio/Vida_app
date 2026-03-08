@@ -30,6 +30,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   late FinanceEntryType _entryType;
   FinanceCategory? _category;
   bool _isSaving = false;
+  late DateTime _selectedDate;
 
   @override
   void initState() {
@@ -45,9 +46,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _isIncome = initial.isIncome;
       _entryType = initial.entryType;
       _category = _findMatchingCategory(initial.category.id);
+      _selectedDate = initial.date;
     } else {
       _entryType = FinanceEntryType.debit;
       _category = widget.store.categories.first;
+      _selectedDate = DateTime.now();
     }
   }
 
@@ -63,6 +66,23 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     _titleController.dispose();
     _amountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 2),
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _selectedDate = picked;
+    });
   }
 
   Future<void> _save() async {
@@ -90,7 +110,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       id: initial?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
       amount: amount,
-      date: initial?.date ?? DateTime.now(),
+      date: _selectedDate,
       category: _category!,
       entryType: _entryType,
       source: initial?.source ?? FinanceTransactionSource.manual,
@@ -106,6 +126,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
     if (!mounted) return;
     Navigator.of(context).pop();
+  }
+
+  String _formatDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day/$month/$year';
   }
 
   @override
@@ -135,6 +162,18 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             decoration: const InputDecoration(
               labelText: 'Valor',
               border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _pickDate,
+            borderRadius: BorderRadius.circular(12),
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Data',
+                border: OutlineInputBorder(),
+              ),
+              child: Text(_formatDate(_selectedDate)),
             ),
           ),
           const SizedBox(height: 12),
