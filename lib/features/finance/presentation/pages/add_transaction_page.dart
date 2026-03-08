@@ -7,9 +7,16 @@ import '../../data/models/finance_transaction_source.dart';
 import '../stores/finance_store.dart';
 
 class AddTransactionPage extends StatefulWidget {
-  const AddTransactionPage({super.key, required this.store});
+  const AddTransactionPage({
+    super.key,
+    required this.store,
+    this.initialTransaction,
+  });
 
   final FinanceStore store;
+  final FinanceTransaction? initialTransaction;
+
+  bool get isEditing => initialTransaction != null;
 
   @override
   State<AddTransactionPage> createState() => _AddTransactionPageState();
@@ -27,8 +34,28 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   void initState() {
     super.initState();
-    _entryType = FinanceEntryType.debit;
-    _category = widget.store.categories.first;
+
+    final initial = widget.initialTransaction;
+
+    if (initial != null) {
+      _titleController.text = initial.title;
+      _amountController.text = initial.amount
+          .toStringAsFixed(2)
+          .replaceAll('.', ',');
+      _isIncome = initial.isIncome;
+      _entryType = initial.entryType;
+      _category = _findMatchingCategory(initial.category.id);
+    } else {
+      _entryType = FinanceEntryType.debit;
+      _category = widget.store.categories.first;
+    }
+  }
+
+  FinanceCategory _findMatchingCategory(String categoryId) {
+    return widget.store.categories.firstWhere(
+      (category) => category.id == categoryId,
+      orElse: () => widget.store.categories.first,
+    );
   }
 
   @override
@@ -57,18 +84,25 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _isSaving = true;
     });
 
+    final initial = widget.initialTransaction;
+
     final transaction = FinanceTransaction(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: initial?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
       amount: amount,
-      date: DateTime.now(),
+      date: initial?.date ?? DateTime.now(),
       category: _category!,
       entryType: _entryType,
-      source: FinanceTransactionSource.manual,
+      source: initial?.source ?? FinanceTransactionSource.manual,
       isIncome: _isIncome,
+      note: initial?.note,
     );
 
-    await widget.store.addTransaction(transaction);
+    if (widget.isEditing) {
+      await widget.store.updateTransaction(transaction);
+    } else {
+      await widget.store.addTransaction(transaction);
+    }
 
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -79,7 +113,9 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     final categories = widget.store.categories;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Nova transação')),
+      appBar: AppBar(
+        title: Text(widget.isEditing ? 'Editar transação' : 'Nova transação'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -158,7 +194,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: _isSaving ? null : _save,
-            child: Text(_isSaving ? 'Salvando...' : 'Salvar transação'),
+            child: Text(
+              _isSaving
+                  ? 'Salvando...'
+                  : (widget.isEditing
+                        ? 'Salvar alterações'
+                        : 'Salvar transação'),
+            ),
           ),
         ],
       ),

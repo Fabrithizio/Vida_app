@@ -37,6 +37,16 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
+  Future<void> _openEditTransactionPage(FinanceTransaction transaction) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AddTransactionPage(store: _store, initialTransaction: transaction),
+      ),
+    );
+  }
+
   Future<void> _confirmRemoveTransaction(FinanceTransaction transaction) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -155,6 +165,7 @@ class _FinanceTabState extends State<FinanceTab> {
 
                   return Card(
                     child: ListTile(
+                      onTap: () => _openEditTransactionPage(transaction),
                       leading: CircleAvatar(
                         backgroundColor: _softCategoryColor(category.color),
                         child: Icon(category.icon, color: category.color),

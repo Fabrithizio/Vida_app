@@ -113,6 +113,18 @@ class FinanceStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateTransaction(FinanceTransaction updatedTransaction) async {
+    final index = _transactions.indexWhere(
+      (transaction) => transaction.id == updatedTransaction.id,
+    );
+
+    if (index == -1) return;
+
+    _transactions[index] = updatedTransaction;
+    await _repository.saveAll(_transactions);
+    notifyListeners();
+  }
+
   Future<void> removeTransaction(String id) async {
     _transactions.removeWhere((transaction) => transaction.id == id);
     await _repository.saveAll(_transactions);
