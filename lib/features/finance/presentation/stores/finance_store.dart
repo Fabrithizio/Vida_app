@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../../data/local/finance_seed_data.dart';
 import '../../data/models/finance_category.dart';
@@ -8,6 +9,7 @@ import '../../data/models/finance_period_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../../data/repositories/finance_repository.dart';
 import '../../data/repositories/hive_finance_repository.dart';
+import '../widgets/expense_category_chart.dart';
 
 class FinanceStore extends ChangeNotifier {
   FinanceStore({FinanceRepository? repository})
@@ -229,6 +231,36 @@ class FinanceStore extends ChangeNotifier {
     return expenseTransactions
         .where((transaction) => transaction.category.id == topCategory.id)
         .fold(0.0, (sum, transaction) => sum + transaction.amount);
+  }
+
+  List<ExpenseCategoryChartItem> get categoryChartItems {
+    if (expenseTransactions.isEmpty) {
+      return const <ExpenseCategoryChartItem>[];
+    }
+
+    final totalsByCategory = <String, double>{};
+    final categoryMeta = <String, FinanceCategory>{};
+
+    for (final transaction in expenseTransactions) {
+      final category = transaction.category;
+      totalsByCategory[category.id] =
+          (totalsByCategory[category.id] ?? 0) + transaction.amount;
+      categoryMeta[category.id] = category;
+    }
+
+    final items = totalsByCategory.entries.map((entry) {
+      final category = categoryMeta[entry.key]!;
+
+      return ExpenseCategoryChartItem(
+        label: category.name,
+        amount: entry.value,
+        color: category.color,
+        icon: category.icon,
+      );
+    }).toList();
+
+    items.sort((a, b) => b.amount.compareTo(a.amount));
+    return items;
   }
 
   String get quickInsight {

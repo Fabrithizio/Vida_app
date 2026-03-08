@@ -5,6 +5,7 @@ import '../../data/models/finance_filter_type.dart';
 import '../../data/models/finance_period_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
+import '../widgets/expense_category_chart.dart';
 import 'add_transaction_page.dart';
 
 class FinanceTab extends StatefulWidget {
@@ -177,6 +178,11 @@ class _FinanceTabState extends State<FinanceTab> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 20),
+              ExpenseCategoryChart(
+                items: _store.categoryChartItems,
+                currencyFormatter: _currency,
               ),
               const SizedBox(height: 20),
               const Text(
