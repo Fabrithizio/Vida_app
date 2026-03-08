@@ -27,6 +27,7 @@ class FinanceStore extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   bool get hasLoaded => _hasLoaded;
+  bool get isEmpty => _transactions.isEmpty;
 
   Future<void> load() async {
     if (_isLoading) return;
@@ -38,13 +39,7 @@ class FinanceStore extends ChangeNotifier {
 
     _transactions
       ..clear()
-      ..addAll(
-        savedItems.isEmpty ? FinanceSeedData.sampleTransactions() : savedItems,
-      );
-
-    if (savedItems.isEmpty) {
-      await _repository.saveAll(_transactions);
-    }
+      ..addAll(savedItems);
 
     _isLoading = false;
     _hasLoaded = true;
@@ -84,6 +79,8 @@ class FinanceStore extends ChangeNotifier {
         )
         .fold(0.0, (sum, transaction) => sum + transaction.amount);
   }
+
+  int get transactionCount => _transactions.length;
 
   List<FinanceTransaction> get recentTransactions {
     final items = List<FinanceTransaction>.from(_transactions);

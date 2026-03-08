@@ -93,6 +93,10 @@ class _FinanceTabState extends State<FinanceTab> {
             return const Center(child: CircularProgressIndicator());
           }
 
+          if (_store.isEmpty) {
+            return _EmptyFinanceState(onAddPressed: _openAddTransactionPage);
+          }
+
           final transactions = _store.recentTransactions;
 
           return ListView(
@@ -144,55 +148,50 @@ class _FinanceTabState extends State<FinanceTab> {
                 ],
               ),
               const SizedBox(height: 20),
-              const Text(
-                'Movimentações recentes',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                'Movimentações recentes (${_store.transactionCount})',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
-              if (transactions.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('Nenhuma transação cadastrada ainda.'),
-                  ),
-                )
-              else
-                ...transactions.map((transaction) {
-                  final category = transaction.category;
-                  final amountText = transaction.isIncome
-                      ? '+ ${_currency(transaction.amount)}'
-                      : '- ${_currency(transaction.amount)}';
+              ...transactions.map((transaction) {
+                final category = transaction.category;
+                final amountText = transaction.isIncome
+                    ? '+ ${_currency(transaction.amount)}'
+                    : '- ${_currency(transaction.amount)}';
 
-                  return Card(
-                    child: ListTile(
-                      onTap: () => _openEditTransactionPage(transaction),
-                      leading: CircleAvatar(
-                        backgroundColor: _softCategoryColor(category.color),
-                        child: Icon(category.icon, color: category.color),
-                      ),
-                      title: Text(transaction.title),
-                      subtitle: Text(
-                        '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            amountText,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          IconButton(
-                            tooltip: 'Excluir transação',
-                            onPressed: () {
-                              _confirmRemoveTransaction(transaction);
-                            },
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        ],
-                      ),
+                return Card(
+                  child: ListTile(
+                    onTap: () => _openEditTransactionPage(transaction),
+                    leading: CircleAvatar(
+                      backgroundColor: _softCategoryColor(category.color),
+                      child: Icon(category.icon, color: category.color),
                     ),
-                  );
-                }),
+                    title: Text(transaction.title),
+                    subtitle: Text(
+                      '${category.name} - ${_entryTypeLabel(transaction.entryType)}',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          amountText,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        IconButton(
+                          tooltip: 'Excluir transação',
+                          onPressed: () {
+                            _confirmRemoveTransaction(transaction);
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
               const SizedBox(height: 80),
             ],
           );
@@ -222,6 +221,44 @@ class _FinanceTabState extends State<FinanceTab> {
       case FinanceEntryType.other:
         return 'Outro';
     }
+  }
+}
+
+class _EmptyFinanceState extends StatelessWidget {
+  const _EmptyFinanceState({required this.onAddPressed});
+
+  final VoidCallback onAddPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.account_balance_wallet_outlined, size: 72),
+            const SizedBox(height: 16),
+            const Text(
+              'Sua área financeira ainda está vazia',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Adicione sua primeira transação para começar a acompanhar entradas, saídas, crédito e débito.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onAddPressed,
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar primeira transação'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
