@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 import '../models/finance_category.dart';
 import '../models/finance_entry_type.dart';
 import '../models/finance_transaction.dart';

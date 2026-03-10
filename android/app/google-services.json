@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "124795894766",
+    "project_id": "axyo-e1594",
+    "storage_bucket": "axyo-e1594.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124795894766:android:b40e3bfdb236eacd77ecff",
+        "android_client_info": {
+          "package_name": "com.example.vida_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "124795894766-gddnibs1ter5d9oeusrisjnvj13u1kkg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.vida_app",
+            "certificate_hash": "6c8cd85ed8e7b0fb9075975b5d9c70171bd72137"
+          }
+        },
+        {
+          "client_id": "124795894766-p039jogfrfi46oojjspsqd4glorh7uji.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzklCUgfhbVVbRHO1Pjo546rFv-F9vtUU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "124795894766-p039jogfrfi46oojjspsqd4glorh7uji.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

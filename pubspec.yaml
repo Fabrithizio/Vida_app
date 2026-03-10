@@ -1,8 +1,7 @@
 name: vida_app
 description: "A new Flutter project."
 
-# Versão do app (major.minor.patch+build)
-version: 1.0.0+6
+version: 1.0.0+7
 
 environment:
   sdk: ^3.10.7
@@ -18,24 +17,31 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.4
   speech_to_text: ^7.3.0
-
-
-                    
-
   flutter_svg: ^2.0.9
-
-  # Biblioteca para pegar informações do app (nome, versão, etc.)
   package_info_plus: ^8.0.0
-
-  # Ícones padrão do iOS (usados em Flutter)
   cupertino_icons: ^1.0.8
+  firebase_core: ^3.3.0
+  firebase_auth: ^5.1.4
+  google_sign_in: ^6.2.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  # Regras de boas práticas de código
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+  
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+
+  image_path: "assets/icons/axyo_foreground.png"
+
+  adaptive_icon_background: "#0F0F1A"
+  adaptive_icon_foreground: "assets/icons/axyo_foreground.png"
+  
+
 
 flutter:
   uses-material-design: true
