@@ -47,8 +47,9 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser!.authentication;
+      if (googleUser == null) return;
+
+      final googleAuth = await googleUser.authentication;
 
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -59,7 +60,7 @@ class _LoginPageState extends State<LoginPage> {
 
       goHome();
     } catch (e) {
-      showError(e.toString());
+      showError("Erro login Google: $e");
     }
   }
 
@@ -78,11 +79,9 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(30),
-
           child: Column(
             children: [
               Image.asset("assets/icons/axyo_foreground.png", width: 120),
