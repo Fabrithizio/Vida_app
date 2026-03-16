@@ -1,6 +1,16 @@
+// ============================================================================
+// FILE: lib/features/areas/areas_store.dart
+//
+// Store local (Hive) para avaliações das áreas do Painel de Vida:
+// - Salva/recupera o status (ótimo/bom/ruim) e motivo opcional por item
+// - Calcula status geral (MVP)
+// - NOVO: calcula score 0–100 (MVP) baseado na média dos itens avaliados
+// ============================================================================
+
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:vida_app/data/models/area_assessment.dart';
-import 'package:vida_app/data/models/area_status.dart';
+
+import '../../data/models/area_assessment.dart';
+import '../../data/models/area_status.dart';
 
 class AreasStore {
   static const _boxName = 'areas_box';
@@ -33,6 +43,7 @@ class AreasStore {
   }
 
   /// Status geral da área baseado nos itens do catálogo.
+  ///
   /// Regras (simples/MVP):
   /// - Se tiver algum "ruim" => ruim
   /// - Senão se tiver algum "bom" => bom
@@ -49,8 +60,8 @@ class AreasStore {
     for (final itemId in itemIds) {
       final raw = box.get(_key(areaId, itemId));
       if (raw is! Map) continue;
-      any = true;
 
+      any = true;
       final m = Map<String, dynamic>.from(raw);
       final statusName = m['status'] as String?;
       if (statusName == null) continue;
@@ -66,5 +77,40 @@ class AreasStore {
     if (anyBom) return AreaStatus.bom;
     if (anyOtimo) return AreaStatus.otimo;
     return null;
+  }
+
+  /// Score 0–100 (MVP) baseado na média dos itens avaliados.
+  ///
+  /// Mapeamento (simples e previsível):
+  /// - ótimo = 90
+  /// - bom   = 65
+  /// - ruim  = 30
+  ///
+  /// Se não houver nenhum item avaliado, retorna null (sem score ainda).
+  Future<int?> score(String areaId, List<String> itemIds) async {
+    final box = await _open();
+
+    int sum = 0;
+    int count = 0;
+
+    for (final itemId in itemIds) {
+      final raw = box.get(_key(areaId, itemId));
+      if (raw is! Map) continue;
+
+      final m = Map<String, dynamic>.from(raw);
+      final statusName = m['status'] as String?;
+      if (statusName == null) continue;
+
+      final s = AreaStatus.values.byName(statusName);
+      sum += switch (s) {
+        AreaStatus.otimo => 90,
+        AreaStatus.bom => 65,
+        AreaStatus.ruim => 30,
+      };
+      count += 1;
+    }
+
+    if (count == 0) return null;
+    return (sum / count).round().clamp(0, 100);
   }
 }

@@ -1,9 +1,10 @@
 // ============================================================================
 // FILE: lib/presentation/pages/home/home_page.dart
 //
-// Home principal:
-// - Corrige cores da AppBar e BottomAppBar (ícones sempre visíveis)
-// - Realça o item selecionado (verde) e os outros (branco 70%)
+// Home principal do Axyo:
+// - Barra superior ok (dark)
+// - Barra inferior com ícones (não some)
+// - FAB com heroTag único (evita "multiple heroes share same tag")
 // - Logout REAL: FirebaseAuth + GoogleSignIn (não entra sozinho ao reabrir)
 // ============================================================================
 
@@ -11,18 +12,20 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
-import 'package:vida_app/features/shopping/shopping_list_store.dart';
-import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
-import 'package:vida_app/features/timeline/timeline_store.dart';
-import 'package:vida_app/presentation/voice/voice_hub_sheet.dart';
-import 'package:vida_app/services/voice/voice_command_router.dart';
-
 import '../../../data/local/session_storage.dart';
+import '../../../features/shopping/shopping_list_store.dart';
+import '../../../features/timeline/hive_timeline_repository.dart';
+import '../../../features/timeline/timeline_store.dart';
+import '../../../services/voice/voice_command_router.dart';
+import '../../voice/voice_hub_sheet.dart';
 import '../login_page.dart';
+
 import 'tabs/areas_tab.dart';
 import 'tabs/day_tab.dart';
 import 'tabs/profile_tab.dart';
+
+// Se o FinanceTab estiver em outro caminho no seu projeto, ajuste aqui.
+import '../../../features/finance/presentation/pages/finance_tab.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -96,6 +99,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: IndexedStack(index: _index, children: _tabs),
       floatingActionButton: FloatingActionButton.large(
+        heroTag: 'axyo_home_mic_fab', // ✅ evita "multiple heroes"
         onPressed: _openVoiceHub,
         backgroundColor: Colors.green,
         foregroundColor: Colors.black,
@@ -129,7 +133,7 @@ class _HomePageState extends State<HomePage> {
                   color: _iconColor(_index == 1),
                 ),
               ),
-              const SizedBox(width: 56),
+              const SizedBox(width: 56), // espaço do FAB
               IconButton(
                 tooltip: 'Finanças',
                 onPressed: () => setState(() => _index = 2),

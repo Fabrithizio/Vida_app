@@ -1,14 +1,24 @@
+// ============================================================================
+// FILE: lib/presentation/pages/home/tabs/areas/areas_balloon_config.dart
+//
+// Ajuste de layout das 9 orbes:
+// - Move os 3 de baixo para cima (evita conflito com o FAB)
+// - Dá mais “respiro” horizontal em Casa/Digital
+// - Mantém bolhas menores (maxWidthFactor 0.29~0.34)
+// ============================================================================
+
 import 'dart:ui';
 
+import 'areas_catalog.dart';
 import 'areas_model_assets.dart';
 
 class BalloonSpec {
   const BalloonSpec({
     required this.areaId,
     required this.title,
-    required this.from, // ponto no corpo
-    required this.to, // ponto do balão
-    this.maxWidthFactor = 0.38,
+    required this.from,
+    required this.to,
+    this.maxWidthFactor = 0.29,
   });
 
   final String areaId;
@@ -20,108 +30,78 @@ class BalloonSpec {
 
 class AreasBalloonConfig {
   static List<BalloonSpec> specs(UserSex sex) {
-    // Ajuste fino depois (2 min no futuro). MVP já fica bom.
-    if (sex == UserSex.female) {
-      return const [
-        BalloonSpec(
-          areaId: 'head',
-          title: 'Psicológico',
-          from: Offset(0.50, 0.09),
-          to: Offset(0.18, 0.18),
-        ),
-        BalloonSpec(
-          areaId: 'chest',
-          title: 'Emoções',
-          from: Offset(0.55, 0.28),
-          to: Offset(0.82, 0.24),
-        ),
-        BalloonSpec(
-          areaId: 'abdomen',
-          title: 'Saúde',
-          from: Offset(0.50, 0.38),
-          to: Offset(0.18, 0.48),
-        ),
-        BalloonSpec(
-          areaId: 'leftArm',
-          title: 'Braço E',
-          from: Offset(0.28, 0.33),
-          to: Offset(0.18, 0.34),
-        ),
-        BalloonSpec(
-          areaId: 'rightArm',
-          title: 'Braço D',
-          from: Offset(0.72, 0.33),
-          to: Offset(0.82, 0.34),
-        ),
-        BalloonSpec(
-          areaId: 'leftLeg',
-          title: 'Perna E',
-          from: Offset(0.46, 0.76),
-          to: Offset(0.18, 0.74),
-        ),
-        BalloonSpec(
-          areaId: 'rightLeg',
-          title: 'Perna D',
-          from: Offset(0.54, 0.76),
-          to: Offset(0.82, 0.74),
-        ),
-        BalloonSpec(
-          areaId: 'pelvis',
-          title: 'Saúde Íntima',
-          from: Offset(0.50, 0.50),
-          to: Offset(0.82, 0.52),
-        ),
-      ];
-    }
-
     return const [
+      // Top-left / Top-right
       BalloonSpec(
-        areaId: 'head',
-        title: 'Psicológico',
-        from: Offset(0.50, 0.09),
+        areaId: AreasCatalog.mindEmotion,
+        title: 'Mente',
+        from: Offset(0.50, 0.40),
         to: Offset(0.18, 0.18),
+        maxWidthFactor: 0.30,
       ),
       BalloonSpec(
-        areaId: 'chest',
-        title: 'Emoções',
-        from: Offset(0.50, 0.28),
-        to: Offset(0.82, 0.24),
+        areaId: AreasCatalog.financeMaterial,
+        title: 'Finanças',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.82, 0.18),
+        maxWidthFactor: 0.30,
+      ),
+
+      // Mid-left / Mid-right
+      BalloonSpec(
+        areaId: AreasCatalog.bodyHealth,
+        title: 'Corpo',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.14, 0.40),
+        maxWidthFactor: 0.30,
       ),
       BalloonSpec(
-        areaId: 'abdomen',
-        title: 'Saúde',
-        from: Offset(0.50, 0.38),
-        to: Offset(0.18, 0.48),
+        areaId: AreasCatalog.workVocation,
+        title: 'Trabalho',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.86, 0.40),
+        maxWidthFactor: 0.30,
+      ),
+
+      // Upper-bottom left/right
+      BalloonSpec(
+        areaId: AreasCatalog.learningIntellect,
+        title: 'Aprender',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.18, 0.62),
+        maxWidthFactor: 0.30,
       ),
       BalloonSpec(
-        areaId: 'leftArm',
-        title: 'Braço E',
-        from: Offset(0.28, 0.33),
-        to: Offset(0.18, 0.34),
+        areaId: AreasCatalog.relationsCommunity,
+        title: 'Relações',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.82, 0.62),
+        maxWidthFactor: 0.30,
+      ),
+
+      // Bottom row — subiu e abriu mais pros lados
+      BalloonSpec(
+        areaId: AreasCatalog.environmentHome,
+        title: 'Casa',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.20, 0.78),
+        maxWidthFactor: 0.30,
       ),
       BalloonSpec(
-        areaId: 'rightArm',
-        title: 'Braço D',
-        from: Offset(0.72, 0.33),
-        to: Offset(0.82, 0.34),
+        areaId: AreasCatalog.digitalTech,
+        title: 'Digital',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.80, 0.78),
+        maxWidthFactor: 0.30,
       ),
+
+      // Propósito — sobe bem pra não brigar com o FAB
       BalloonSpec(
-        areaId: 'leftLeg',
-        title: 'Perna E',
-        from: Offset(0.46, 0.76),
-        to: Offset(0.18, 0.74),
-      ),
-      BalloonSpec(
-        areaId: 'rightLeg',
-        title: 'Perna D',
-        from: Offset(0.54, 0.76),
-        to: Offset(0.82, 0.74),
-      ),
-      BalloonSpec(
-        areaId: 'pelvis',
-        title: 'Saúde Íntima',
-        from: Offset(0.50, 0.50),
-        to: Offset(0.82, 0.52),
+        areaId: AreasCatalog.purposeValues,
+        title: 'Propósito',
+        from: Offset(0.50, 0.40),
+        to: Offset(0.50, 0.86),
+        maxWidthFactor: 0.34,
       ),
     ];
   }

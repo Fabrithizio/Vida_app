@@ -1,8 +1,17 @@
-import 'package:flutter/material.dart';
-import 'package:vida_app/data/models/area_status.dart';
-import 'package:vida_app/features/areas/areas_store.dart';
+// ============================================================================
+// FILE: lib/presentation/pages/home/tabs/areas_tab.dart
+//
+// Painel de Vida (Life Dashboard):
+// - Usa imagem de fundo: assets/images/life_dashboard_bg.png
+// - Overlay escuro + vinheta para manter contraste
+// - Mantém glow e layout das orbes
+// ============================================================================
 
-import '../../../widgets/body_map.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../../features/areas/areas_store.dart';
+
 import 'areas/area_balloon.dart';
 import 'areas/area_detail_page.dart';
 import 'areas/areas_balloon_config.dart';
@@ -17,252 +26,253 @@ class AreasTab extends StatefulWidget {
 }
 
 class _AreasTabState extends State<AreasTab> {
-  UserSex _sex = UserSex.female;
-
   final AreasStore _store = AreasStore();
 
-  late List<BalloonSpec> _specs;
-  late Future<Map<String, AreaStatus?>> _statusesFuture;
+  late Future<UserSex> _sexFuture;
+  late Future<Map<String, int?>> _scoreFuture;
 
   @override
   void initState() {
     super.initState();
-    _specs = AreasBalloonConfig.specs(_sex);
-    _statusesFuture = _loadStatuses(_specs);
+    _sexFuture = _loadUserSex();
+    _scoreFuture = _loadScores(UserSex.female);
   }
 
-  void _setSex(UserSex sex) {
-    setState(() {
-      _sex = sex;
-      _specs = AreasBalloonConfig.specs(_sex);
-      _statusesFuture = _loadStatuses(_specs);
-    });
+  Future<UserSex> _loadUserSex() async {
+    final prefs = await SharedPreferences.getInstance();
+    final gender = (prefs.getString('gender') ?? '').toLowerCase().trim();
+
+    if (gender.contains('homem')) return UserSex.male;
+    if (gender.contains('mulher')) return UserSex.female;
+    return UserSex.female;
   }
 
-  Future<void> _openArea(
-    BuildContext context, {
-    required String areaId,
-    required String title,
-  }) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AreaDetailPage(areaId: areaId, title: title),
-      ),
-    );
+  Future<Map<String, int?>> _loadScores(UserSex sex) async {
+    final specs = AreasBalloonConfig.specs(sex);
+    final map = <String, int?>{};
 
-    if (!mounted) return;
-    setState(() {
-      // atualiza status ao voltar
-      _statusesFuture = _loadStatuses(_specs);
-    });
-  }
-
-  ({String areaId, String title})? _mapHitToArea(String hitId) {
-    final key = hitId.trim();
-    switch (key) {
-      case 'head':
-        return (areaId: 'head', title: 'Cabeça');
-      case 'chest':
-        return (areaId: 'chest', title: 'Peito');
-      case 'abdomen':
-        return (areaId: 'abdomen', title: 'Abdômen');
-      case 'leftArm':
-        return (areaId: 'leftArm', title: 'Braço E');
-      case 'rightArm':
-        return (areaId: 'rightArm', title: 'Braço D');
-      case 'leftLeg':
-        return (areaId: 'leftLeg', title: 'Perna E');
-      case 'rightLeg':
-        return (areaId: 'rightLeg', title: 'Perna D');
-      case 'pelvis':
-        return (areaId: 'pelvis', title: 'Pelve');
-      default:
-        return null;
-    }
-  }
-
-  Color _statusColor(AreaStatus? s, BuildContext context) {
-    if (s == null) return Theme.of(context).colorScheme.outlineVariant;
-    return switch (s) {
-      AreaStatus.otimo => Colors.green,
-      AreaStatus.bom => Colors.amber,
-      AreaStatus.ruim => Colors.red,
-    };
-  }
-
-  Future<Map<String, AreaStatus?>> _loadStatuses(
-    List<BalloonSpec> specs,
-  ) async {
-    final map = <String, AreaStatus?>{};
     for (final s in specs) {
-      final itemIds = AreasCatalog.itemsFor(s.areaId).map((e) => e.id).toList();
-      final status = await _store.overallStatus(s.areaId, itemIds);
-      map[s.areaId] = status;
+      final def = AreasCatalog.byId(s.areaId);
+      map[s.areaId] = await _store.score(
+        s.areaId,
+        def.items.map((e) => e.id).toList(),
+      );
     }
+
     return map;
   }
 
-  String _subtitleFor(AreaStatus? s) {
-    if (s == null) return 'Sem avaliação';
-    return switch (s) {
-      AreaStatus.otimo => 'Tudo ótimo',
-      AreaStatus.bom => 'Indo bem',
-      AreaStatus.ruim => 'Precisa de atenção',
-    };
+  Future<void> _openArea(String areaId) async {
+    final def = AreasCatalog.byId(areaId);
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AreaDetailPage(areaId: areaId, title: def.title),
+      ),
+    );
+
+    final sex = await _sexFuture;
+    if (!mounted) return;
+    setState(() => _scoreFuture = _loadScores(sex));
   }
 
   @override
   Widget build(BuildContext context) {
-    final base = AreasModelAssets.baseImage(_sex);
-    final hitmap = AreasModelAssets.hitmapSvg(_sex);
+    return FutureBuilder<UserSex>(
+      future: _sexFuture,
+      builder: (context, sexSnap) {
+        final sex = sexSnap.data ?? UserSex.female;
+        final specs = AreasBalloonConfig.specs(sex);
+        final character = AreasModelAssets.character(sex);
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: SegmentedButton<UserSex>(
-                segments: const [
-                  ButtonSegment(value: UserSex.female, label: Text('Mulher')),
-                  ButtonSegment(value: UserSex.male, label: Text('Homem')),
-                ],
-                selected: {_sex},
-                onSelectionChanged: (s) => _setSex(s.first),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: AspectRatio(
-              aspectRatio: 9 / 16,
-              child: FutureBuilder<Map<String, AreaStatus?>>(
-                future: _statusesFuture,
-                builder: (context, snap) {
-                  if (snap.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snap.hasError) {
-                    return Center(
-                      child: Text(
-                        'Erro: ${snap.error}',
-                        textAlign: TextAlign.center,
+        return FutureBuilder<Map<String, int?>>(
+          future: _scoreFuture,
+          builder: (context, scoreSnap) {
+            final scores = scoreSnap.data ?? const <String, int?>{};
+
+            return LayoutBuilder(
+              builder: (context, c) {
+                final w = c.maxWidth;
+                final h = c.maxHeight;
+
+                final centerX = w / 2;
+                final centerY = h * 0.43;
+
+                final slotH = (h * 0.62).clamp(340.0, 760.0);
+                final slotW = (w * 0.58).clamp(240.0, 460.0);
+
+                return Stack(
+                  children: [
+                    // ✅ Imagem de fundo
+                    Positioned.fill(
+                      child: Image.asset(
+                        'assets/images/life_dashboard_bg.png',
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) {
+                          // fallback se o asset ainda não existir
+                          return Container(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Color(0xFF0A0A12), Colors.black],
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  }
+                    ),
 
-                  final statusByArea =
-                      snap.data ?? const <String, AreaStatus?>{};
+                    // ✅ Overlay escuro para contraste
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ),
 
-                  return LayoutBuilder(
-                    builder: (context, c) {
-                      final w = c.maxWidth;
-                      final h = c.maxHeight;
-
-                      Offset toPx(Offset o) => Offset(o.dx * w, o.dy * h);
-
-                      return Stack(
-                        children: [
-                          // 1) BodyMap embaixo (imagem + hitmap)
-                          Positioned.fill(
-                            child: BodyMap(
-                              imageAsset: base,
-                              overlaySvgAsset: hitmap,
-                              onHit: (hit) {
-                                final mapped = _mapHitToArea(hit.id);
-                                if (mapped == null) return;
-                                _openArea(
-                                  context,
-                                  areaId: mapped.areaId,
-                                  title: mapped.title,
-                                );
-                              },
+                    // Glow suave atrás do personagem
+                    Positioned(
+                      left: centerX - (slotW * 0.70),
+                      top: centerY - (slotH * 0.55),
+                      width: slotW * 1.40,
+                      height: slotH * 1.10,
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(
+                              colors: [
+                                const Color(0xFF3B82F6).withValues(alpha: 0.14),
+                                const Color(0xFF22C55E).withValues(alpha: 0.08),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.45, 1.0],
                             ),
                           ),
+                        ),
+                      ),
+                    ),
 
-                          // 2) Um painter único para todas as linhas (melhor performance)
-                          Positioned.fill(
-                            child: CustomPaint(
-                              painter: _AllConnectorsPainter(
-                                specs: _specs,
-                                toPx: toPx,
-                                colorForAreaId: (areaId) =>
-                                    _statusColor(statusByArea[areaId], context),
+                    // Vinheta leve
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(0, -0.1),
+                              radius: 1.05,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.55),
+                              ],
+                              stops: const [0.55, 1.0],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Personagem (crop/scale)
+                    Positioned(
+                      left: centerX - (slotW / 2),
+                      top: centerY - (slotH / 2),
+                      width: slotW,
+                      height: slotH,
+                      child: IgnorePointer(
+                        child: ClipRect(
+                          child: Align(
+                            alignment: character.alignment,
+                            widthFactor: character.cropWidthFactor,
+                            heightFactor: character.cropHeightFactor,
+                            child: Transform.scale(
+                              scale: character.scale,
+                              child: Image.asset(
+                                character.path,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
+                                errorBuilder: (_, __, ___) =>
+                                    const Center(child: Icon(Icons.person)),
                               ),
                             ),
                           ),
+                        ),
+                      ),
+                    ),
 
-                          // 3) Balões por cima
-                          for (final b in _specs)
-                            Positioned(
-                              left: (b.to.dx * w) - (w * b.maxWidthFactor / 2),
-                              top: (b.to.dy * h) - 22,
-                              width: w * b.maxWidthFactor,
-                              child: AreaBalloon(
-                                title: b.title,
-                                status: statusByArea[b.areaId],
-                                subtitle: _subtitleFor(statusByArea[b.areaId]),
-                                onTap: () => _openArea(
-                                  context,
-                                  areaId: b.areaId,
-                                  title: b.title,
-                                ),
-                                maxWidth: w * b.maxWidthFactor,
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      ],
+                    // Orbes
+                    for (final spec in specs)
+                      _BalloonPositioned(
+                        spec: spec,
+                        screenW: w,
+                        screenH: h,
+                        score: scores[spec.areaId],
+                        onTap: () => _openArea(spec.areaId),
+                      ),
+
+                    if (scoreSnap.connectionState == ConnectionState.waiting)
+                      const Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 18,
+                        child: Center(
+                          child: SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
 
-class _AllConnectorsPainter extends CustomPainter {
-  _AllConnectorsPainter({
-    required this.specs,
-    required this.toPx,
-    required this.colorForAreaId,
+class _BalloonPositioned extends StatelessWidget {
+  const _BalloonPositioned({
+    required this.spec,
+    required this.screenW,
+    required this.screenH,
+    required this.score,
+    required this.onTap,
   });
 
-  final List<BalloonSpec> specs;
-  final Offset Function(Offset) toPx;
-  final Color Function(String areaId) colorForAreaId;
+  final BalloonSpec spec;
+  final double screenW;
+  final double screenH;
+  final int? score;
+  final VoidCallback onTap;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    for (final b in specs) {
-      final from = toPx(b.from);
-      final to = toPx(b.to);
-      final color = colorForAreaId(b.areaId);
+  Widget build(BuildContext context) {
+    final def = AreasCatalog.byId(spec.areaId);
 
-      final p = Paint()
-        ..color = color.withValues(alpha: 0.85)
-        ..strokeWidth = 2.0
-        ..style = PaintingStyle.stroke;
+    final maxWidth = (screenW * spec.maxWidthFactor).clamp(150.0, 270.0);
+    const height = 66.0;
 
-      final path = Path()
-        ..moveTo(from.dx, from.dy)
-        ..quadraticBezierTo((from.dx + to.dx) / 2, from.dy, to.dx, to.dy);
+    final x = spec.to.dx * screenW;
+    final y = spec.to.dy * screenH;
 
-      canvas.drawPath(path, p);
-
-      final dotPaint = Paint()..color = color.withValues(alpha: 0.95);
-      canvas.drawCircle(from, 3.5, dotPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _AllConnectorsPainter oldDelegate) {
-    return oldDelegate.specs != specs;
+    return Positioned(
+      left: x - (maxWidth / 2),
+      top: y - (height / 2),
+      width: maxWidth,
+      height: height,
+      child: AreaBalloon(
+        title: def.titleShort,
+        subtitle: def.subtitle,
+        icon: def.icon,
+        score: score,
+        onTap: onTap,
+      ),
+    );
   }
 }
