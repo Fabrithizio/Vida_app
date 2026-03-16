@@ -1,5 +1,13 @@
-import 'package:vida_app/data/models/timeline_block.dart';
+// ============================================================================
+// FILE: lib/features/timeline/timeline_store.dart
+//
+// Store da Timeline:
+// - Agora agenda/cancela notificações quando cria/edita/remove eventos
+// - Sem isso, você cria evento e NUNCA será notificado
+// ============================================================================
 
+import '../../data/models/timeline_block.dart';
+import '../../services/notifications/notification_service.dart';
 import 'timeline_repository.dart';
 
 class TimelineStore {
@@ -14,6 +22,11 @@ class TimelineStore {
     _items
       ..clear()
       ..addAll(await _repo.loadAll());
+
+    // Reagenda eventos futuros (seguro: mesmo ID sobrescreve)
+    for (final b in _items) {
+      await NotificationService.instance.scheduleTenMinutesBefore(b);
+    }
   }
 
   Future<void> _persist() async {
@@ -23,6 +36,8 @@ class TimelineStore {
   Future<void> add(TimelineBlock block) async {
     _items.add(block);
     await _persist();
+
+    await NotificationService.instance.scheduleTenMinutesBefore(block);
   }
 
   List<TimelineBlock> itemsForDay(DateTime day) {
@@ -55,8 +70,14 @@ class TimelineStore {
   Future<bool> update(TimelineBlock updated) async {
     final i = _items.indexWhere((e) => e.id == updated.id);
     if (i == -1) return false;
+
     _items[i] = updated;
     await _persist();
+
+    // Atualiza notificação (cancela e agenda de novo)
+    await NotificationService.instance.cancelForBlock(updated.id);
+    await NotificationService.instance.scheduleTenMinutesBefore(updated);
+
     return true;
   }
 
@@ -64,7 +85,12 @@ class TimelineStore {
     final before = _items.length;
     _items.removeWhere((e) => e.id == id);
     final changed = _items.length != before;
-    if (changed) await _persist();
+
+    if (changed) {
+      await _persist();
+      await NotificationService.instance.cancelForBlock(id);
+    }
+
     return changed;
   }
 

@@ -1,4 +1,16 @@
+// ============================================================================
+// FILE: lib/presentation/pages/home/home_page.dart
+//
+// Home principal:
+// - Corrige cores da AppBar e BottomAppBar (ícones sempre visíveis)
+// - Realça o item selecionado (verde) e os outros (branco 70%)
+// - Logout REAL: FirebaseAuth + GoogleSignIn (não entra sozinho ao reabrir)
+// ============================================================================
+
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
 import 'package:vida_app/features/shopping/shopping_list_store.dart';
 import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
@@ -37,10 +49,17 @@ class _HomePageState extends State<HomePage> {
     const ProfileTab(),
   ];
 
-  Future<void> _logout() async {
-    await SessionStorage().clear();
-    if (!mounted) return;
+  Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
+  Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {}
+
+    await SessionStorage().clear();
+
+    if (!mounted) return;
     Navigator.of(
       context,
     ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginPage()));
@@ -51,6 +70,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F0F1A),
       builder: (_) => VoiceHubSheet(router: _router),
     );
   }
@@ -60,23 +80,30 @@ class _HomePageState extends State<HomePage> {
     final titles = const ['Meu Dia', 'Áreas', 'Finanças', 'Perfil'];
 
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text('Vida — ${titles[_index]}'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('Axyo — ${titles[_index]}'),
         actions: [
           IconButton(
             tooltip: 'Sair',
             onPressed: _logout,
             icon: const Icon(Icons.logout),
+            color: Colors.white,
           ),
         ],
       ),
       body: IndexedStack(index: _index, children: _tabs),
       floatingActionButton: FloatingActionButton.large(
         onPressed: _openVoiceHub,
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.black,
         child: const Icon(Icons.mic),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
+        color: const Color(0xFF0F0F1A),
         shape: const CircularNotchedRectangle(),
         notchMargin: 8,
         child: SizedBox(
@@ -91,6 +118,7 @@ class _HomePageState extends State<HomePage> {
                   _index == 0
                       ? Icons.view_timeline
                       : Icons.view_timeline_outlined,
+                  color: _iconColor(_index == 0),
                 ),
               ),
               IconButton(
@@ -98,6 +126,7 @@ class _HomePageState extends State<HomePage> {
                 onPressed: () => setState(() => _index = 1),
                 icon: Icon(
                   _index == 1 ? Icons.favorite : Icons.favorite_border,
+                  color: _iconColor(_index == 1),
                 ),
               ),
               const SizedBox(width: 56),
@@ -108,12 +137,16 @@ class _HomePageState extends State<HomePage> {
                   _index == 2
                       ? Icons.account_balance_wallet
                       : Icons.account_balance_wallet_outlined,
+                  color: _iconColor(_index == 2),
                 ),
               ),
               IconButton(
                 tooltip: 'Perfil',
                 onPressed: () => setState(() => _index = 3),
-                icon: Icon(_index == 3 ? Icons.person : Icons.person_outline),
+                icon: Icon(
+                  _index == 3 ? Icons.person : Icons.person_outline,
+                  color: _iconColor(_index == 3),
+                ),
               ),
             ],
           ),
