@@ -1,10 +1,9 @@
 // ============================================================================
 // FILE: lib/presentation/app/app.dart
 //
-// MaterialApp do Axyo:
-// - Define tema DARK consistente (fundo preto + ícones visíveis)
-// - Configura AppBar/IconTheme/BottomAppBar para não "sumirem" no fundo escuro
-// - Fluxo: authStateChanges -> Login / Home / Onboarding
+// Correção do fluxo de onboarding por usuário:
+// - onboarding_done agora é por UID: onboarding_done_<uid>
+// - assim contas novas NÃO pulam o questionário
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -18,9 +17,9 @@ import '../pages/onboarding_page.dart';
 class VidaApp extends StatelessWidget {
   const VidaApp({super.key});
 
-  Future<bool> onboardingDone() async {
+  Future<bool> onboardingDoneForUser(User user) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool("onboarding_done") ?? false;
+    return prefs.getBool('onboarding_done_${user.uid}') ?? false;
   }
 
   @override
@@ -35,21 +34,16 @@ class VidaApp extends StatelessWidget {
         brightness: Brightness.dark,
         colorSchemeSeed: seed,
         scaffoldBackgroundColor: Colors.black,
-
         iconTheme: const IconThemeData(color: Colors.white),
-
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
           iconTheme: IconThemeData(color: Colors.white),
         ),
-
-        // ✅ Correção: aqui é BottomAppBarThemeData (não BottomAppBarTheme)
         bottomAppBarTheme: const BottomAppBarThemeData(
           color: Color(0xFF0F0F1A),
           elevation: 8,
         ),
-
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
           backgroundColor: seed,
           foregroundColor: Colors.black,
@@ -64,12 +58,11 @@ class VidaApp extends StatelessWidget {
             );
           }
 
-          if (!snapshot.hasData) {
-            return const LoginPage();
-          }
+          final user = snapshot.data;
+          if (user == null) return const LoginPage();
 
           return FutureBuilder<bool>(
-            future: onboardingDone(),
+            future: onboardingDoneForUser(user),
             builder: (context, onboardingSnapshot) {
               if (onboardingSnapshot.connectionState ==
                   ConnectionState.waiting) {
@@ -78,11 +71,8 @@ class VidaApp extends StatelessWidget {
                 );
               }
 
-              if (onboardingSnapshot.data == true) {
-                return const HomePage();
-              }
-
-              return const OnboardingPage();
+              final done = onboardingSnapshot.data ?? false;
+              return done ? const HomePage() : const OnboardingPage();
             },
           );
         },

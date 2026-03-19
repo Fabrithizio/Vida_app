@@ -1,9 +1,9 @@
 // ============================================================================
 // FILE: lib/presentation/pages/home/tabs/areas/areas_catalog.dart
 //
-// Catálogo das 9 macroáreas do Painel de Vida:
-// - Define id, título, título curto, subtítulo e ícone
-// - Define sub-itens (sinais) que no futuro serão alimentados automaticamente pelos módulos
+// Catálogo das 9 macroáreas do Painel de Vida (nomes curtos e diretos):
+// - titleShort foi ajustado para não cortar e ser óbvio
+// - items continuam como “sinais” (pra motor automático depois)
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -48,8 +48,8 @@ class AreasCatalog {
     AreaDef(
       id: bodyHealth,
       title: 'Corpo & Saúde',
-      titleShort: 'Corpo',
-      subtitle: 'Energia, sono, hábitos e check-ups',
+      titleShort: 'Saúde',
+      subtitle: 'Energia, sono e hábitos',
       icon: Icons.favorite,
       items: [
         AreaItemDef(id: 'energy', title: 'Energia'),
@@ -63,8 +63,8 @@ class AreasCatalog {
     AreaDef(
       id: mindEmotion,
       title: 'Mente & Emoções',
-      titleShort: 'Mente',
-      subtitle: 'Humor, estresse, foco e equilíbrio',
+      titleShort: 'Emoções',
+      subtitle: 'Humor, estresse e foco',
       icon: Icons.psychology,
       items: [
         AreaItemDef(id: 'mood', title: 'Humor'),
@@ -78,7 +78,7 @@ class AreasCatalog {
       id: financeMaterial,
       title: 'Finanças & Material',
       titleShort: 'Finanças',
-      subtitle: 'Gastos, renda, metas e segurança',
+      subtitle: 'Gastos, renda e metas',
       icon: Icons.account_balance_wallet,
       items: [
         AreaItemDef(id: 'income', title: 'Renda'),
@@ -93,10 +93,10 @@ class AreasCatalog {
       id: workVocation,
       title: 'Trabalho & Vocação',
       titleShort: 'Trabalho',
-      subtitle: 'Carreira, rotina, realização',
+      subtitle: 'Carreira e rotina',
       icon: Icons.work,
       items: [
-        AreaItemDef(id: 'routine', title: 'Rotina de trabalho'),
+        AreaItemDef(id: 'routine', title: 'Rotina'),
         AreaItemDef(id: 'output', title: 'Entrega'),
         AreaItemDef(id: 'growth', title: 'Crescimento'),
         AreaItemDef(id: 'balance', title: 'Equilíbrio'),
@@ -105,8 +105,8 @@ class AreasCatalog {
     AreaDef(
       id: learningIntellect,
       title: 'Aprendizado & Intelecto',
-      titleShort: 'Aprender',
-      subtitle: 'Estudo, leitura, cursos e evolução',
+      titleShort: 'Estudos',
+      subtitle: 'Estudo e progresso',
       icon: Icons.school,
       items: [
         AreaItemDef(id: 'study', title: 'Tempo de estudo'),
@@ -118,8 +118,8 @@ class AreasCatalog {
     AreaDef(
       id: relationsCommunity,
       title: 'Relações & Comunidade',
-      titleShort: 'Relações',
-      subtitle: 'Família, amigos e vínculos',
+      titleShort: 'Social',
+      subtitle: 'Família e amigos',
       icon: Icons.groups,
       items: [
         AreaItemDef(id: 'family', title: 'Família'),
@@ -132,21 +132,20 @@ class AreasCatalog {
       id: purposeValues,
       title: 'Propósito & Valores',
       titleShort: 'Propósito',
-      subtitle: 'Sentido, valores e direção',
+      subtitle: 'Sentido e direção',
       icon: Icons.auto_awesome,
       items: [
         AreaItemDef(id: 'purpose', title: 'Propósito'),
         AreaItemDef(id: 'values', title: 'Valores'),
         AreaItemDef(id: 'gratitude', title: 'Gratidão'),
         AreaItemDef(id: 'spiritual', title: 'Espiritualidade'),
-        AreaItemDef(id: 'culture', title: 'Cultura / Identidade'),
       ],
     ),
     AreaDef(
       id: environmentHome,
       title: 'Ambiente & Casa',
       titleShort: 'Casa',
-      subtitle: 'Organização e espaço físico',
+      subtitle: 'Organização',
       icon: Icons.home,
       items: [
         AreaItemDef(id: 'organization', title: 'Organização'),
@@ -159,7 +158,7 @@ class AreasCatalog {
       id: digitalTech,
       title: 'Digital & Tecnologia',
       titleShort: 'Digital',
-      subtitle: 'Tempo de tela e hábitos',
+      subtitle: 'Foco e hábitos',
       icon: Icons.devices,
       items: [
         AreaItemDef(id: 'screen_time', title: 'Tempo de tela'),
@@ -170,9 +169,8 @@ class AreasCatalog {
     ),
   ];
 
-  static AreaDef byId(String id) {
-    return _defs.firstWhere((d) => d.id == id, orElse: () => _defs.first);
-  }
+  static AreaDef byId(String id) =>
+      _defs.firstWhere((d) => d.id == id, orElse: () => _defs.first);
 
   static List<AreaDef> all() => List.unmodifiable(_defs);
 }

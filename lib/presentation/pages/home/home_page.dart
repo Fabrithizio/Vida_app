@@ -1,24 +1,19 @@
 // ============================================================================
 // FILE: lib/presentation/pages/home/home_page.dart
 //
-// Home principal do Axyo:
-// - Barra superior ok (dark)
-// - Barra inferior com ícones (não some)
-// - FAB com heroTag único (evita "multiple heroes share same tag")
-// - Logout REAL: FirebaseAuth + GoogleSignIn (não entra sozinho ao reabrir)
+// Remoção da AppBar global:
+// - Remove o topo "Axyo — <Aba>" e o botão sair da parte superior
+// - Mantém as abas e o FAB de voz
+// - Logout fica apenas no ProfileTab (como você quer)
 // ============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
-import '../../../data/local/session_storage.dart';
 import '../../../features/shopping/shopping_list_store.dart';
 import '../../../features/timeline/hive_timeline_repository.dart';
 import '../../../features/timeline/timeline_store.dart';
 import '../../../services/voice/voice_command_router.dart';
 import '../../voice/voice_hub_sheet.dart';
-import '../login_page.dart';
 
 import 'tabs/areas_tab.dart';
 import 'tabs/day_tab.dart';
@@ -54,20 +49,6 @@ class _HomePageState extends State<HomePage> {
 
   Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
-  Future<void> _logout() async {
-    await FirebaseAuth.instance.signOut();
-    try {
-      await GoogleSignIn().signOut();
-    } catch (_) {}
-
-    await SessionStorage().clear();
-
-    if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (_) => const LoginPage()));
-  }
-
   void _openVoiceHub() {
     showModalBottomSheet<void>(
       context: context,
@@ -80,32 +61,22 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = const ['Meu Dia', 'Áreas', 'Finanças', 'Perfil'];
-
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text('Axyo — ${titles[_index]}'),
-        actions: [
-          IconButton(
-            tooltip: 'Sair',
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
-            color: Colors.white,
-          ),
-        ],
-      ),
+
+      // ✅ Sem AppBar (remove topo de todas as tabs)
+      // appBar: ...
       body: IndexedStack(index: _index, children: _tabs),
+
       floatingActionButton: FloatingActionButton.large(
-        heroTag: 'axyo_home_mic_fab', // ✅ evita "multiple heroes"
+        heroTag: 'axyo_home_mic_fab',
         onPressed: _openVoiceHub,
         backgroundColor: Colors.green,
         foregroundColor: Colors.black,
         child: const Icon(Icons.mic),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+
       bottomNavigationBar: BottomAppBar(
         color: const Color(0xFF0F0F1A),
         shape: const CircularNotchedRectangle(),
@@ -133,7 +104,7 @@ class _HomePageState extends State<HomePage> {
                   color: _iconColor(_index == 1),
                 ),
               ),
-              const SizedBox(width: 56), // espaço do FAB
+              const SizedBox(width: 56),
               IconButton(
                 tooltip: 'Finanças',
                 onPressed: () => setState(() => _index = 2),

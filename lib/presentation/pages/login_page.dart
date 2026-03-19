@@ -1,9 +1,11 @@
 // ============================================================================
 // FILE: lib/presentation/pages/login_page.dart
 //
-// Login correto:
-// - NÃO navega manualmente pro Home (VidaApp decide via authStateChanges)
-// - Loading + validação simples + dispose controllers
+// Correção do fluxo de Login:
+// - Remove navegação manual (goHome) que pulava o Onboarding
+// - Após login/register, deixa o VidaApp (StreamBuilder authStateChanges)
+//   decidir se vai para OnboardingPage ou HomePage
+// - Mantém Google e Email/Senha
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -32,41 +34,51 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  String? _validate() {
-    final email = emailController.text.trim();
-    final pass = passwordController.text.trim();
-
-    if (email.isEmpty || !email.contains('@')) return 'Digite um email válido.';
-    if (pass.length < 6) return 'A senha precisa ter no mínimo 6 caracteres.';
-    return null;
-  }
-
   Future<void> loginEmail() async {
-    final err = _validate();
-    if (err != null) return showError(err);
+    if (_loading) return;
 
-    await _runWithLoading(() async {
+    setState(() => _loading = true);
+    try {
       await auth.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-    });
+
+      // ✅ NÃO navegar. VidaApp reage pelo authStateChanges.
+    } on FirebaseAuthException catch (e) {
+      showError(e.message ?? e.code);
+    } catch (e) {
+      showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> register() async {
-    final err = _validate();
-    if (err != null) return showError(err);
+    if (_loading) return;
 
-    await _runWithLoading(() async {
+    setState(() => _loading = true);
+    try {
       await auth.createUserWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
-    });
+
+      // ✅ NÃO navegar. VidaApp vai mandar pro onboarding se onboarding_done=false.
+    } on FirebaseAuthException catch (e) {
+      showError(e.message ?? e.code);
+    } catch (e) {
+      showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> loginGoogle() async {
-    await _runWithLoading(() async {
+    if (_loading) return;
+
+    setState(() => _loading = true);
+    try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) return;
 
@@ -78,41 +90,12 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       await auth.signInWithCredential(credential);
-    });
-  }
 
-  Future<void> _runWithLoading(Future<void> Function() fn) async {
-    if (_loading) return;
-    setState(() => _loading = true);
-    try {
-      await fn();
-    } on FirebaseAuthException catch (e) {
-      showError(_friendlyAuthError(e));
+      // ✅ NÃO navegar. VidaApp decide.
     } catch (e) {
-      showError(e.toString());
+      showError("Erro login Google: $e");
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  String _friendlyAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-email':
-        return 'Email inválido.';
-      case 'user-disabled':
-        return 'Usuário desabilitado.';
-      case 'user-not-found':
-        return 'Usuário não encontrado.';
-      case 'wrong-password':
-        return 'Senha incorreta.';
-      case 'email-already-in-use':
-        return 'Esse email já está em uso.';
-      case 'weak-password':
-        return 'Senha fraca. Use uma senha mais forte.';
-      case 'network-request-failed':
-        return 'Sem conexão. Verifique sua internet.';
-      default:
-        return e.message ?? 'Erro no login.';
     }
   }
 
