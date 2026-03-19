@@ -1,14 +1,15 @@
 // ============================================================================
 // FILE: lib/presentation/app/app.dart
 //
-// Correção do fluxo de onboarding por usuário:
-// - onboarding_done agora é por UID: onboarding_done_<uid>
-// - assim contas novas NÃO pulam o questionário
+// Localização pt-BR:
+// - Define locale pt_BR para o app inteiro
+// - Ativa delegates de localização (meses/dias/botões em português)
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../pages/login_page.dart';
 import '../pages/home/home_page.dart';
@@ -29,6 +30,16 @@ class VidaApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Axyo',
+
+      // ✅ pt-BR no app inteiro
+      locale: const Locale('pt', 'BR'),
+      supportedLocales: const [Locale('pt', 'BR')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,

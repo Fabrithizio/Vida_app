@@ -1,8 +1,19 @@
+// ============================================================================
+// FILE: lib/presentation/pages/home/tabs/day_tab.dart
+//
+// Mudança de UX:
+// - Remove o calendário do topo (sem escolher data ali)
+// - Ao clicar no +, o CreateBlockSheet permite escolher a data dentro do sheet
+// - Corrige chamadas para TimelineDayView (items:) e TimelineSummaryView (sem range:)
+// - Tudo em português
+// ============================================================================
+
 import 'package:flutter/material.dart';
-import 'package:vida_app/data/models/timeline_block.dart';
-import 'package:vida_app/features/shopping/shopping_list_store.dart';
-import 'package:vida_app/features/timeline/timeline_store.dart';
-import 'package:vida_app/services/notifications/notification_service.dart';
+
+import '../../../../data/models/timeline_block.dart';
+import '../../../../features/shopping/shopping_list_store.dart';
+import '../../../../features/timeline/timeline_store.dart';
+import '../../../../services/notifications/notification_service.dart';
 
 import 'shopping_list_sheet.dart';
 import 'timeline/create_block_sheet.dart';
@@ -43,28 +54,6 @@ class _DayTabState extends State<DayTab> {
       await _store.load();
       await widget.shoppingStore.load();
 
-      if (_store.all.isEmpty) {
-        final now = DateTime.now();
-        await _store.add(
-          TimelineBlock(
-            id: 'b1',
-            type: TimelineBlockType.event,
-            title: 'Consulta médica',
-            start: DateTime(now.year, now.month, now.day, 10, 0),
-            end: DateTime(now.year, now.month, now.day, 11, 0),
-          ),
-        );
-        await _store.add(
-          TimelineBlock(
-            id: 'b2',
-            type: TimelineBlockType.goal,
-            title: 'Treino (meta)',
-            start: DateTime(now.year, now.month, now.day, 18, 30),
-            end: DateTime(now.year, now.month, now.day, 19, 10),
-          ),
-        );
-      }
-
       if (!mounted) return;
       setState(() => _loading = false);
     });
@@ -76,15 +65,16 @@ class _DayTabState extends State<DayTab> {
     return day.subtract(Duration(days: diff));
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+  Future<void> _openShopping() async {
+    await showModalBottomSheet<void>(
       context: context,
-      initialDate: _selected,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => ShoppingListSheet(store: widget.shoppingStore),
     );
-    if (picked == null) return;
-    setState(() => _selected = picked);
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _addBlock() async {
@@ -108,9 +98,16 @@ class _DayTabState extends State<DayTab> {
     }
 
     await _store.add(created);
-    if (!mounted) return;
-    setState(() {});
     await NotificationService.instance.scheduleTenMinutesBefore(created);
+
+    if (!mounted) return;
+    setState(() {
+      _selected = DateTime(
+        created.start.year,
+        created.start.month,
+        created.start.day,
+      );
+    });
   }
 
   Future<void> _openEditBlock(TimelineBlock block) async {
@@ -132,8 +129,9 @@ class _DayTabState extends State<DayTab> {
     }
 
     final updated = result.updated;
+    if (updated == null) return;
 
-    if (updated != null && _store.hasConflict(updated, excludeId: block.id)) {
+    if (_store.hasConflict(updated, excludeId: block.id)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -143,133 +141,56 @@ class _DayTabState extends State<DayTab> {
       return;
     }
 
-    if (updated != null) {
-      await _store.update(updated);
-      await NotificationService.instance.cancelForBlock(block.id);
-      await NotificationService.instance.scheduleTenMinutesBefore(updated);
+    await _store.update(updated);
+    await NotificationService.instance.cancelForBlock(block.id);
+    await NotificationService.instance.scheduleTenMinutesBefore(updated);
 
-      if (!mounted) return;
-      setState(() {});
+    if (!mounted) return;
+    setState(() {
+      _selected = DateTime(
+        updated.start.year,
+        updated.start.month,
+        updated.start.day,
+      );
+    });
+  }
+
+  List<TimelineBlock> _itemsForRange() {
+    final sel = DateTime(_selected.year, _selected.month, _selected.day);
+
+    switch (_range) {
+      case TimelineRange.day:
+        return _store.itemsForDay(sel);
+
+      case TimelineRange.week:
+        {
+          final start = _startOfWeek(sel);
+          final end = start.add(const Duration(days: 7));
+          return _store.itemsBetween(start, end);
+        }
+
+      case TimelineRange.month:
+        {
+          final start = DateTime(sel.year, sel.month, 1);
+          final end = DateTime(sel.year, sel.month + 1, 1);
+          return _store.itemsBetween(start, end);
+        }
+
+      case TimelineRange.year:
+        {
+          final start = DateTime(sel.year, 1, 1);
+          final end = DateTime(sel.year + 1, 1, 1);
+          return _store.itemsBetween(start, end);
+        }
     }
   }
 
-  void _openShopping() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => ShoppingListSheet(store: widget.shoppingStore),
-    );
-  }
-
-  Widget _buildShoppingPreviewCard() {
-    return AnimatedBuilder(
-      animation: widget.shoppingStore,
-      builder: (context, _) {
-        final items = widget.shoppingStore.items;
-        final pending = items.where((e) => !e.done).toList(growable: false);
-        final preview = pending.take(3).toList(growable: false);
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: Icon(Icons.shopping_cart_outlined),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Lista de compras',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            pending.isEmpty
-                                ? 'ok'
-                                : '${pending.length} pendente(s)',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.secondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      if (items.isEmpty)
-                        const Text('Toque em “Abrir” para adicionar itens.')
-                      else ...[
-                        for (final it in preview)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              '• ${it.text}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        if (pending.length > preview.length)
-                          Text('… +${pending.length - preview.length}'),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                FilledButton.icon(
-                  onPressed: _openShopping,
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Abrir'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRangeBody() {
-    final weekStart = _startOfWeek(_selected);
-    final weekEnd = weekStart.add(const Duration(days: 7));
-
-    final monthStart = DateTime(_selected.year, _selected.month, 1);
-    final monthEnd = DateTime(_selected.year, _selected.month + 1, 1);
-
-    final yearStart = DateTime(_selected.year, 1, 1);
-    final yearEnd = DateTime(_selected.year + 1, 1, 1);
-
+  String _rangeTitle() {
     return switch (_range) {
-      TimelineRange.day => TimelineDayView(
-        items: _store.itemsForDay(_selected),
-        onTapBlock: _openEditBlock,
-      ),
-      TimelineRange.week => TimelineSummaryView(
-        title: 'Semana',
-        items: _store.itemsBetween(weekStart, weekEnd),
-        onTapItem: _openEditBlock,
-      ),
-      TimelineRange.month => TimelineSummaryView(
-        title: 'Mês',
-        items: _store.itemsBetween(monthStart, monthEnd),
-        onTapItem: _openEditBlock,
-      ),
-      TimelineRange.year => TimelineSummaryView(
-        title: 'Ano',
-        items: _store.itemsBetween(yearStart, yearEnd),
-        onTapItem: _openEditBlock,
-      ),
+      TimelineRange.day => 'Dia',
+      TimelineRange.week => 'Semana',
+      TimelineRange.month => 'Mês',
+      TimelineRange.year => 'Ano',
     };
   }
 
@@ -277,7 +198,10 @@ class _DayTabState extends State<DayTab> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
+    final items = _itemsForRange();
+
     return Scaffold(
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: Column(
           children: [
@@ -317,35 +241,27 @@ class _DayTabState extends State<DayTab> {
                     icon: const Icon(Icons.shopping_cart_outlined),
                   ),
                   IconButton(
-                    tooltip: 'Escolher data',
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_month_outlined),
+                    tooltip: 'Adicionar',
+                    onPressed: _addBlock,
+                    icon: const Icon(Icons.add_circle_outline),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: _buildShoppingPreviewCard(),
-            ),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: _buildRangeBody(),
-                  ),
-                ),
-              ),
+              child: _range == TimelineRange.day
+                  ? TimelineDayView(
+                      items: items, // ✅ correto no seu projeto
+                      onTapBlock: _openEditBlock,
+                    )
+                  : TimelineSummaryView(
+                      items: items,
+                      title: _rangeTitle(), // ✅ sem "range:"
+                      onTapItem: _openEditBlock,
+                    ),
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Adicionar bloco',
-        onPressed: _addBlock,
-        child: const Icon(Icons.add),
       ),
     );
   }

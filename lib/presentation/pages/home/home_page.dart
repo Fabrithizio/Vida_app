@@ -1,10 +1,11 @@
 // ============================================================================
 // FILE: lib/presentation/pages/home/home_page.dart
 //
-// Remoção da AppBar global:
-// - Remove o topo "Axyo — <Aba>" e o botão sair da parte superior
-// - Mantém as abas e o FAB de voz
-// - Logout fica apenas no ProfileTab (como você quer)
+// Swipe lateral para trocar abas:
+// - Usa PageView + PageController
+// - Swipe muda o índice
+// - BottomAppBar tap muda a página
+// - Continua sem AppBar (como você pediu)
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -32,6 +33,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _index = 0;
 
+  late final PageController _pageController;
+
   final ShoppingListStore _shopping = ShoppingListStore();
   final TimelineStore _timeline = TimelineStore(repo: HiveTimelineRepository());
 
@@ -47,6 +50,18 @@ class _HomePageState extends State<HomePage> {
     const ProfileTab(),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
   void _openVoiceHub() {
@@ -59,14 +74,27 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _goTo(int index) {
+    if (index == _index) return;
+    setState(() => _index = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
 
-      // ✅ Sem AppBar (remove topo de todas as tabs)
-      // appBar: ...
-      body: IndexedStack(index: _index, children: _tabs),
+      // ✅ Swipe lateral troca abas
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (i) => setState(() => _index = i),
+        children: _tabs,
+      ),
 
       floatingActionButton: FloatingActionButton.large(
         heroTag: 'axyo_home_mic_fab',
@@ -88,7 +116,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               IconButton(
                 tooltip: 'Meu Dia',
-                onPressed: () => setState(() => _index = 0),
+                onPressed: () => _goTo(0),
                 icon: Icon(
                   _index == 0
                       ? Icons.view_timeline
@@ -98,7 +126,7 @@ class _HomePageState extends State<HomePage> {
               ),
               IconButton(
                 tooltip: 'Áreas',
-                onPressed: () => setState(() => _index = 1),
+                onPressed: () => _goTo(1),
                 icon: Icon(
                   _index == 1 ? Icons.favorite : Icons.favorite_border,
                   color: _iconColor(_index == 1),
@@ -107,7 +135,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 56),
               IconButton(
                 tooltip: 'Finanças',
-                onPressed: () => setState(() => _index = 2),
+                onPressed: () => _goTo(2),
                 icon: Icon(
                   _index == 2
                       ? Icons.account_balance_wallet
@@ -117,7 +145,7 @@ class _HomePageState extends State<HomePage> {
               ),
               IconButton(
                 tooltip: 'Perfil',
-                onPressed: () => setState(() => _index = 3),
+                onPressed: () => _goTo(3),
                 icon: Icon(
                   _index == 3 ? Icons.person : Icons.person_outline,
                   color: _iconColor(_index == 3),
