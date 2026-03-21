@@ -11,9 +11,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import '../pages/login_page.dart';
-import '../pages/home/home_page.dart';
-import '../pages/onboarding_page.dart';
+import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/home/presentation/pages/home_page.dart';
+import '../../features/onboarding/presentation/pages/onboarding_page.dart';
 
 class VidaApp extends StatelessWidget {
   const VidaApp({super.key});

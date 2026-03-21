@@ -10,8 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/onboarding/questions.dart';
-import 'home/home_page.dart';
+import '../../../../core/onboarding/questions.dart';
+import '../../../home/presentation/pages/home_page.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
