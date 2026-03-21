@@ -1,90 +1,87 @@
 // ============================================================================
-// FILE: lib/presentation/pages/home/tabs/areas/daily_checkin_sheet.dart
+// FILE: lib/presentation/pages/home/tabs/areas/daily_checkin_card.dart
 //
-// Sheet de check-in (HUD):
-// - Fecha tocando fora / arrastando para baixo
-// - Serve para visualizar e (se quiser) responder também
+// Card de check-in diário (5 perguntas):
+// - Mostra as perguntas do dia
+// - Permite responder SIM / NÃO (salva offline)
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
-import '../../../../../features/areas/daily_checkin_service.dart';
+import '../../../../areas/daily_checkin_service.dart';
 
-class DailyCheckinSheet extends StatefulWidget {
-  const DailyCheckinSheet({super.key});
+class DailyCheckinCard extends StatefulWidget {
+  const DailyCheckinCard({super.key});
 
   @override
-  State<DailyCheckinSheet> createState() => _DailyCheckinSheetState();
+  State<DailyCheckinCard> createState() => _DailyCheckinCardState();
 }
 
-class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
+class _DailyCheckinCardState extends State<DailyCheckinCard> {
   final DailyCheckinService _svc = DailyCheckinService();
-  final DateTime _day = DateTime.now();
+
+  late final DateTime _day = DateTime.now();
   late final List<DailyQuestion> _questions = _svc.questionsForToday(now: _day);
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 14,
-          right: 14,
-          bottom: 14 + MediaQuery.of(context).viewInsets.bottom,
-          top: 8,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Check-in do dia',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 16,
-              ),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F0F1A),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Check-in do dia',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
             ),
-            const SizedBox(height: 10),
-            for (final q in _questions) ...[
-              _Row(
-                day: _day,
-                q: q,
-                svc: _svc,
-                onChanged: () => setState(() {}),
-              ),
-              const SizedBox(height: 10),
-            ],
-            const SizedBox(height: 6),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                'Fechar',
-                style: TextStyle(color: Colors.white70),
-              ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Responda rápido para manter seu Painel atualizado.',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          for (final q in _questions) ...[
+            _QuestionRow(
+              question: q,
+              day: _day,
+              svc: _svc,
+              onChanged: () => setState(() {}),
             ),
+            const SizedBox(height: 8),
           ],
-        ),
+        ],
       ),
     );
   }
 }
 
-class _Row extends StatelessWidget {
-  const _Row({
+class _QuestionRow extends StatelessWidget {
+  const _QuestionRow({
+    required this.question,
     required this.day,
-    required this.q,
     required this.svc,
     required this.onChanged,
   });
 
+  final DailyQuestion question;
   final DateTime day;
-  final DailyQuestion q;
   final DailyCheckinService svc;
   final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<int?>(
-      future: svc.getAnswer(day: day, questionId: q.id),
+      future: svc.getAnswer(day: day, questionId: question.id),
       builder: (context, snap) {
         final ans = snap.data;
 
@@ -109,7 +106,7 @@ class _Row extends StatelessWidget {
                 text,
                 style: TextStyle(
                   color: selected ? Colors.green : Colors.white70,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                   fontSize: 12,
                 ),
               ),
@@ -121,7 +118,7 @@ class _Row extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                q.text,
+                question.text,
                 style: const TextStyle(color: Colors.white, fontSize: 12.5),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -129,12 +126,12 @@ class _Row extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             pill('SIM', ans == 1, () async {
-              await svc.answer(day: day, questionId: q.id, value: 1);
+              await svc.answer(day: day, questionId: question.id, value: 1);
               onChanged();
             }),
             const SizedBox(width: 8),
             pill('NÃO', ans == 0, () async {
-              await svc.answer(day: day, questionId: q.id, value: 0);
+              await svc.answer(day: day, questionId: question.id, value: 0);
               onChanged();
             }),
           ],

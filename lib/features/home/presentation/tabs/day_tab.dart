@@ -11,15 +11,15 @@
 import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
-import '../../../../features/shopping/shopping_list_store.dart';
-import '../../../../features/timeline/timeline_store.dart';
+import '../../../shopping/shopping_list_store.dart';
+import '../../../timeline/timeline_store.dart';
 import '../../../../services/notifications/notification_service.dart';
 
 import 'shopping_list_sheet.dart';
-import 'timeline/create_block_sheet.dart';
-import 'timeline/edit_block_sheet.dart';
-import 'timeline/timeline_day_view.dart';
-import 'timeline/timeline_summary_view.dart';
+import 'day/create_block_sheet.dart';
+import 'day/edit_block_sheet.dart';
+import 'day/timeline_day_view.dart';
+import 'day/timeline_summary_view.dart';
 
 enum TimelineRange { day, week, month, year }
 
