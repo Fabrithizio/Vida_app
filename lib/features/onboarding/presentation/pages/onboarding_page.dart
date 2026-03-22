@@ -1,13 +1,9 @@
 // ============================================================================
 // FILE: lib/features/onboarding/presentation/pages/onboarding_page.dart
 //
-// Onboarding em 2 níveis:
-// - OnboardingStage.personal (perfil): nickname, gender, age
-// - OnboardingStage.life (vida): foco, objetivo, etc.
-//
-// Persistência:
-// - Tudo salvo por UID: '${uid}:${questionId}'
-// - Nickname também salvo em SessionStorage.nickname_<uid>
+// Onboarding em 2 níveis + DOB + CPF opcional (com botão "Pular").
+// - Salva tudo por UID: '${uid}:${questionId}'
+// - Nickname também em SessionStorage.nickname_<uid>
 // - Flags:
 //   - personal_done_<uid>
 //   - life_done_<uid>
@@ -99,6 +95,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   void _goNextOrFinish() {
     if (_currentIndex < _questions.length - 1) {
       setState(() => _currentIndex++);
+      _textController.clear();
       return;
     }
     _persistAndNext();
@@ -110,28 +107,123 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _goNextOrFinish();
   }
 
-  void _submitTextOrNumber() {
+  String _digitsOnly(String s) => s.replaceAll(RegExp(r'\D'), '');
+
+  bool _isValidCpf(String raw) {
+    final cpf = _digitsOnly(raw);
+    if (cpf.length != 11) return false;
+    if (RegExp(r'^(\d)\1{10}$').hasMatch(cpf)) return false;
+
+    int calcDigit(int length) {
+      int sum = 0;
+      int weight = length + 1;
+      for (int i = 0; i < length; i++) {
+        sum += int.parse(cpf[i]) * (weight--);
+      }
+      final mod = sum % 11;
+      return (mod < 2) ? 0 : (11 - mod);
+    }
+
+    final d1 = calcDigit(9);
+    final d2 = calcDigit(10);
+    return cpf[9] == '$d1' && cpf[10] == '$d2';
+  }
+
+  DateTime? _parseBrazilDate(String raw) {
+    final parts = raw.trim().split('/');
+    if (parts.length != 3) return null;
+    final d = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final y = int.tryParse(parts[2]);
+    if (d == null || m == null || y == null) return null;
+    if (y < 1900 || y > DateTime.now().year) return null;
+
+    try {
+      final dt = DateTime(y, m, d);
+      if (dt.year != y || dt.month != m || dt.day != d) return null;
+      return dt;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int _ageFromDob(DateTime dob) {
+    final now = DateTime.now();
+    int age = now.year - dob.year;
+    final hasHadBirthdayThisYear =
+        (now.month > dob.month) ||
+        (now.month == dob.month && now.day >= dob.day);
+    if (!hasHadBirthdayThisYear) age--;
+    return age;
+  }
+
+  void _submitTextNumberDate() {
     if (_saving) return;
 
     final q = _questions[_currentIndex];
     final raw = _textController.text.trim();
 
     if (raw.isEmpty) {
+      if (q.optional) {
+        _goNextOrFinish();
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Preencha para continuar.')));
       return;
     }
 
+    if (q.id == 'cpf') {
+      if (!_isValidCpf(raw)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('CPF inválido. Você pode corrigir ou pular.'),
+          ),
+        );
+        return;
+      }
+      _setAnswerAndNext(_digitsOnly(raw));
+      return;
+    }
+
     if (q.type == QuestionType.number) {
       final n = int.tryParse(raw);
-      if (n == null || n < 5 || n > 120) {
+      if (n == null || n < 0 || n > 24) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Digite uma idade válida.')),
+          const SnackBar(content: Text('Digite um número válido.')),
         );
         return;
       }
       _setAnswerAndNext(n.toString());
+      return;
+    }
+
+    if (q.type == QuestionType.date) {
+      final dt = _parseBrazilDate(raw);
+      if (dt == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Data inválida. Use DD/MM/AAAA.')),
+        );
+        return;
+      }
+
+      // Se for DOB, valida idade mínima lógica
+      if (q.id == 'dob') {
+        final age = _ageFromDob(dt);
+        if (age < 5 || age > 120) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Data de nascimento inválida.')),
+          );
+          return;
+        }
+      }
+
+      final iso =
+          '${dt.year.toString().padLeft(4, '0')}-'
+          '${dt.month.toString().padLeft(2, '0')}-'
+          '${dt.day.toString().padLeft(2, '0')}';
+      _setAnswerAndNext(iso);
       return;
     }
 
@@ -172,6 +264,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       ),
                       textAlign: TextAlign.center,
                     ),
+                    if (q.helper != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        q.helper!,
+                        style: const TextStyle(color: Colors.white60),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     Text(
                       'Pergunta ${_currentIndex + 1} de ${_questions.length}',
@@ -207,6 +307,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           ),
                         );
                       }),
+                      if (q.optional) ...[
+                        const SizedBox(height: 6),
+                        TextButton(
+                          onPressed: _saving ? null : _goNextOrFinish,
+                          child: const Text('Pular'),
+                        ),
+                      ],
                     ] else ...[
                       TextField(
                         controller: _textController,
@@ -215,12 +322,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             ? TextInputType.number
                             : TextInputType.text,
                         textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _submitTextOrNumber(),
+                        onSubmitted: (_) => _submitTextNumberDate(),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: q.type == QuestionType.number
-                              ? 'Idade'
-                              : 'Texto',
+                          labelText: q.type == QuestionType.date
+                              ? 'DD/MM/AAAA'
+                              : (q.type == QuestionType.number
+                                    ? 'Número'
+                                    : 'Texto'),
                           labelStyle: const TextStyle(color: Colors.green),
                           enabledBorder: const OutlineInputBorder(
                             borderSide: BorderSide(color: Colors.green),
@@ -234,25 +343,42 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.black,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 50,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.black,
+                                ),
+                                onPressed: _saving
+                                    ? null
+                                    : _submitTextNumberDate,
+                                child: _saving
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text('Continuar'),
+                              ),
+                            ),
                           ),
-                          onPressed: _saving ? null : _submitTextOrNumber,
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('Continuar'),
-                        ),
+                          if (q.optional) ...[
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              height: 50,
+                              child: OutlinedButton(
+                                onPressed: _saving ? null : _goNextOrFinish,
+                                child: const Text('Pular'),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ],

@@ -1,14 +1,13 @@
 // ============================================================================
 // FILE: lib/features/areas/daily_checkin_service.dart
 //
-// Check-in diário:
-// - 5 perguntas por dia, estáveis por data
-// - salva respostas (0/1)
-// - marca o dia como "completed" quando todas foram respondidas
+// Fix:
+// - Dados por usuário: box = 'daily_checkin_box_<uid>'
 // ============================================================================
 
 import 'dart:math';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class DailyQuestion {
@@ -24,9 +23,15 @@ class DailyQuestion {
 }
 
 class DailyCheckinService {
-  static const _boxName = 'daily_checkin_box';
+  static const _boxPrefix = 'daily_checkin_box_';
 
-  Future<Box<dynamic>> _open() => Hive.openBox<dynamic>(_boxName);
+  String _uidOrAnon() {
+    final u = FirebaseAuth.instance.currentUser;
+    return (u?.uid ?? 'anon').trim().isEmpty ? 'anon' : u!.uid;
+  }
+
+  Future<Box<dynamic>> _open() =>
+      Hive.openBox<dynamic>('$_boxPrefix${_uidOrAnon()}');
 
   String _dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
   String _completedKey(DateTime d) => '${_dayKey(d)}::completed';
@@ -43,56 +48,36 @@ class DailyCheckinService {
       text: 'Você evitou gastos desnecessários hoje?',
     ),
     DailyQuestion(
-      id: 'prod_tasks',
-      areaId: 'work_vocation',
-      text: 'Você concluiu suas tarefas principais hoje?',
-    ),
-    DailyQuestion(
-      id: 'study_progress',
-      areaId: 'learning_intellect',
-      text: 'Você avançou nos estudos hoje?',
-    ),
-    DailyQuestion(
-      id: 'health_move',
+      id: 'sleep_ok',
       areaId: 'body_health',
-      text: 'Você se movimentou hoje?',
+      text: 'Você dormiu bem (ou está no caminho de dormir bem)?',
     ),
     DailyQuestion(
-      id: 'health_sleep',
+      id: 'move',
       areaId: 'body_health',
-      text: 'Seu sono foi bom na última noite?',
+      text: 'Você se moveu (caminhou/treinou) hoje?',
     ),
     DailyQuestion(
-      id: 'mind_mood',
+      id: 'focus',
       areaId: 'mind_emotion',
-      text: 'Seu humor hoje foi ok?',
-    ),
-    DailyQuestion(
-      id: 'social_connect',
-      areaId: 'relations_community',
-      text: 'Você se conectou com alguém importante hoje?',
-    ),
-    DailyQuestion(
-      id: 'digital_focus',
-      areaId: 'digital_tech',
-      text: 'Você controlou distrações digitais hoje?',
+      text: 'Você conseguiu manter o foco em algo importante hoje?',
     ),
   ];
 
-  List<DailyQuestion> questionsForToday({DateTime? now}) {
-    final d = now ?? DateTime.now();
-    final seed = int.parse(
-      '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}',
-    );
-    final rng = Random(seed);
-    final copy = List<DailyQuestion>.from(_pool)..shuffle(rng);
-    return copy.take(5).toList();
+  List<DailyQuestion> questionsForToday({required DateTime now}) {
+    final seed = now.year * 10000 + now.month * 100 + now.day;
+    final r = Random(seed);
+
+    final items = List<DailyQuestion>.from(_pool);
+    items.shuffle(r);
+
+    return items.take(5).toList();
   }
 
   Future<void> answer({
     required DateTime day,
     required String questionId,
-    required int value, // 1 = sim, 0 = não
+    required int value,
   }) async {
     final box = await _open();
     await box.put('${_dayKey(day)}::$questionId', value);
@@ -103,28 +88,26 @@ class DailyCheckinService {
     required String questionId,
   }) async {
     final box = await _open();
-    final v = box.get('${_dayKey(day)}::$questionId');
-    return v is int ? v : null;
+    final raw = box.get('${_dayKey(day)}::$questionId');
+    return raw is int ? raw : null;
+  }
+
+  Future<bool> tryCompleteIfAllAnswered(DateTime day) async {
+    final box = await _open();
+    final qs = questionsForToday(now: day);
+
+    for (final q in qs) {
+      final v = box.get('${_dayKey(day)}::${q.id}');
+      if (v is! int) return false;
+    }
+
+    await box.put(_completedKey(day), true);
+    return true;
   }
 
   Future<bool> isCompleted(DateTime day) async {
     final box = await _open();
     final v = box.get(_completedKey(day));
-    return v is bool ? v : false;
-  }
-
-  Future<void> markCompleted(DateTime day) async {
-    final box = await _open();
-    await box.put(_completedKey(day), true);
-  }
-
-  Future<bool> tryCompleteIfAllAnswered(DateTime day) async {
-    final questions = questionsForToday(now: day);
-    for (final q in questions) {
-      final a = await getAnswer(day: day, questionId: q.id);
-      if (a == null) return false;
-    }
-    await markCompleted(day);
-    return true;
+    return v == true;
   }
 }

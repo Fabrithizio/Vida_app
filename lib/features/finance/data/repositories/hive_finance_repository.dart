@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/finance_category.dart';
@@ -7,11 +8,17 @@ import '../models/finance_transaction_source.dart';
 import 'finance_repository.dart';
 
 class HiveFinanceRepository implements FinanceRepository {
-  static const String _boxName = 'finance_box';
+  static const String _boxPrefix = 'finance_box_';
   static const String _key = 'transactions';
 
+  String _uidOrAnon() {
+    final u = FirebaseAuth.instance.currentUser;
+    final uid = (u?.uid ?? 'anon').trim();
+    return uid.isEmpty ? 'anon' : uid;
+  }
+
   Future<Box<dynamic>> _open() async {
-    return Hive.openBox<dynamic>(_boxName);
+    return Hive.openBox<dynamic>('$_boxPrefix${_uidOrAnon()}');
   }
 
   @override

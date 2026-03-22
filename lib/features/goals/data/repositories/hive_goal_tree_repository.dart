@@ -1,14 +1,22 @@
 // lib/features/goals/data/repositories/hive_goal_tree_repository.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/goal_tree_models.dart';
 import 'goal_tree_repository.dart';
 
 class HiveGoalTreeRepository implements GoalTreeRepository {
-  static const _boxName = 'goal_tree_box_v2';
+  static const _boxPrefix = 'goal_tree_box_v2_';
   static const _indexKey = 'goals_index';
 
-  Future<Box<dynamic>> _open() async => Hive.openBox<dynamic>(_boxName);
+  String _uidOrAnon() {
+    final u = FirebaseAuth.instance.currentUser;
+    final uid = (u?.uid ?? 'anon').trim();
+    return uid.isEmpty ? 'anon' : uid;
+  }
+
+  Future<Box<dynamic>> _open() async =>
+      Hive.openBox<dynamic>('$_boxPrefix${_uidOrAnon()}');
 
   String _goalKey(String id) => 'goal_$id';
 

@@ -1,14 +1,20 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:vida_app/data/models/timeline_block.dart';
 
 import 'timeline_repository.dart';
 
 class HiveTimelineRepository implements TimelineRepository {
-  static const _boxName = 'timeline_box';
+  static const _boxPrefix = 'timeline_box_';
   static const _key = 'items';
 
+  String _uidOrAnon() {
+    final u = FirebaseAuth.instance.currentUser;
+    return (u?.uid ?? 'anon').trim().isEmpty ? 'anon' : u!.uid;
+  }
+
   Future<Box<dynamic>> _open() async {
-    return Hive.openBox<dynamic>(_boxName);
+    return Hive.openBox<dynamic>('$_boxPrefix${_uidOrAnon()}');
   }
 
   @override

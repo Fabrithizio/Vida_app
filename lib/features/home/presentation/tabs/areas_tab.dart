@@ -1,10 +1,9 @@
 // ============================================================================
-// AREAS TAB
+// FILE: lib/features/home/presentation/tabs/areas/areas_tab.dart
+//
 // Fixes:
-// - Gender: lê por UID ('${uid}:gender') + fallback legado ('gender')
-// - Parsing: aceita homem/masculino e mulher/feminino
-// - Init: só carrega scores depois de descobrir o sexo
-// - Nome: usa nickname_<uid> (SessionStorage) + fallback displayName/email
+// - Antes de calcular scores, chama ensureBootstrappedFromOnboarding()
+// - Corrige imports para os paths reais do projeto (features/home/presentation/...)
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -32,28 +31,23 @@ class _AreasTabState extends State<AreasTab> {
   late Future<Map<String, int?>> _scoreFuture;
   late Future<String> _nameFuture;
 
-  UserSex _currentSex = UserSex.female;
-
   @override
   void initState() {
     super.initState();
     _sexFuture = _loadUserSex();
     _nameFuture = _loadUserName();
 
-    // ✅ scores só depois de descobrir o sexo (corrige "sempre homem" por init errado)
-    _scoreFuture = _sexFuture.then((sex) {
-      _currentSex = sex;
+    _scoreFuture = _sexFuture.then((sex) async {
+      // ✅ IMPORTANTE: este método precisa existir no AreasStore
+      await _store.ensureBootstrappedFromOnboarding();
       return _loadScores(sex);
     });
   }
 
   UserSex _parseSex(String raw) {
     final g = raw.trim().toLowerCase();
-
-    // Mulher/feminino primeiro (evita confusão com valores estranhos)
     if (g.contains('mulher') || g.contains('femin')) return UserSex.female;
     if (g.contains('homem') || g.contains('masc')) return UserSex.male;
-
     return UserSex.female;
   }
 
@@ -61,16 +55,9 @@ class _AreasTabState extends State<AreasTab> {
     final prefs = await SharedPreferences.getInstance();
     final user = FirebaseAuth.instance.currentUser;
 
-    String gender = '';
+    if (user == null) return UserSex.female;
 
-    if (user != null) {
-      gender = prefs.getString('${user.uid}:gender') ?? '';
-    }
-    if (gender.trim().isEmpty) {
-      // fallback legado
-      gender = prefs.getString('gender') ?? '';
-    }
-
+    final gender = (prefs.getString('${user.uid}:gender') ?? '').trim();
     return _parseSex(gender);
   }
 
@@ -139,11 +126,10 @@ class _AreasTabState extends State<AreasTab> {
 
     if (!mounted) return;
     setState(() {
-      // recarrega tudo (inclusive nome e sexo)
       _sexFuture = _loadUserSex();
       _nameFuture = _loadUserName();
-      _scoreFuture = _sexFuture.then((sex) {
-        _currentSex = sex;
+      _scoreFuture = _sexFuture.then((sex) async {
+        await _store.ensureBootstrappedFromOnboarding();
         return _loadScores(sex);
       });
     });
@@ -169,7 +155,7 @@ class _AreasTabState extends State<AreasTab> {
               builder: (context, scoreSnap) {
                 final scores = scoreSnap.data ?? {};
                 final avg = _averageScore(scores);
-                final definedStatuses = _definedStatusesCount(scores);
+                final defined = _definedStatusesCount(scores);
                 final classification = _classificationLabel(avg);
 
                 return LayoutBuilder(
@@ -215,7 +201,7 @@ class _AreasTabState extends State<AreasTab> {
                             child: _TopHud(
                               userName: userName,
                               averageScore: avg,
-                              definedStatuses: definedStatuses,
+                              definedStatuses: defined,
                               totalAreas: defs.length,
                               classification: classification,
                               onCheckinTap: _openCheckin,
@@ -311,13 +297,6 @@ class _TopHud extends StatelessWidget {
         color: const Color(0xFF0F1120).withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.28),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -370,63 +349,40 @@ class _TopHud extends StatelessWidget {
                   ],
                 ),
               ),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onCheckinTap,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF162A1B),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: const Color(0xFF22C55E).withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.check_circle_rounded,
-                          color: Color(0xFF22C55E),
-                          size: 18,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Check-in',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
+              InkWell(
+                onTap: onCheckinTap,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF162A1B),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.35),
                     ),
                   ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _HudStatCard(
-                  label: 'Status definidos',
-                  value: '$definedStatuses/$totalAreas',
-                  icon: Icons.fact_check_rounded,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _HudStatCard(
-                  label: 'Classificação',
-                  value: classification,
-                  icon: Icons.workspace_premium_rounded,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: Color(0xFF22C55E),
+                        size: 18,
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Check-in',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -447,62 +403,6 @@ class _TopHud extends StatelessWidget {
   }
 }
 
-class _HudStatCard extends StatelessWidget {
-  const _HudStatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.white70),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _AreaCard extends StatelessWidget {
   const _AreaCard({
     required this.icon,
@@ -515,9 +415,10 @@ class _AreaCard extends StatelessWidget {
   final VoidCallback onTap;
 
   Color _color() {
-    if (score == null) return Colors.grey;
-    if (score! >= 80) return Colors.green;
-    if (score! >= 50) return Colors.orange;
+    final s = score;
+    if (s == null) return Colors.grey;
+    if (s >= 80) return Colors.green;
+    if (s >= 50) return Colors.orange;
     return Colors.red;
   }
 

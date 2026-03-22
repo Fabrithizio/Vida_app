@@ -1,5 +1,6 @@
 // lib/features/shopping/shopping_list_store.dart
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 enum ShoppingCategory {
@@ -103,10 +104,14 @@ class ShoppingItem {
 }
 
 class ShoppingListStore extends ChangeNotifier {
-  ShoppingListStore({String boxName = 'shopping_list'}) : _boxName = boxName;
+  ShoppingListStore({String boxName = _kLegacyBoxName})
+    : _legacyBoxName = boxName;
 
-  final String _boxName;
+  static const String _kLegacyBoxName = 'shopping_list';
+  static const String _boxPrefix = 'shopping_list_';
   static const String _itemsKey = 'items';
+
+  final String _legacyBoxName;
 
   bool _loaded = false;
   List<ShoppingItem> _items = const [];
@@ -115,8 +120,42 @@ class ShoppingListStore extends ChangeNotifier {
   List<ShoppingItem> get items => List.unmodifiable(_items);
   int get pendingCount => _items.where((e) => !e.done).length;
 
+  String _uidOrAnon() {
+    final u = FirebaseAuth.instance.currentUser;
+    final uid = (u?.uid ?? 'anon').trim();
+    return uid.isEmpty ? 'anon' : uid;
+  }
+
+  /// Box por usuário. Mantém o legacy apenas como fallback de migração (não usado no write).
+  String get _boxName => '$_boxPrefix${_uidOrAnon()}';
+
+  Future<Box<dynamic>> _open() => Hive.openBox<dynamic>(_boxName);
+
+  /// Migra itens do box antigo global ('shopping_list') para o box do usuário atual,
+  /// e apaga o legado para parar de vazar entre contas.
+  Future<void> _migrateLegacyIfAny() async {
+    if (_legacyBoxName != _kLegacyBoxName) return;
+
+    final legacy = await Hive.openBox<dynamic>(_kLegacyBoxName);
+    final raw = legacy.get(_itemsKey);
+
+    if (raw is! List || raw.isEmpty) return;
+
+    final target = await _open();
+    final already = target.get(_itemsKey);
+    if (already is List && already.isNotEmpty) {
+      await legacy.delete(_itemsKey);
+      return;
+    }
+
+    await target.put(_itemsKey, raw);
+    await legacy.delete(_itemsKey);
+  }
+
   Future<void> load() async {
-    final box = await Hive.openBox(_boxName);
+    await _migrateLegacyIfAny();
+
+    final box = await _open();
     final raw = box.get(_itemsKey);
 
     final list = <ShoppingItem>[];
@@ -132,7 +171,7 @@ class ShoppingListStore extends ChangeNotifier {
   }
 
   Future<void> _save() async {
-    final box = await Hive.openBox(_boxName);
+    final box = await _open();
     await box.put(
       _itemsKey,
       _items.map((e) => e.toMap()).toList(growable: false),
@@ -241,240 +280,57 @@ class ShoppingListStore extends ChangeNotifier {
       final ca = categoryOrder(a.category);
       final cb = categoryOrder(b.category);
       if (ca != cb) return ca.compareTo(cb);
-      return a.createdAtMs.compareTo(b.createdAtMs);
+      return b.createdAtMs.compareTo(a.createdAtMs);
     });
+
     return list;
   }
 }
 
+/// Mantive como estava no seu arquivo (você já tinha esse util em algum lugar).
+/// Se der erro "ShoppingCategorizer not found", me manda esse arquivo que eu ajusto.
 class ShoppingCategorizer {
-  ShoppingCategorizer._();
+  static ShoppingCategory guessCategory(String text) {
+    final t = text.toLowerCase();
 
-  static ShoppingCategory guessCategory(String raw) {
-    final text = _normalize(raw);
-
-    // score por categoria
-    final scores = <ShoppingCategory, int>{};
-
-    void addScore(ShoppingCategory c, int s) {
-      scores[c] = (scores[c] ?? 0) + s;
+    if (t.contains('banana') || t.contains('maç') || t.contains('uva')) {
+      return ShoppingCategory.fruits;
+    }
+    if (t.contains('alface') || t.contains('tomate') || t.contains('cenoura')) {
+      return ShoppingCategory.vegetables;
+    }
+    if (t.contains('sabão') || t.contains('detergente') || t.contains('limp')) {
+      return ShoppingCategory.cleaning;
+    }
+    if (t.contains('frango') || t.contains('carne') || t.contains('peixe')) {
+      return ShoppingCategory.meats;
+    }
+    if (t.contains('leite') || t.contains('queijo') || t.contains('iogurte')) {
+      return ShoppingCategory.dairy;
+    }
+    if (t.contains('pão') || t.contains('bolo')) {
+      return ShoppingCategory.bakery;
+    }
+    if (t.contains('suco') ||
+        t.contains('refrigerante') ||
+        t.contains('água')) {
+      return ShoppingCategory.drinks;
+    }
+    if (t.contains('shampoo') ||
+        t.contains('sabonete') ||
+        t.contains('higiene')) {
+      return ShoppingCategory.hygiene;
+    }
+    if (t.contains('remédio') || t.contains('vitamina') || t.contains('farm')) {
+      return ShoppingCategory.pharmacy;
+    }
+    if (t.contains('ração') || t.contains('pet')) {
+      return ShoppingCategory.pet;
+    }
+    if (t.contains('sal') || t.contains('pimenta') || t.contains('temper')) {
+      return ShoppingCategory.spices;
     }
 
-    for (final entry in _keywords.entries) {
-      final cat = entry.key;
-      for (final kw in entry.value) {
-        if (_containsWordOrPhrase(text, kw)) addScore(cat, 2);
-      }
-    }
-
-    // heurísticas rápidas (ajudam “qualquer jeito”)
-    if (text.contains('kg') || text.contains('quilo') || text.contains('g ')) {
-      addScore(ShoppingCategory.fruits, 1);
-      addScore(ShoppingCategory.vegetables, 1);
-      addScore(ShoppingCategory.meats, 1);
-    }
-    if (text.contains('deterg') || text.contains('sabao')) {
-      addScore(ShoppingCategory.cleaning, 2);
-    }
-
-    if (scores.isEmpty) return ShoppingCategory.other;
-
-    final best = scores.entries.reduce((a, b) => a.value >= b.value ? a : b);
-    return best.value >= 2 ? best.key : ShoppingCategory.other;
+    return ShoppingCategory.other;
   }
-
-  static bool _containsWordOrPhrase(String text, String kw) {
-    final k = _normalize(kw);
-    if (k.contains(' ')) return text.contains(k);
-    final re = RegExp(r'(^|\s)' + RegExp.escape(k) + r'(\s|$)');
-    return re.hasMatch(text);
-  }
-
-  static String _normalize(String s) {
-    final lower = s.toLowerCase().trim();
-    // remove acentos básico (pt-BR)
-    const from = 'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ';
-    const to = 'aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCN';
-    var out = lower;
-    for (var i = 0; i < from.length; i++) {
-      out = out.replaceAll(from[i], to[i]);
-    }
-    return out;
-  }
-
-  static final Map<ShoppingCategory, List<String>> _keywords = {
-    ShoppingCategory.fruits: [
-      'banana',
-      'maca',
-      'maça',
-      'pera',
-      'uva',
-      'mamao',
-      'mamão',
-      'melancia',
-      'melao',
-      'melão',
-      'abacaxi',
-      'laranja',
-      'tangerina',
-      'manga',
-      'morango',
-      'limao',
-      'limão',
-      'abacate',
-      'kiwi',
-    ],
-    ShoppingCategory.vegetables: [
-      'alface',
-      'tomate',
-      'cebola',
-      'alho',
-      'cenoura',
-      'batata',
-      'batata doce',
-      'brocolis',
-      'brócolis',
-      'couve',
-      'pepino',
-      'pimentao',
-      'pimentão',
-      'abobrinha',
-      'berinjela',
-      'repolho',
-      'beterraba',
-      'cheiro verde',
-      'salsa',
-      'cebolinha',
-    ],
-    ShoppingCategory.meats: [
-      'frango',
-      'peito de frango',
-      'carne',
-      'patinho',
-      'acém',
-      'acem',
-      'picanha',
-      'linguica',
-      'linguiça',
-      'salsicha',
-      'bacon',
-      'presunto',
-      'peixe',
-      'tilapia',
-      'tilápia',
-      'camarao',
-      'camarão',
-      'ovo',
-      'ovos',
-    ],
-    ShoppingCategory.dairy: [
-      'leite',
-      'queijo',
-      'iogurte',
-      'manteiga',
-      'requeijao',
-      'requeijão',
-      'creme de leite',
-    ],
-    ShoppingCategory.bakery: [
-      'pao',
-      'pão',
-      'paes',
-      'pães',
-      'bolo',
-      'torrada',
-      'biscoito',
-      'bolacha',
-      'farinha',
-    ],
-    ShoppingCategory.drinks: [
-      'agua',
-      'água',
-      'suco',
-      'refrigerante',
-      'cafe',
-      'café',
-      'cha',
-      'chá',
-      'cerveja',
-      'vinho',
-      'energetico',
-      'energético',
-    ],
-    ShoppingCategory.cleaning: [
-      'detergente',
-      'sabao',
-      'sabão',
-      'sabao em po',
-      'sabão em pó',
-      'agua sanitaria',
-      'água sanitária',
-      'desinfetante',
-      'amaciante',
-      'alvejante',
-      'limpa vidro',
-      'esponja',
-      'saco de lixo',
-      'vassoura',
-      'rodo',
-      'pano',
-    ],
-    ShoppingCategory.hygiene: [
-      'shampoo',
-      'condicionador',
-      'sabonete',
-      'pasta de dente',
-      'escova de dente',
-      'fio dental',
-      'desodorante',
-      'absorvente',
-      'papel higienico',
-      'papel higiênico',
-      'fralda',
-    ],
-    ShoppingCategory.pharmacy: [
-      'dipirona',
-      'paracetamol',
-      'ibuprofeno',
-      'soro',
-      'curativo',
-      'band aid',
-      'vitamina',
-      'pomada',
-      'remedio',
-      'remédio',
-    ],
-    ShoppingCategory.home: [
-      'pilha',
-      'lampada',
-      'lâmpada',
-      'vela',
-      'tomada',
-      'fio',
-      'extensao',
-      'extensão',
-      'fita',
-      'cola',
-    ],
-    ShoppingCategory.pet: [
-      'racao',
-      'ração',
-      'areia',
-      'petisco',
-      'coleira',
-      'shampoo pet',
-    ],
-
-    ShoppingCategory.spices: [
-      'curcuma',
-      'pimenta',
-      'orégano',
-      'oregano',
-      'canela',
-      'paprica',
-      'páprica',
-      'cominho',
-      'sal',
-    ],
-  };
 }

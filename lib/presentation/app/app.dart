@@ -1,14 +1,14 @@
 // ============================================================================
 // FILE: lib/presentation/app/app.dart
 //
-// Gate profissional:
+// Gate:
 // - Se não logado -> LoginPage
 // - Se logado e não fez personal -> Onboarding (personal)
 // - Se logado e não fez life -> Onboarding (life)
 // - Senão -> Home
 //
-// Fix do "parece o mesmo usuário":
-// - Migra/remova chaves globais antigas (gender, focus, goal, age, nickname) para não vazar
+// Auto defaults:
+// - Se nickname ainda não existe: usa displayName (Google) ou email prefix
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -29,8 +29,16 @@ class VidaApp extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     final uid = user.uid;
 
-    // Keys globais antigas que vazam entre usuários
-    const legacyKeys = ['gender', 'focus', 'goal', 'age', 'nickname', 'name'];
+    const legacyKeys = [
+      'gender',
+      'focus',
+      'goal',
+      'age',
+      'nickname',
+      'name',
+      'dob',
+      'cpf',
+    ];
 
     for (final key in legacyKeys) {
       final legacyVal = prefs.getString(key);
@@ -39,7 +47,6 @@ class VidaApp extends StatelessWidget {
       final uidKey = '$uid:$key';
       final already = prefs.getString(uidKey);
 
-      // Migra se o uid ainda não tiver valor
       if (already == null || already.trim().isEmpty) {
         await prefs.setString(uidKey, legacyVal);
         if (key == 'nickname' || key == 'name') {
@@ -47,9 +54,30 @@ class VidaApp extends StatelessWidget {
         }
       }
 
-      // Remove legado sempre, pra não vazar pra próximo usuário
       await prefs.remove(key);
     }
+  }
+
+  Future<void> _ensureDefaultNickname(User user) async {
+    final uid = user.uid;
+    final storage = SessionStorage();
+
+    final existing = (await storage.readNickname(uid))?.trim() ?? '';
+    if (existing.isNotEmpty) return;
+
+    final display = (user.displayName ?? '').trim();
+    if (display.isNotEmpty) {
+      await storage.saveNickname(uid, display);
+      return;
+    }
+
+    final email = (user.email ?? '').trim();
+    if (email.contains('@')) {
+      await storage.saveNickname(uid, email.split('@').first);
+      return;
+    }
+
+    await storage.saveNickname(uid, 'Usuário');
   }
 
   Future<bool> _done(User user, String key) async {
@@ -76,20 +104,6 @@ class VidaApp extends StatelessWidget {
         brightness: Brightness.dark,
         colorSchemeSeed: seed,
         scaffoldBackgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
-          iconTheme: IconThemeData(color: Colors.white),
-        ),
-        bottomAppBarTheme: const BottomAppBarThemeData(
-          color: Color(0xFF0F0F1A),
-          elevation: 8,
-        ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: seed,
-          foregroundColor: Colors.black,
-        ),
       ),
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
@@ -104,7 +118,10 @@ class VidaApp extends StatelessWidget {
           if (user == null) return const LoginPage();
 
           return FutureBuilder<void>(
-            future: _migrateLegacyPrefs(user),
+            future: () async {
+              await _migrateLegacyPrefs(user);
+              await _ensureDefaultNickname(user);
+            }(),
             builder: (context, migSnap) {
               if (migSnap.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
