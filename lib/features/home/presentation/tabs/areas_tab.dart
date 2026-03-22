@@ -1,21 +1,16 @@
 // ============================================================================
-// FILE: lib/presentation/pages/home/tabs/areas_tab.dart
-//
-// Layout novo (sem “caixa preta” do rodapé):
-// - Personagem em cima
-// - 9 cards pequenos organizados em grid no rodapé (40%)
-// - Sem painel/container grande atrás dos itens
+// AREAS TAB (FIX REAL - overflow + grid colado)
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../areas/areas_store.dart';
+import 'package:vida_app/features/areas/areas_store.dart';
 
-import 'areas/area_balloon.dart';
-import 'areas/area_detail_page.dart';
-import 'areas/areas_catalog.dart';
-import 'areas/areas_model_assets.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/area_detail_page.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_sheet.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({super.key});
@@ -39,9 +34,8 @@ class _AreasTabState extends State<AreasTab> {
 
   Future<UserSex> _loadUserSex() async {
     final prefs = await SharedPreferences.getInstance();
-    final gender = (prefs.getString('gender') ?? '').toLowerCase().trim();
+    final gender = (prefs.getString('gender') ?? '').toLowerCase();
     if (gender.contains('homem')) return UserSex.male;
-    if (gender.contains('mulher')) return UserSex.female;
     return UserSex.female;
   }
 
@@ -57,10 +51,17 @@ class _AreasTabState extends State<AreasTab> {
     return map;
   }
 
-  Future<void> _refresh() async {
-    final sex = await _sexFuture;
-    if (!mounted) return;
-    setState(() => _scoreFuture = _loadScores(sex));
+  double _averageScore(Map<String, int?> scores) {
+    final valid = scores.values.whereType<int>().toList();
+    if (valid.isEmpty) return 0;
+    return valid.reduce((a, b) => a + b) / valid.length;
+  }
+
+  void _openCheckin() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => const DailyCheckinSheet(),
+    );
   }
 
   Future<void> _openArea(String areaId) async {
@@ -70,12 +71,11 @@ class _AreasTabState extends State<AreasTab> {
         builder: (_) => AreaDetailPage(areaId: areaId, title: def.title),
       ),
     );
-    await _refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    final defs = AreasCatalog.all(); // ordem fixa
+    final defs = AreasCatalog.all();
 
     return FutureBuilder<UserSex>(
       future: _sexFuture,
@@ -86,116 +86,127 @@ class _AreasTabState extends State<AreasTab> {
         return FutureBuilder<Map<String, int?>>(
           future: _scoreFuture,
           builder: (context, scoreSnap) {
-            final scores = scoreSnap.data ?? const <String, int?>{};
+            final scores = scoreSnap.data ?? {};
+            final avg = _averageScore(scores);
 
             return LayoutBuilder(
               builder: (context, c) {
-                final w = c.maxWidth;
                 final h = c.maxHeight;
-
-                // Área inferior só para layout (sem caixa)
-                final bottomH = h * 0.40;
-                final topH = h - bottomH;
-
-                // Avatar maior e central em cima
-                final avatarW = (w * 0.70).clamp(260.0, 520.0);
-                final avatarH = (topH * 0.92).clamp(240.0, 680.0);
 
                 return Stack(
                   children: [
-                    // Fundo
+                    /// FUNDO
                     Positioned.fill(
                       child: Image.asset(
                         'assets/images/life_dashboard_bg.png',
                         fit: BoxFit.cover,
-                        filterQuality: FilterQuality.high,
-                        errorBuilder: (_, __, ___) =>
-                            Container(color: Colors.black),
                       ),
                     ),
 
-                    // Overlay leve (sem “caixa”)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: Container(
-                          color: Colors.black.withValues(alpha: 0.22),
-                        ),
-                      ),
-                    ),
-
-                    // Personagem (topo)
+                    /// 🔥 HUD (CORRIGIDO)
                     Positioned(
-                      left: (w - avatarW) / 2,
-                      top: 28,
-                      width: avatarW,
-                      height: avatarH,
-                      child: IgnorePointer(
-                        child: ClipRect(
-                          child: Align(
-                            alignment: character.alignment,
-                            widthFactor: character.cropWidthFactor,
-                            heightFactor: character.cropHeightFactor,
-                            child: Transform.scale(
-                              scale: character.scale,
-                              child: Image.asset(
-                                character.path,
-                                fit: BoxFit.contain,
-                                filterQuality: FilterQuality.high,
-                                errorBuilder: (_, __, ___) =>
-                                    const Center(child: Icon(Icons.person)),
+                      top: 8,
+                      left: 12,
+                      right: 12,
+                      child: SafeArea(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF12121C),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min, // 🔥 FIX
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    avg.toStringAsFixed(0),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  IconButton(
+                                    onPressed: _openCheckin,
+                                    icon: const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
+                              Container(
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: Colors.white10,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: FractionallySizedBox(
+                                  widthFactor: avg / 100,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.green,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
                     ),
 
-                    // Grid dos 9 itens (SEM painel)
+                    /// 👤 PERSONAGEM (MENOR)
+                    Positioned(
+                      top: 120,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Image.asset(
+                          character.path,
+                          height: h * 0.26, // 🔥 MENOR
+                        ),
+                      ),
+                    ),
+
+                    /// 🔥 GRID COLADO NA BOTTOM BAR
                     Positioned(
                       left: 0,
                       right: 0,
-                      bottom: 10,
-                      height: bottomH - 10,
+                      bottom: 4, // 🔥 DISTÂNCIA REAL (quase colado)
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: GridView.builder(
+                          shrinkWrap: true, // 🔥 ESSENCIAL
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: defs.length,
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                                // ✅ boxes menores (mais compactos) sem encolher o ícone
-                                childAspectRatio: 1.25,
+                                mainAxisSpacing: 6,
+                                crossAxisSpacing: 6,
+                                childAspectRatio: 1.7,
                               ),
                           itemBuilder: (context, i) {
                             final def = defs[i];
-                            final score = scores[def.id];
 
-                            return AreaBalloon(
+                            return _AreaCard(
                               icon: def.icon,
-                              score: score,
+                              score: scores[def.id],
                               onTap: () => _openArea(def.id),
                             );
                           },
                         ),
                       ),
                     ),
-
-                    if (scoreSnap.connectionState == ConnectionState.waiting)
-                      const Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 18,
-                        child: Center(
-                          child: SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      ),
                   ],
                 );
               },
@@ -203,6 +214,49 @@ class _AreasTabState extends State<AreasTab> {
           },
         );
       },
+    );
+  }
+}
+
+/// 🔥 CARD FINAL
+class _AreaCard extends StatelessWidget {
+  const _AreaCard({
+    required this.icon,
+    required this.score,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final int? score;
+  final VoidCallback onTap;
+
+  Color _color() {
+    if (score == null) return Colors.grey;
+    if (score! >= 80) return Colors.green;
+    if (score! >= 50) return Colors.orange;
+    return Colors.red;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _color();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: RadialGradient(
+            colors: [
+              c.withValues(alpha: 0.35),
+              Colors.black.withValues(alpha: 0.7),
+            ],
+            radius: 1.1,
+          ),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Center(child: Icon(icon, color: c, size: 32)),
+      ),
     );
   }
 }
