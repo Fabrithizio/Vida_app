@@ -1,22 +1,22 @@
 // ============================================================================
 // AREAS TAB
-// - layout base mantido
-// - painel superior colado no topo
-// - nome do usuário no topo
-// - "Áreas feitas" -> "Status definidos"
-// - "Média atual" -> "Classificação"
-// - personagem com tamanho 0.55
+// Fixes:
+// - Gender: lê por UID ('${uid}:gender') + fallback legado ('gender')
+// - Parsing: aceita homem/masculino e mulher/feminino
+// - Init: só carrega scores depois de descobrir o sexo
+// - Nome: usa nickname_<uid> (SessionStorage) + fallback displayName/email
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:vida_app/features/areas/areas_store.dart';
-
 import 'package:vida_app/features/home/presentation/tabs/areas/area_detail_page.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_sheet.dart';
+import 'package:vida_app/data/local/session_storage.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({super.key});
@@ -33,38 +33,61 @@ class _AreasTabState extends State<AreasTab> {
   late Future<String> _nameFuture;
 
   UserSex _currentSex = UserSex.female;
-  String _currentName = 'Usuário';
 
   @override
   void initState() {
     super.initState();
     _sexFuture = _loadUserSex();
     _nameFuture = _loadUserName();
-    _scoreFuture = _loadScores(_currentSex);
+
+    // ✅ scores só depois de descobrir o sexo (corrige "sempre homem" por init errado)
+    _scoreFuture = _sexFuture.then((sex) {
+      _currentSex = sex;
+      return _loadScores(sex);
+    });
+  }
+
+  UserSex _parseSex(String raw) {
+    final g = raw.trim().toLowerCase();
+
+    // Mulher/feminino primeiro (evita confusão com valores estranhos)
+    if (g.contains('mulher') || g.contains('femin')) return UserSex.female;
+    if (g.contains('homem') || g.contains('masc')) return UserSex.male;
+
+    return UserSex.female;
   }
 
   Future<UserSex> _loadUserSex() async {
     final prefs = await SharedPreferences.getInstance();
-    final gender = (prefs.getString('gender') ?? '').toLowerCase();
-    final sex = gender.contains('homem') ? UserSex.male : UserSex.female;
-    _currentSex = sex;
-    return sex;
+    final user = FirebaseAuth.instance.currentUser;
+
+    String gender = '';
+
+    if (user != null) {
+      gender = prefs.getString('${user.uid}:gender') ?? '';
+    }
+    if (gender.trim().isEmpty) {
+      // fallback legado
+      gender = prefs.getString('gender') ?? '';
+    }
+
+    return _parseSex(gender);
   }
 
   Future<String> _loadUserName() async {
-    final prefs = await SharedPreferences.getInstance();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return 'Usuário';
 
-    final possibleName =
-        prefs.getString('name') ??
-        prefs.getString('user_name') ??
-        prefs.getString('username') ??
-        prefs.getString('display_name') ??
-        prefs.getString('nome') ??
-        prefs.getString('userNome');
+    final nick = (await SessionStorage().readNickname(user.uid))?.trim() ?? '';
+    if (nick.isNotEmpty) return nick;
 
-    final name = (possibleName ?? '').trim();
-    _currentName = name.isEmpty ? 'Usuário' : name;
-    return _currentName;
+    final display = (user.displayName ?? '').trim();
+    if (display.isNotEmpty) return display;
+
+    final email = (user.email ?? '').trim();
+    if (email.contains('@')) return email.split('@').first;
+
+    return 'Usuário';
   }
 
   Future<Map<String, int?>> _loadScores(UserSex sex) async {
@@ -116,7 +139,13 @@ class _AreasTabState extends State<AreasTab> {
 
     if (!mounted) return;
     setState(() {
-      _scoreFuture = _loadScores(_currentSex);
+      // recarrega tudo (inclusive nome e sexo)
+      _sexFuture = _loadUserSex();
+      _nameFuture = _loadUserName();
+      _scoreFuture = _sexFuture.then((sex) {
+        _currentSex = sex;
+        return _loadScores(sex);
+      });
     });
   }
 
@@ -148,7 +177,6 @@ class _AreasTabState extends State<AreasTab> {
                     final h = c.maxHeight;
                     final w = c.maxWidth;
 
-                    // Painel mais colado no topo.
                     const double hudEstimatedHeight = 108;
                     const double gridBottom = 4;
 
@@ -157,7 +185,6 @@ class _AreasTabState extends State<AreasTab> {
 
                     final double gridTop = h - gridHeight - gridBottom;
 
-                    // Personagem no tamanho pedido.
                     final double characterHeight = h * 0.55;
                     final double safeTop =
                         MediaQuery.of(context).padding.top + hudEstimatedHeight;
@@ -178,7 +205,6 @@ class _AreasTabState extends State<AreasTab> {
                             fit: BoxFit.cover,
                           ),
                         ),
-
                         Positioned(
                           top: -30,
                           left: 6,
@@ -196,7 +222,6 @@ class _AreasTabState extends State<AreasTab> {
                             ),
                           ),
                         ),
-
                         Positioned(
                           top: characterTop,
                           left: 0,
@@ -211,7 +236,6 @@ class _AreasTabState extends State<AreasTab> {
                             ),
                           ),
                         ),
-
                         Positioned(
                           left: 0,
                           right: 0,

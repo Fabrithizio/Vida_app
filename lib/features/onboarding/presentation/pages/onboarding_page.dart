@@ -1,10 +1,16 @@
 // ============================================================================
 // FILE: lib/features/onboarding/presentation/pages/onboarding_page.dart
 //
-// Ajuste:
-// - Suporta pergunta do tipo texto (nickname)
-// - Salva nickname e respostas por UID
-// - Marca onboarding_done_<uid>
+// Onboarding em 2 níveis:
+// - OnboardingStage.personal (perfil): nickname, gender, age
+// - OnboardingStage.life (vida): foco, objetivo, etc.
+//
+// Persistência:
+// - Tudo salvo por UID: '${uid}:${questionId}'
+// - Nickname também salvo em SessionStorage.nickname_<uid>
+// - Flags:
+//   - personal_done_<uid>
+//   - life_done_<uid>
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -12,22 +18,35 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/onboarding/questions.dart';
-import '../../../home/presentation/pages/home_page.dart';
 import '../../../../data/local/session_storage.dart';
+import '../../../home/presentation/pages/home_page.dart';
 
 class OnboardingPage extends StatefulWidget {
-  const OnboardingPage({super.key});
+  const OnboardingPage({super.key, required this.stage});
+
+  final OnboardingStage stage;
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  int currentQuestion = 0;
-  final Map<String, String> answers = {};
+  int _currentIndex = 0;
+  final Map<String, String> _answers = {};
   bool _saving = false;
 
   final TextEditingController _textController = TextEditingController();
+
+  List<Question> get _questions => widget.stage == OnboardingStage.personal
+      ? personalQuestions
+      : lifeQuestions;
+
+  String get _stageTitle =>
+      widget.stage == OnboardingStage.personal ? 'Perfil' : 'Sua vida';
+
+  String _doneKey(String uid) => widget.stage == OnboardingStage.personal
+      ? 'personal_done_$uid'
+      : 'life_done_$uid';
 
   @override
   void dispose() {
@@ -35,7 +54,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     super.dispose();
   }
 
-  Future<void> _finishOnboarding() async {
+  Future<void> _persistAndNext() async {
     setState(() => _saving = true);
 
     final user = FirebaseAuth.instance.currentUser;
@@ -50,21 +69,27 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
     final prefs = await SharedPreferences.getInstance();
 
-    // Salva respostas por UID
-    for (final e in answers.entries) {
+    for (final e in _answers.entries) {
       await prefs.setString('${user.uid}:${e.key}', e.value);
     }
 
-    // ✅ salva nickname em chave dedicada (mais fácil de usar no app)
-    final nickname = answers['nickname']?.trim();
+    final nickname = _answers['nickname']?.trim();
     if (nickname != null && nickname.isNotEmpty) {
       await SessionStorage().saveNickname(user.uid, nickname);
     }
 
-    // Marca onboarding por UID
-    await prefs.setBool('onboarding_done_${user.uid}', true);
+    await prefs.setBool(_doneKey(user.uid), true);
 
     if (!mounted) return;
+
+    if (widget.stage == OnboardingStage.personal) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const OnboardingPage(stage: OnboardingStage.life),
+        ),
+      );
+      return;
+    }
 
     Navigator.of(
       context,
@@ -72,41 +97,50 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   void _goNextOrFinish() {
-    if (currentQuestion < onboardingQuestions.length - 1) {
-      setState(() => currentQuestion++);
+    if (_currentIndex < _questions.length - 1) {
+      setState(() => _currentIndex++);
       return;
     }
-    _finishOnboarding();
+    _persistAndNext();
   }
 
-  Future<void> selectAnswer(String answer) async {
-    if (_saving) return;
-
-    answers[onboardingQuestions[currentQuestion].id] = answer;
-    _goNextOrFinish();
-  }
-
-  Future<void> _submitTextAnswer() async {
-    if (_saving) return;
-
-    final q = onboardingQuestions[currentQuestion];
-    final value = _textController.text.trim();
-
-    if (value.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Digite um nome/apelido para continuar.')),
-      );
-      return;
-    }
-
-    answers[q.id] = value;
+  void _setAnswerAndNext(String value) {
+    _answers[_questions[_currentIndex].id] = value;
     _textController.clear();
     _goNextOrFinish();
   }
 
+  void _submitTextOrNumber() {
+    if (_saving) return;
+
+    final q = _questions[_currentIndex];
+    final raw = _textController.text.trim();
+
+    if (raw.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Preencha para continuar.')));
+      return;
+    }
+
+    if (q.type == QuestionType.number) {
+      final n = int.tryParse(raw);
+      if (n == null || n < 5 || n > 120) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Digite uma idade válida.')),
+        );
+        return;
+      }
+      _setAnswerAndNext(n.toString());
+      return;
+    }
+
+    _setAnswerAndNext(raw);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final question = onboardingQuestions[currentQuestion];
+    final q = _questions[_currentIndex];
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -121,7 +155,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      question.question,
+                      _stageTitle,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      q.question,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
@@ -131,13 +174,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     ),
                     const SizedBox(height: 18),
                     Text(
-                      'Pergunta ${currentQuestion + 1} de ${onboardingQuestions.length}',
+                      'Pergunta ${_currentIndex + 1} de ${_questions.length}',
                       style: const TextStyle(color: Colors.white60),
                     ),
                     const SizedBox(height: 22),
 
-                    if (question.type == QuestionType.options) ...[
-                      ...question.options.map((option) {
+                    if (q.type == QuestionType.options) ...[
+                      ...q.options.map((opt) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: SizedBox(
@@ -150,7 +193,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                               ),
                               onPressed: _saving
                                   ? null
-                                  : () => selectAnswer(option),
+                                  : () => _setAnswerAndNext(opt),
                               child: _saving
                                   ? const SizedBox(
                                       width: 18,
@@ -159,7 +202,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                         strokeWidth: 2,
                                       ),
                                     )
-                                  : Text(option),
+                                  : Text(opt),
                             ),
                           ),
                         );
@@ -168,16 +211,21 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       TextField(
                         controller: _textController,
                         enabled: !_saving,
+                        keyboardType: q.type == QuestionType.number
+                            ? TextInputType.number
+                            : TextInputType.text,
                         textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _submitTextAnswer(),
+                        onSubmitted: (_) => _submitTextOrNumber(),
                         style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          labelText: "Nome/apelido",
-                          labelStyle: TextStyle(color: Colors.green),
-                          enabledBorder: OutlineInputBorder(
+                        decoration: InputDecoration(
+                          labelText: q.type == QuestionType.number
+                              ? 'Idade'
+                              : 'Texto',
+                          labelStyle: const TextStyle(color: Colors.green),
+                          enabledBorder: const OutlineInputBorder(
                             borderSide: BorderSide(color: Colors.green),
                           ),
-                          focusedBorder: OutlineInputBorder(
+                          focusedBorder: const OutlineInputBorder(
                             borderSide: BorderSide(
                               color: Colors.green,
                               width: 2,
@@ -194,7 +242,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.black,
                           ),
-                          onPressed: _saving ? null : _submitTextAnswer,
+                          onPressed: _saving ? null : _submitTextOrNumber,
                           child: _saving
                               ? const SizedBox(
                                   width: 18,
@@ -203,7 +251,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text("Continuar"),
+                              : const Text('Continuar'),
                         ),
                       ),
                     ],

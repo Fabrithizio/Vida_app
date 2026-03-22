@@ -1,9 +1,14 @@
 // ============================================================================
 // FILE: lib/presentation/app/app.dart
 //
-// Localização pt-BR:
-// - Define locale pt_BR para o app inteiro
-// - Ativa delegates de localização (meses/dias/botões em português)
+// Gate profissional:
+// - Se não logado -> LoginPage
+// - Se logado e não fez personal -> Onboarding (personal)
+// - Se logado e não fez life -> Onboarding (life)
+// - Senão -> Home
+//
+// Fix do "parece o mesmo usuário":
+// - Migra/remova chaves globais antigas (gender, focus, goal, age, nickname) para não vazar
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -14,13 +19,42 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_page.dart';
+import '../../core/onboarding/questions.dart';
+import '../../data/local/session_storage.dart';
 
 class VidaApp extends StatelessWidget {
   const VidaApp({super.key});
 
-  Future<bool> onboardingDoneForUser(User user) async {
+  Future<void> _migrateLegacyPrefs(User user) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('onboarding_done_${user.uid}') ?? false;
+    final uid = user.uid;
+
+    // Keys globais antigas que vazam entre usuários
+    const legacyKeys = ['gender', 'focus', 'goal', 'age', 'nickname', 'name'];
+
+    for (final key in legacyKeys) {
+      final legacyVal = prefs.getString(key);
+      if (legacyVal == null || legacyVal.trim().isEmpty) continue;
+
+      final uidKey = '$uid:$key';
+      final already = prefs.getString(uidKey);
+
+      // Migra se o uid ainda não tiver valor
+      if (already == null || already.trim().isEmpty) {
+        await prefs.setString(uidKey, legacyVal);
+        if (key == 'nickname' || key == 'name') {
+          await SessionStorage().saveNickname(uid, legacyVal.trim());
+        }
+      }
+
+      // Remove legado sempre, pra não vazar pra próximo usuário
+      await prefs.remove(key);
+    }
+  }
+
+  Future<bool> _done(User user, String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('${key}_${user.uid}') ?? false;
   }
 
   @override
@@ -30,8 +64,6 @@ class VidaApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Axyo',
-
-      // ✅ pt-BR no app inteiro
       locale: const Locale('pt', 'BR'),
       supportedLocales: const [Locale('pt', 'BR')],
       localizationsDelegates: const [
@@ -39,7 +71,6 @@ class VidaApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -62,28 +93,58 @@ class VidaApp extends StatelessWidget {
       ),
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
 
-          final user = snapshot.data;
+          final user = snap.data;
           if (user == null) return const LoginPage();
 
-          return FutureBuilder<bool>(
-            future: onboardingDoneForUser(user),
-            builder: (context, onboardingSnapshot) {
-              if (onboardingSnapshot.connectionState ==
-                  ConnectionState.waiting) {
+          return FutureBuilder<void>(
+            future: _migrateLegacyPrefs(user),
+            builder: (context, migSnap) {
+              if (migSnap.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
                   body: Center(child: CircularProgressIndicator()),
                 );
               }
 
-              final done = onboardingSnapshot.data ?? false;
-              return done ? const HomePage() : const OnboardingPage();
+              return FutureBuilder<bool>(
+                future: _done(user, 'personal_done'),
+                builder: (context, pSnap) {
+                  if (pSnap.connectionState == ConnectionState.waiting) {
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  final personalDone = pSnap.data ?? false;
+                  if (!personalDone) {
+                    return const OnboardingPage(
+                      stage: OnboardingStage.personal,
+                    );
+                  }
+
+                  return FutureBuilder<bool>(
+                    future: _done(user, 'life_done'),
+                    builder: (context, lSnap) {
+                      if (lSnap.connectionState == ConnectionState.waiting) {
+                        return const Scaffold(
+                          body: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      final lifeDone = lSnap.data ?? false;
+                      return lifeDone
+                          ? const HomePage()
+                          : const OnboardingPage(stage: OnboardingStage.life);
+                    },
+                  );
+                },
+              );
             },
           );
         },
