@@ -1,9 +1,17 @@
 // ============================================================================
 // FILE: lib/presentation/pages/home/tabs/profile_tab.dart
 //
-// Fixes:
-// - "Sair da conta" agora redireciona para LoginPage limpando a stack
-// - Campo "Apelido" (nickname) do app: ler/salvar via SessionStorage
+// Ajustes:
+// - Mostra dados do onboarding por UID (SharedPreferences):
+//   - $uid:dob (ISO yyyy-mm-dd)
+//   - $uid:cpf
+//   - $uid:gender
+//   - $uid:focus
+//   - $uid:goal
+// - Mostra idade calculada a partir do DOB
+// - CPF mascarado
+// - Mantém apelido (SessionStorage.nickname_<uid>)
+// - Logout redireciona para LoginPage (stack limpa)
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -29,11 +37,21 @@ class _ProfileTabState extends State<ProfileTab> {
 
   User? _user;
   PackageInfo? _pkg;
-  bool? _onboardingDoneForUser;
 
   String _nickname = '-';
   final _nicknameCtrl = TextEditingController();
   bool _savingNickname = false;
+
+  // Onboarding / perfil do app (por UID)
+  String _gender = '-';
+  String _focus = '-';
+  String _goal = '-';
+  String _dobLabel = '-';
+  String _ageLabel = '-';
+  String _cpfMasked = '-';
+
+  bool _personalDone = false;
+  bool _lifeDone = false;
 
   @override
   void initState() {
@@ -47,31 +65,108 @@ class _ProfileTabState extends State<ProfileTab> {
     super.dispose();
   }
 
+  String _maskCpf(String raw) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 11) return '-';
+    // ***.***.***-12 (mostra só os 2 últimos)
+    return '***.***.***-${digits.substring(9, 11)}';
+  }
+
+  DateTime? _parseIsoDob(String iso) {
+    if (iso.trim().isEmpty) return null;
+    try {
+      return DateTime.parse(iso.trim());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _ageFromDob(DateTime dob) {
+    final now = DateTime.now();
+    var age = now.year - dob.year;
+    final hadBirthday =
+        (now.month > dob.month) ||
+        (now.month == dob.month && now.day >= dob.day);
+    if (!hadBirthday) age--;
+    if (age < 0 || age > 150) return null;
+    return age;
+  }
+
+  String _formatBr(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year.toString().padLeft(4, '0')}';
+
   Future<void> _load() async {
     setState(() => _loading = true);
 
     final user = _auth.currentUser;
     final pkg = await PackageInfo.fromPlatform();
 
-    bool? onboarding;
     String nickname = '-';
+    String gender = '-';
+    String focus = '-';
+    String goal = '-';
+    String dobLabel = '-';
+    String ageLabel = '-';
+    String cpfMasked = '-';
+
+    bool personalDone = false;
+    bool lifeDone = false;
 
     if (user != null) {
       final prefs = await SharedPreferences.getInstance();
-      onboarding = prefs.getBool('onboarding_done_${user.uid}') ?? false;
+      final uid = user.uid;
 
-      final stored = await SessionStorage().readNickname(user.uid);
-      final v = (stored ?? '').trim();
+      // flags (novo)
+      personalDone = prefs.getBool('personal_done_$uid') ?? false;
+      lifeDone = prefs.getBool('life_done_$uid') ?? false;
+
+      // dados por uid
+      gender = (prefs.getString('$uid:gender') ?? '').trim();
+      focus = (prefs.getString('$uid:focus') ?? '').trim();
+      goal = (prefs.getString('$uid:goal') ?? '').trim();
+
+      final dobIso = (prefs.getString('$uid:dob') ?? '').trim();
+      final cpf = (prefs.getString('$uid:cpf') ?? '').trim();
+
+      final storedNick = await SessionStorage().readNickname(uid);
+      final v = (storedNick ?? '').trim();
       nickname = v.isEmpty ? '-' : v;
+
+      // DOB / idade
+      final dob = _parseIsoDob(dobIso);
+      if (dob != null) {
+        dobLabel = _formatBr(dob);
+        final age = _ageFromDob(dob);
+        ageLabel = age == null ? '-' : '$age';
+      }
+
+      // CPF
+      if (cpf.isNotEmpty) cpfMasked = _maskCpf(cpf);
+
+      // defaults bonitos
+      gender = gender.isEmpty ? '-' : gender;
+      focus = focus.isEmpty ? '-' : focus;
+      goal = goal.isEmpty ? '-' : goal;
     }
 
     if (!mounted) return;
     setState(() {
       _user = user;
       _pkg = pkg;
-      _onboardingDoneForUser = onboarding;
+
       _nickname = nickname;
       _nicknameCtrl.text = nickname == '-' ? '' : nickname;
+
+      _gender = gender;
+      _focus = focus;
+      _goal = goal;
+      _dobLabel = dobLabel;
+      _ageLabel = ageLabel;
+      _cpfMasked = cpfMasked;
+
+      _personalDone = personalDone;
+      _lifeDone = lifeDone;
+
       _loading = false;
     });
   }
@@ -116,7 +211,6 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Future<void> _signOut() async {
-    // Ordem: Google -> Firebase (mais estável quando logou via Google)
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}
@@ -127,7 +221,6 @@ class _ProfileTabState extends State<ProfileTab> {
 
     if (!mounted) return;
 
-    // ✅ força voltar pro login e remove tudo da stack
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),
       (_) => false,
@@ -219,6 +312,31 @@ class _ProfileTabState extends State<ProfileTab> {
                         ],
                       ),
                     ),
+                    const Divider(height: 1, color: Colors.white12),
+
+                    // Dados pessoais do onboarding
+                    ListTile(
+                      leading: const Icon(Icons.person, color: Colors.white70),
+                      title: const Text(
+                        'Dados pessoais',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Informações do onboarding (salvas por usuário)',
+                        style: TextStyle(color: Colors.white60),
+                      ),
+                    ),
+                    _InfoRow(label: 'Sexo', value: _gender),
+                    _InfoRow(label: 'Data de nascimento', value: _dobLabel),
+                    _InfoRow(label: 'Idade', value: _ageLabel),
+                    _InfoRow(label: 'CPF', value: _cpfMasked),
+                    const Divider(height: 1, color: Colors.white12),
+                    _InfoRow(label: 'Foco', value: _focus),
+                    _InfoRow(label: 'Objetivo', value: _goal),
+                    const SizedBox(height: 8),
                   ],
                 ),
 
@@ -254,10 +372,14 @@ class _ProfileTabState extends State<ProfileTab> {
                           : (user.emailVerified ? 'Sim' : 'Não'),
                     ),
                     _InfoRow(
-                      label: 'Onboarding concluído',
+                      label: 'Onboarding Perfil',
                       value: user == null
                           ? '-'
-                          : ((_onboardingDoneForUser ?? false) ? 'Sim' : 'Não'),
+                          : (_personalDone ? 'Sim' : 'Não'),
+                    ),
+                    _InfoRow(
+                      label: 'Onboarding Vida',
+                      value: user == null ? '-' : (_lifeDone ? 'Sim' : 'Não'),
                     ),
                   ],
                 ),
@@ -274,7 +396,7 @@ class _ProfileTabState extends State<ProfileTab> {
                         style: TextStyle(color: Colors.white),
                       ),
                       subtitle: const Text(
-                        'Atualiza info do Firebase e o apelido do app',
+                        'Atualiza Firebase + dados do onboarding + apelido',
                         style: TextStyle(color: Colors.white60),
                       ),
                       onTap: _refreshUser,
