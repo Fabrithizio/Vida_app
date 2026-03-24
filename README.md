@@ -1,21 +1,77 @@
-<<<<<<< HEAD
-# vida_app
+🌱 Vida App
 
-A new Flutter project.
+Aplicativo mobile desenvolvido em Flutter com foco em gestão de vida pessoal, ajudando o usuário a acompanhar diferentes áreas da sua vida através de um sistema visual, interativo e gamificado.
 
-## Getting Started
+📱 Sobre o projeto
 
-This project is a starting point for a Flutter application.
+O Vida App tem como objetivo ajudar o usuário a manter equilíbrio entre diferentes aspectos da vida, como saúde, mentalidade, rotina e desenvolvimento pessoal.
 
-A few resources to get you started if this is your first Flutter project:
+A interface gira em torno de um avatar central (representando o usuário) e áreas da vida ao redor, que mudam de estado conforme o tempo e as ações do usuário.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+✨ Funcionalidades atuais
+👤 Avatar do usuário
+Representação visual central
+Base para futura personalização (roupas, cores, etc.)
+🧠 Áreas da vida
+Sistema dividido em múltiplos aspectos (ex: saúde, mental, etc.)
+Cada área possui subáreas (ex: check-ups, hábitos)
+📊 Sistema de status por tempo
+🟢 Verde → em dia
+🟡 Amarelo → atenção
+🔴 Vermelho → atrasado
+📅 Controle manual de eventos
+Usuário pode registrar quando realizou uma ação (ex: consulta médica)
+Status é atualizado automaticamente com base no tempo
+💡 Feedback inteligente
+Cada status possui mensagens personalizadas:
+Verde → "Continue assim"
+Amarelo → "Fique atento"
+Vermelho → "Já faz X dias desde..."
+🎮 Sistema gamificado (em evolução)
+Score geral
+Barra de progresso (XP)
+Evolução futura planejada
+🛠️ Tecnologias utilizadas
+Flutter
+Dart
+Firebase (Auth / Core)
+Hive (armazenamento local)
+Shared Preferences
+Flutter SVG
+Speech to Text
+Local Notifications
+📂 Estrutura do projeto
+lib/
+├── core/           # Configurações e utilidades globais
+├── data/           # Modelos e fontes de dados
+├── presentation/   # UI (telas, widgets, páginas)
+├── services/       # Serviços (notificações, voz, etc.)
+├── features/       # Funcionalidades organizadas por domínio
+🚀 Como rodar o projeto
+# Clonar o repositório
+git clone https://github.com/Fabrithizio/Vida_app.git
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
-# Vida_app
-App focado em organizar a vida cotidiana de maira intuitiva e pessoal
->>>>>>> f0ce7f4b288e98433ca2053e98723919cafc9b6e
+# Entrar na pasta
+cd Vida_app
+
+# Instalar dependências
+flutter pub get
+
+# Rodar o app
+flutter run
+🎯 Objetivo do projeto
+
+Criar um aplicativo que:
+
+Ajude o usuário a cuidar de si mesmo
+Traga clareza sobre sua vida atual
+Use visual, feedback e gamificação para engajamento
+🔮 Próximos passos
+Customização completa do avatar
+Sistema automático de datas (integrações futuras)
+Melhorias visuais na UI
+Sistema de níveis e progressão
+Análises e insights do usuário
+👨‍💻 Autor
+
+Desenvolvido por Fabricio 🚀
