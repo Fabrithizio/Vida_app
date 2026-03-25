@@ -1,10 +1,14 @@
-// lib/presentation/pages/home/tabs/areas/area_assessment_sheet.dart
+// O que esse arquivo faz:
+// Abre o bottom sheet para o usuário escolher o status manual de uma subárea e escrever o motivo quando necessário.
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
+import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
 
 class AreaAssessmentResult {
   const AreaAssessmentResult({required this.assessment, this.clear = false});
+
   final AreaAssessment assessment;
   final bool clear;
 }
@@ -26,7 +30,7 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
   @override
   void initState() {
     super.initState();
-    _status = widget.initial?.status ?? AreaStatus.bom;
+    _status = widget.initial?.status ?? AreaStatus.noData;
     _reason = TextEditingController(text: widget.initial?.reason ?? '');
   }
 
@@ -36,11 +40,15 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
     super.dispose();
   }
 
+  bool get _needsReason =>
+      _status == AreaStatus.attention || _status == AreaStatus.critical;
+
   void _save() {
     final reason = _reason.text.trim();
-    if (_status == AreaStatus.ruim && reason.isEmpty) {
+
+    if (_needsReason && reason.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Se for "Ruim", escreva o motivo.')),
+        const SnackBar(content: Text('Escreva o motivo para esse status.')),
       );
       return;
     }
@@ -49,7 +57,9 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
       AreaAssessmentResult(
         assessment: AreaAssessment(
           status: _status,
-          reason: _status == AreaStatus.ruim ? reason : null,
+          reason: reason.isEmpty ? null : reason,
+          source: AreaDataSource.manual,
+          lastUpdatedAt: DateTime.now(),
         ),
       ),
     );
@@ -58,7 +68,10 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
   void _clear() {
     Navigator.of(context).pop(
       const AreaAssessmentResult(
-        assessment: AreaAssessment(status: AreaStatus.bom),
+        assessment: AreaAssessment(
+          status: AreaStatus.noData,
+          source: AreaDataSource.manual,
+        ),
         clear: true,
       ),
     );
@@ -77,21 +90,42 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
           const SizedBox(height: 12),
           SegmentedButton<AreaStatus>(
             segments: const [
-              ButtonSegment(value: AreaStatus.otimo, label: Text('Ótimo')),
-              ButtonSegment(value: AreaStatus.bom, label: Text('Bom')),
-              ButtonSegment(value: AreaStatus.ruim, label: Text('Ruim')),
+              ButtonSegment<AreaStatus>(
+                value: AreaStatus.excellent,
+                label: Text('Ótimo'),
+                icon: Icon(Icons.sentiment_very_satisfied_rounded),
+              ),
+              ButtonSegment<AreaStatus>(
+                value: AreaStatus.good,
+                label: Text('Bom'),
+                icon: Icon(Icons.thumb_up_alt_rounded),
+              ),
+              ButtonSegment<AreaStatus>(
+                value: AreaStatus.attention,
+                label: Text('Atenção'),
+                icon: Icon(Icons.error_outline_rounded),
+              ),
+              ButtonSegment<AreaStatus>(
+                value: AreaStatus.critical,
+                label: Text('Crítico'),
+                icon: Icon(Icons.warning_amber_rounded),
+              ),
             ],
             selected: {_status},
-            onSelectionChanged: (s) => setState(() => _status = s.first),
+            onSelectionChanged: (selection) {
+              setState(() => _status = selection.first);
+            },
           ),
           const SizedBox(height: 12),
-          if (_status == AreaStatus.ruim)
+          if (_needsReason)
             TextField(
               controller: _reason,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Por que está ruim?',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: _status == AreaStatus.critical
+                    ? 'Por que está crítico?'
+                    : 'Por que precisa de atenção?',
+                border: const OutlineInputBorder(),
               ),
             ),
           const SizedBox(height: 12),

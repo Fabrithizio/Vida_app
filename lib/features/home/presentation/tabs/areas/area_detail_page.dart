@@ -1,20 +1,11 @@
-// ============================================================================
-// FILE: lib/features/home/presentation/tabs/areas/area_detail_page.dart
-//
-// O que faz:
-// - Usa AreasStore.getComputedAssessment() para status dinâmico
-// - Item "checkups": abre BottomSheet com explicação + editar data
-// - Estrutura pronta para adicionar outros itens no mesmo padrão
-// ============================================================================
-
+// O que esse arquivo faz:
+// Mostra os detalhes de uma área e de cada subárea, com explicação do status e ações como atualizar check-up.
 import 'package:flutter/material.dart';
-
-import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_status.dart';
-
-import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
+import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/area_status_dot.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
 
 class AreaDetailPage extends StatefulWidget {
   const AreaDetailPage({super.key, required this.areaId, required this.title});
@@ -39,61 +30,78 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
 
   String _statusTitle(AreaStatus s) {
     switch (s) {
-      case AreaStatus.otimo:
+      case AreaStatus.excellent:
         return 'Ótimo';
-      case AreaStatus.bom:
+      case AreaStatus.good:
+        return 'Bom';
+      case AreaStatus.attention:
         return 'Atenção';
-      case AreaStatus.ruim:
+      case AreaStatus.critical:
         return 'Crítico';
+      case AreaStatus.noData:
+        return 'Sem dados';
     }
   }
 
   String _explain(String areaId, String itemId, AreaAssessment? a) {
-    if (a == null) {
+    if (a == null || a.status == AreaStatus.noData) {
       return 'Sem dados ainda. Preencha essa informação para o app calcular seu status.';
     }
 
-    // CHECKUPS (regra principal do pedido)
     if (areaId == 'body_health' && itemId == 'checkups') {
       switch (a.status) {
-        case AreaStatus.otimo:
+        case AreaStatus.excellent:
           return 'Perfeito. Continue cuidando da sua saúde e mantendo seus check-ups em dia.\n\n${a.reason ?? ''}'
               .trim();
-        case AreaStatus.bom:
-          return 'Fique atento(a). Está na hora de planejar seu próximo check-up para não deixar passar.\n\n${a.reason ?? ''}'
+        case AreaStatus.good:
+          return 'Está em uma faixa boa no momento. Continue acompanhando para não deixar passar.\n\n${a.reason ?? ''}'
               .trim();
-        case AreaStatus.ruim:
+        case AreaStatus.attention:
+          return 'Fique atento(a). Está na hora de planejar seu próximo check-up para não perder o acompanhamento.\n\n${a.reason ?? ''}'
+              .trim();
+        case AreaStatus.critical:
           return 'Importante: faz bastante tempo desde o último check-up. Se possível, agende uma avaliação.\n\n${a.reason ?? ''}'
               .trim();
+        case AreaStatus.noData:
+          return 'Sem dados ainda. Preencha essa informação para o app calcular seu status.';
       }
     }
 
-    // Outros exemplos (fáceis de expandir)
     if (areaId == 'body_health' && itemId == 'sleep') {
       switch (a.status) {
-        case AreaStatus.otimo:
-          return 'Ótimo sono. Manter 7h+ ajuda humor, foco e saúde.\n\n${a.reason ?? ''}'
+        case AreaStatus.excellent:
+          return 'Ótimo sono. Manter boas noites ajuda humor, foco e saúde.\n\n${a.reason ?? ''}'
               .trim();
-        case AreaStatus.bom:
-          return 'Sono ok, mas dá pra melhorar. Tente ajustar rotina e horários.\n\n${a.reason ?? ''}'
+        case AreaStatus.good:
+          return 'Seu sono está bom, mas ainda dá para melhorar a consistência.\n\n${a.reason ?? ''}'
               .trim();
-        case AreaStatus.ruim:
-          return 'Sono muito baixo. Isso impacta energia e saúde. Ajuste aos poucos.\n\n${a.reason ?? ''}'
+        case AreaStatus.attention:
+          return 'Seu sono pede atenção. Ajustar horários e rotina pode ajudar bastante.\n\n${a.reason ?? ''}'
               .trim();
+        case AreaStatus.critical:
+          return 'Sono muito abaixo do ideal. Isso pode impactar energia, foco e saúde.\n\n${a.reason ?? ''}'
+              .trim();
+        case AreaStatus.noData:
+          return 'Sem dados ainda. Preencha essa informação para o app calcular seu status.';
       }
     }
 
     if (areaId == 'digital_tech' && itemId == 'screen_time') {
       switch (a.status) {
-        case AreaStatus.otimo:
+        case AreaStatus.excellent:
           return 'Tempo de tela bem controlado. Continue assim.\n\n${a.reason ?? ''}'
               .trim();
-        case AreaStatus.bom:
-          return 'Moderado. Se estiver atrapalhando sono/foco, reduza um pouco.\n\n${a.reason ?? ''}'
+        case AreaStatus.good:
+          return 'Uso moderado e aceitável. Só mantenha atenção se começar a atrapalhar seu foco.\n\n${a.reason ?? ''}'
               .trim();
-        case AreaStatus.ruim:
-          return 'Alto. Pode afetar sono, foco e ansiedade. Tente reduzir gradualmente.\n\n${a.reason ?? ''}'
+        case AreaStatus.attention:
+          return 'Tempo de tela acima do ideal. Vale reduzir um pouco para proteger foco e rotina.\n\n${a.reason ?? ''}'
               .trim();
+        case AreaStatus.critical:
+          return 'Tempo de tela muito alto. Isso pode afetar sono, foco e ansiedade.\n\n${a.reason ?? ''}'
+              .trim();
+        case AreaStatus.noData:
+          return 'Sem dados ainda. Preencha essa informação para o app calcular seu status.';
       }
     }
 
@@ -108,7 +116,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     String title,
   ) async {
     final a = await _store.getComputedAssessment(areaId, itemId);
-
     if (!mounted) return;
 
     await showModalBottomSheet(
@@ -117,6 +124,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
       isScrollControlled: true,
       builder: (_) {
         final status = a?.status;
+
         return Container(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
           decoration: BoxDecoration(
@@ -159,8 +167,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                   style: const TextStyle(color: Colors.white70, height: 1.35),
                 ),
                 const SizedBox(height: 14),
-
-                // ✅ Só checkups tem edição de data por enquanto
                 if (areaId == 'body_health' && itemId == 'checkups') ...[
                   SizedBox(
                     width: double.infinity,
@@ -178,20 +184,20 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                           firstDate: DateTime(now.year - 20),
                           lastDate: now,
                         );
-
                         if (picked == null) return;
 
                         await _store.updateLastCheckupDate(picked);
+
                         if (mounted) setState(() {});
-                        if (Navigator.of(context).canPop())
+                        if (Navigator.of(context).canPop()) {
                           Navigator.of(context).pop();
+                        }
                       },
                       child: const Text('Atualizar data do check-up'),
                     ),
                   ),
                   const SizedBox(height: 10),
                 ],
-
                 SizedBox(
                   width: double.infinity,
                   height: 46,
@@ -280,7 +286,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
             ),
           ),
           const SizedBox(height: 8),
-
           ...def.items.map((it) {
             return FutureBuilder<AreaAssessment?>(
               future: _store.getComputedAssessment(def.id, it.id),
