@@ -100,7 +100,7 @@ final lifeQuestions = <Question>[
   ),
   const Question(
     id: 'study_work',
-    question: 'Você está mais em:',
+    question: 'Onde você passa mais tempo?:',
     type: QuestionType.options,
     optional: true,
     options: ['Estudos', 'Trabalho', 'Ambos', 'Outro'],
