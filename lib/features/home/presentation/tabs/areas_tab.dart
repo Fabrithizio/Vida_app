@@ -193,33 +193,23 @@ class _AreasTabState extends State<AreasTab> {
                         final h = c.maxHeight;
                         final w = c.maxWidth;
 
-                        const double hudEstimatedHeight = 176;
                         const double gridBottom = 4;
+                        const double hudTopGap = 2;
+                        const double hudHeight = 126;
 
                         final double gridHeight =
                             ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
                         final double gridTop = h - gridHeight - gridBottom;
-                        final double characterHeight = h * 0.55;
 
-                        final double safeTop =
-                            MediaQuery.of(context).padding.top +
-                            hudEstimatedHeight;
+                        final double characterHeight = h * 0.47;
+                        final double avatarTopMin =
+                            MediaQuery.of(context).padding.top + hudHeight + 18;
+                        final double avatarTopMax =
+                            gridTop - characterHeight - 4;
 
-                        final double rawCharacterTop =
-                            safeTop +
-                            ((gridTop - safeTop - characterHeight) / 2);
-
-                        final double minCharacterTop =
-                            MediaQuery.of(context).padding.top + 112;
-                        final double maxCharacterTop =
-                            gridTop - characterHeight;
-
-                        final double characterTop =
-                            maxCharacterTop <= minCharacterTop
-                            ? minCharacterTop
-                            : rawCharacterTop
-                                  .clamp(minCharacterTop, maxCharacterTop)
-                                  .toDouble();
+                        final double avatarTop = avatarTopMax <= avatarTopMin
+                            ? avatarTopMin
+                            : ((avatarTopMin + avatarTopMax) / 2);
 
                         return Stack(
                           children: [
@@ -235,13 +225,13 @@ class _AreasTabState extends State<AreasTab> {
                               ),
                             ),
                             Positioned(
-                              top: 4,
+                              top: hudTopGap,
                               left: 8,
                               right: 8,
                               child: SafeArea(
                                 bottom: false,
                                 minimum: EdgeInsets.zero,
-                                child: _TopHud(
+                                child: _TopHudCompact(
                                   userName: userName,
                                   averageScore: avg,
                                   definedStatuses: defined,
@@ -249,14 +239,13 @@ class _AreasTabState extends State<AreasTab> {
                                   classification: classification,
                                   ageInfo: ageInfo,
                                   onCheckinTap: _openCheckin,
-                                  onQuestionsTap: _openCheckin,
                                   onAvatarTap: _openAvatarEditor,
                                   onAlertsTap: _openAlertsCenter,
                                 ),
                               ),
                             ),
                             Positioned(
-                              top: characterTop,
+                              top: avatarTop,
                               left: 0,
                               right: 0,
                               child: IgnorePointer(
@@ -314,8 +303,8 @@ class _AreasTabState extends State<AreasTab> {
   }
 }
 
-class _TopHud extends StatelessWidget {
-  const _TopHud({
+class _TopHudCompact extends StatelessWidget {
+  const _TopHudCompact({
     required this.userName,
     required this.averageScore,
     required this.definedStatuses,
@@ -323,7 +312,6 @@ class _TopHud extends StatelessWidget {
     required this.classification,
     required this.ageInfo,
     required this.onCheckinTap,
-    required this.onQuestionsTap,
     required this.onAvatarTap,
     required this.onAlertsTap,
   });
@@ -335,7 +323,6 @@ class _TopHud extends StatelessWidget {
   final String classification;
   final _AgeAccessInfo ageInfo;
   final VoidCallback onCheckinTap;
-  final VoidCallback onQuestionsTap;
   final VoidCallback onAvatarTap;
   final VoidCallback onAlertsTap;
 
@@ -350,20 +337,20 @@ class _TopHud extends StatelessWidget {
     final scoreColor = _scoreColor();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xF0181C30), Color(0xF0101324)],
+          colors: [Color(0xF0141830), Color(0xF00E1225)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x55000000),
-            blurRadius: 18,
-            offset: Offset(0, 8),
+            color: Color(0x45000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
           ),
         ],
       ),
@@ -374,12 +361,12 @@ class _TopHud extends StatelessWidget {
             children: [
               InkWell(
                 onTap: onAvatarTap,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 child: Container(
-                  width: 52,
-                  height: 52,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     color: Colors.white.withValues(alpha: 0.06),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.08),
@@ -391,27 +378,27 @@ class _TopHud extends StatelessWidget {
                         child: Icon(
                           Icons.person_rounded,
                           color: Colors.white,
-                          size: 28,
+                          size: 24,
                         ),
                       ),
                       Positioned(
-                        right: 5,
-                        bottom: 5,
+                        right: 4,
+                        bottom: 4,
                         child: Container(
-                          width: 18,
-                          height: 18,
+                          width: 16,
+                          height: 16,
                           decoration: BoxDecoration(
                             color: const Color(0xFF2563EB),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: const Color(0xFF0F1120),
-                              width: 1.5,
+                              color: const Color(0xFF101423),
+                              width: 1.2,
                             ),
                           ),
                           child: const Icon(
                             Icons.edit_rounded,
                             color: Colors.white,
-                            size: 10,
+                            size: 9,
                           ),
                         ),
                       ),
@@ -419,7 +406,7 @@ class _TopHud extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,7 +417,7 @@ class _TopHud extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 17,
+                        fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -440,30 +427,30 @@ class _TopHud extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
-                            vertical: 4,
+                            vertical: 3,
                           ),
                           decoration: BoxDecoration(
                             color: scoreColor.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
-                              color: scoreColor.withValues(alpha: 0.32),
+                              color: scoreColor.withValues(alpha: 0.30),
                             ),
                           ),
                           child: Text(
                             classification,
                             style: TextStyle(
                               color: scoreColor,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 7),
                         Text(
                           'Painel da vida',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.72),
-                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.68),
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -472,77 +459,61 @@ class _TopHud extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: scoreColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scoreColor.withValues(alpha: 0.30)),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      averageScore.toStringAsFixed(0),
-                      style: TextStyle(
-                        color: scoreColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
+              Row(
+                children: [
+                  _MiniActionButton(
+                    icon: Icons.check_circle_rounded,
+                    onTap: onCheckinTap,
+                  ),
+                  const SizedBox(width: 6),
+                  _MiniActionButton(
+                    icon: Icons.notifications_active_rounded,
+                    onTap: onAlertsTap,
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: scoreColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: scoreColor.withValues(alpha: 0.28),
                       ),
                     ),
-                    Text(
-                      'Score',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.78),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          averageScore.toStringAsFixed(0),
+                          style: TextStyle(
+                            color: scoreColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                          ),
+                        ),
+                        Text(
+                          'Score',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.76),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _HudActionCard(
-                  icon: Icons.quiz_rounded,
-                  title: 'Perguntas',
-                  subtitle: 'do dia',
-                  onTap: onQuestionsTap,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _HudActionCard(
-                  icon: Icons.check_circle_rounded,
-                  title: 'Check-in',
-                  subtitle: 'rápido',
-                  onTap: onCheckinTap,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _HudActionCard(
-                  icon: Icons.notifications_active_rounded,
-                  title: 'Alertas',
-                  subtitle: 'em breve',
-                  onTap: onAlertsTap,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Column(
@@ -552,24 +523,33 @@ class _TopHud extends StatelessWidget {
                     const Icon(
                       Icons.cake_rounded,
                       color: Colors.white,
-                      size: 18,
+                      size: 15,
                     ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Idade atual',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Idade',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.90),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Text(
+                      ageInfo.ageLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                    const Spacer(),
                     if (ageInfo.hasBirthDate)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
+                          horizontal: 7,
+                          vertical: 4,
                         ),
                         decoration: BoxDecoration(
                           color: ageInfo.canUnlock(18)
@@ -580,21 +560,19 @@ class _TopHud extends StatelessWidget {
                             color: ageInfo.canUnlock(18)
                                 ? const Color(
                                     0xFF16A34A,
-                                  ).withValues(alpha: 0.35)
+                                  ).withValues(alpha: 0.34)
                                 : const Color(
                                     0xFFF59E0B,
-                                  ).withValues(alpha: 0.35),
+                                  ).withValues(alpha: 0.34),
                           ),
                         ),
                         child: Text(
-                          ageInfo.canUnlock(18)
-                              ? '18+ liberável'
-                              : '18+ bloqueado',
+                          ageInfo.canUnlock(18) ? '18+' : 'menor',
                           style: TextStyle(
                             color: ageInfo.canUnlock(18)
                                 ? const Color(0xFF86EFAC)
                                 : const Color(0xFFFCD34D),
-                            fontSize: 10,
+                            fontSize: 9,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -602,36 +580,10 @@ class _TopHud extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      ageInfo.ageLabel,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        ageInfo.secondaryLabel,
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
-                    minHeight: 9,
+                    minHeight: 7,
                     value: ageInfo.progressToNextBirthday.clamp(0.0, 1.0),
                     backgroundColor: Colors.white.withValues(alpha: 0.08),
                     valueColor: const AlwaysStoppedAnimation<Color>(
@@ -639,24 +591,27 @@ class _TopHud extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         ageInfo.progressLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          fontSize: 10,
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 9,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
-                      'Áreas avaliadas: $definedStatuses/$totalAreas',
+                      '$definedStatuses/$totalAreas áreas',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.64),
-                        fontSize: 10,
+                        color: Colors.white.withValues(alpha: 0.62),
+                        fontSize: 9,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -671,58 +626,26 @@ class _TopHud extends StatelessWidget {
   }
 }
 
-class _HudActionCard extends StatelessWidget {
-  const _HudActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
+class _MiniActionButton extends StatelessWidget {
+  const _MiniActionButton({required this.icon, required this.onTap});
 
   final IconData icon;
-  final String title;
-  final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
-        child: Column(
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.68),
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
+        child: Icon(icon, color: Colors.white, size: 19),
       ),
     );
   }
@@ -786,20 +709,11 @@ class _AgeAccessInfo {
 
   String get ageLabel => hasBirthDate ? '$age' : '--';
 
-  String get secondaryLabel {
-    if (!hasBirthDate) {
-      return 'Adicione a data de nascimento para ativar a barra.';
-    }
-    return age == 1 ? 'ano' : 'anos';
-  }
-
   String get progressLabel {
-    if (!hasBirthDate) return 'Barra anual indisponível';
-    if (daysUntilBirthday == 0) return 'Hoje é seu aniversário';
-    if (daysUntilBirthday == 1) {
-      return 'Falta 1 dia para o próximo aniversário';
-    }
-    return 'Faltam $daysUntilBirthday dias para o próximo aniversário';
+    if (!hasBirthDate) return 'Sem data de nascimento';
+    if (daysUntilBirthday == 0) return 'Aniversário hoje';
+    if (daysUntilBirthday == 1) return 'Falta 1 dia';
+    return 'Faltam $daysUntilBirthday dias';
   }
 
   bool canUnlock(int minimumAge) => hasBirthDate && age >= minimumAge;
