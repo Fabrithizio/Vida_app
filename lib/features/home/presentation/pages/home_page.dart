@@ -1,11 +1,15 @@
 // ============================================================================
-// FILE: lib/presentation/pages/home/home_page.dart
+// FILE: lib/features/home/presentation/pages/home_page.dart
 //
 // Navegação sem swipe + botão de voz integrado:
 // - Sem PageView
 // - Sem FAB gigante
 // - Botão de voz central menor e estilizado
 // - Navegação apenas por BottomBar
+//
+// ALTERAÇÃO:
+// - Mantido layout original com 5 elementos na barra inferior
+// - Integrado HomeTasksStore sem mexer nas abas existentes
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -13,9 +17,9 @@ import 'package:flutter/material.dart';
 import '../../../shopping/shopping_list_store.dart';
 import '../../../timeline/hive_timeline_repository.dart';
 import '../../../timeline/timeline_store.dart';
+import '../../../home_tasks/home_tasks_store.dart';
 import '../../../../services/voice/voice_command_router.dart';
 import '../../../../presentation/voice/voice_hub_sheet.dart';
-
 import '../tabs/areas_tab.dart';
 import '../tabs/day_tab.dart';
 import '../tabs/profile_tab.dart';
@@ -33,6 +37,7 @@ class _HomePageState extends State<HomePage> {
 
   final ShoppingListStore _shopping = ShoppingListStore();
   final TimelineStore _timeline = TimelineStore(repo: HiveTimelineRepository());
+  final HomeTasksStore _homeTasks = HomeTasksStore();
 
   late final VoiceCommandRouter _router = VoiceCommandRouter(
     shopping: _shopping,
@@ -40,7 +45,11 @@ class _HomePageState extends State<HomePage> {
   );
 
   late final List<Widget> _tabs = [
-    DayTab(shoppingStore: _shopping, timelineStore: _timeline),
+    DayTab(
+      shoppingStore: _shopping,
+      timelineStore: _timeline,
+      homeTasksStore: _homeTasks,
+    ),
     const AreasTab(),
     const FinanceTab(),
     const ProfileTab(),
@@ -49,7 +58,7 @@ class _HomePageState extends State<HomePage> {
   Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
   void _openVoiceHub() {
-    showModalBottomSheet<void>(
+    showModalBottomSheet(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -67,11 +76,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
-      // ✅ Sem swipe
       body: _tabs[_index],
-
-      // ✅ Nova BottomBar com botão de voz integrado
       bottomNavigationBar: Container(
         height: 70,
         decoration: const BoxDecoration(color: Color(0xFF0F0F1A)),
@@ -97,7 +102,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // 🎤 BOTÃO DE VOZ (central, menor e estilizado)
             GestureDetector(
               onTap: _openVoiceHub,
               child: Container(

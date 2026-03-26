@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
+import '../../../../services/notifications/notification_service.dart';
+import '../../../home_tasks/home_tasks_store.dart';
 import '../../../shopping/shopping_list_store.dart';
 import '../../../timeline/timeline_store.dart';
-import '../../../../services/notifications/notification_service.dart';
-import 'shopping_list_sheet.dart';
 import 'day/create_block_sheet.dart';
 import 'day/edit_block_sheet.dart';
 import 'day/timeline_day_view.dart';
 import 'day/timeline_summary_view.dart';
+import 'home_tasks_sheet.dart';
+import 'shopping_list_sheet.dart';
 
 enum TimelineRange { day, week, month, year }
 
@@ -17,10 +19,12 @@ class DayTab extends StatefulWidget {
     super.key,
     required this.shoppingStore,
     required this.timelineStore,
+    required this.homeTasksStore,
   });
 
   final ShoppingListStore shoppingStore;
   final TimelineStore timelineStore;
+  final HomeTasksStore homeTasksStore;
 
   @override
   State<DayTab> createState() => _DayTabState();
@@ -41,6 +45,7 @@ class _DayTabState extends State<DayTab> {
     Future.microtask(() async {
       await _store.load();
       await widget.shoppingStore.load();
+      await widget.homeTasksStore.load();
       if (!mounted) return;
       setState(() => _loading = false);
     });
@@ -171,6 +176,17 @@ class _DayTabState extends State<DayTab> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => ShoppingListSheet(store: widget.shoppingStore),
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _openHomeTasks() async {
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => HomeTasksSheet(store: widget.homeTasksStore),
     );
     if (!mounted) return;
     setState(() {});
@@ -446,6 +462,11 @@ class _DayTabState extends State<DayTab> {
                     tooltip: 'Lista de compras',
                     onPressed: _openShopping,
                     icon: const Icon(Icons.shopping_cart_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Casa & organização',
+                    onPressed: _openHomeTasks,
+                    icon: const Icon(Icons.home_repair_service_outlined),
                   ),
                   IconButton(
                     tooltip: 'Adicionar',
