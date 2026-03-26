@@ -1,11 +1,28 @@
+// ============================================================================
+// FILE: lib/features/home/presentation/tabs/areas_tab.dart
+//
+// O que faz:
+// - Mostra a aba Areas com avatar, top bar e grid das áreas
+// - Exibe score geral, idade e barra anual
+// - Abre detalhes de cada área
+// - Bloqueia o uso do Areas até o usuário responder o check-in diário
+//
+// Ajustes desta versão:
+// - Corrigido o gate diário com navegação fullscreen em vez de showDialog
+// - Removidas interpolações desnecessárias com uid
+// - Mantido o layout compacto da top bar
+// ============================================================================
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
+import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/area_detail_page.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_overlay.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_sheet.dart';
 
 class AreasTab extends StatefulWidget {
@@ -18,6 +35,9 @@ class AreasTab extends StatefulWidget {
 class _AreasTabState extends State<AreasTab> {
   final AreasStore _store = AreasStore();
   final SessionStorage _session = SessionStorage();
+  final DailyCheckinService _dailyCheckinService = DailyCheckinService();
+
+  bool _dailyGateAlreadyChecked = false;
 
   late Future<UserSex> _sexFuture;
   late Future<Map<String, int?>> _scoreFuture;
@@ -28,15 +48,19 @@ class _AreasTabState extends State<AreasTab> {
   void initState() {
     super.initState();
     _refreshState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDailyGate();
+    });
   }
 
   void _refreshState() {
     _sexFuture = _loadUserSex();
     _nameFuture = _loadUserName();
     _birthDateFuture = _loadBirthDate();
-    _scoreFuture = _sexFuture.then((sex) async {
+    _scoreFuture = _sexFuture.then((_) async {
       await _store.ensureBootstrappedFromOnboarding();
-      return _loadScores(sex);
+      return _loadScores();
     });
   }
 
@@ -52,7 +76,8 @@ class _AreasTabState extends State<AreasTab> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return UserSex.female;
 
-    final gender = (prefs.getString('${user.uid}:gender') ?? '').trim();
+    final uid = user.uid;
+    final gender = (prefs.getString('$uid:gender') ?? '').trim();
     return _parseSex(gender);
   }
 
@@ -77,19 +102,20 @@ class _AreasTabState extends State<AreasTab> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
 
+    final uid = user.uid;
     final raw =
-        prefs.getString('birth_date_${user.uid}') ??
-        prefs.getString('${user.uid}:birthDate') ??
-        prefs.getString('${user.uid}:birthdate') ??
-        prefs.getString('${user.uid}:dateOfBirth') ??
-        prefs.getString('${user.uid}:dob');
+        prefs.getString('birth_date_$uid') ??
+        prefs.getString('$uid:birthDate') ??
+        prefs.getString('$uid:birthdate') ??
+        prefs.getString('$uid:dateOfBirth') ??
+        prefs.getString('$uid:dob');
 
     if (raw == null || raw.trim().isEmpty) return null;
 
     return DateTime.tryParse(raw.trim());
   }
 
-  Future<Map<String, int?>> _loadScores(UserSex sex) async {
+  Future<Map<String, int?>> _loadScores() async {
     final defs = AreasCatalog.all();
     final map = <String, int?>{};
 
@@ -120,13 +146,16 @@ class _AreasTabState extends State<AreasTab> {
     return 'Inicial';
   }
 
-  void _openCheckin() {
-    showModalBottomSheet(
+  Future<void> _openCheckin() async {
+    await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => const DailyCheckinSheet(),
     );
+
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _showSoonMessage(String text) {
@@ -155,6 +184,35 @@ class _AreasTabState extends State<AreasTab> {
 
     if (!mounted) return;
     setState(_refreshState);
+  }
+
+  Future<void> _checkDailyGate() async {
+    if (_dailyGateAlreadyChecked) return;
+
+    final today = DateTime.now();
+    final canUse = await _dailyCheckinService.canUseAreas(today);
+
+    if (!mounted) return;
+    _dailyGateAlreadyChecked = true;
+
+    if (canUse) return;
+
+    final unlocked = await Navigator.of(context).push<bool>(
+      PageRouteBuilder<bool>(
+        opaque: false,
+        barrierDismissible: false,
+        pageBuilder: (_, __, ___) => const DailyCheckinOverlay(),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (unlocked == true) {
+      setState(() {});
+    }
   }
 
   @override

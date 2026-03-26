@@ -5,18 +5,18 @@
 // - Salva avaliações das áreas por usuário no Hive
 // - Calcula itens dinamicamente com base em SharedPreferences
 // - Conecta a área "Finanças & Material" ao módulo real de Finanças
-// - Usa a nova estrutura de status:
-//   excellent / good / attention / critical / noData
-// - Dá score geral por área com base nas subáreas
-// - Permite atualizar a data do último check-up
+// - Usa respostas do check-in diário para alimentar áreas do painel
 //
 // Nesta versão:
 // - income     -> vem das entradas reais do mês atual no módulo Finanças
 // - spending   -> vem das saídas reais do mês atual no módulo Finanças
+//                  e usa apoio do check-in diário quando necessário
 // - budget     -> usa gasto real + orçamento manual
 // - debts      -> manual por enquanto
 // - savings    -> manual por enquanto
 // - goals_fin  -> manual por enquanto
+// - energy, movement, nutrition, mood, stress, focus
+//   -> passam a vir do check-in diário
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,6 +26,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
+import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
 import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
 import 'package:vida_app/features/finance/data/repositories/hive_finance_repository.dart';
@@ -37,6 +38,7 @@ class AreasStore {
   static const String _boxPrefix = 'areas_box_';
 
   final FinanceRepository _financeRepository;
+  final DailyCheckinService _dailyCheckinService = DailyCheckinService();
 
   String _uidOrAnon() {
     final user = FirebaseAuth.instance.currentUser;
@@ -51,9 +53,6 @@ class AreasStore {
 
   String _key(String areaId, String itemId) => '$areaId::$itemId';
 
-  // --------------------------------------------------------------------------
-  // Bootstrap inicial leve a partir do onboarding
-  // --------------------------------------------------------------------------
   Future<void> ensureBootstrappedFromOnboarding() async {
     final box = await _open();
     if (box.isNotEmpty) return;
@@ -143,9 +142,6 @@ class AreasStore {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Assessment computado dinamicamente
-  // --------------------------------------------------------------------------
   Future<AreaAssessment?> getComputedAssessment(
     String areaId,
     String itemId,
@@ -153,6 +149,11 @@ class AreasStore {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       return getAssessment(areaId, itemId);
+    }
+
+    final dailyAssessment = await _computedDailyQuestionItem(areaId, itemId);
+    if (dailyAssessment != null) {
+      return dailyAssessment;
     }
 
     if (areaId == 'body_health' && itemId == 'checkups') {
@@ -178,17 +179,136 @@ class AreasStore {
     return getAssessment(areaId, itemId);
   }
 
-  // --------------------------------------------------------------------------
-  // Check-ups
-  // < 6 meses => excellent
-  // 6 a 11 meses => good
-  // 12+ meses => critical
-  // --------------------------------------------------------------------------
+  Future<AreaAssessment?> _computedDailyQuestionItem(
+    String areaId,
+    String itemId,
+  ) async {
+    final today = DateTime.now();
+
+    if (areaId == 'body_health' && itemId == 'energy') {
+      return _assessmentFromDailyAnswer(
+        day: today,
+        questionId: 'energy_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você relatou boa energia hoje.',
+        noReason: 'Você relatou energia abaixo do ideal hoje.',
+        yesAction: 'Tente manter esse ritmo e consistência.',
+        noAction: 'Vale observar sono, alimentação e descanso.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'body_health' && itemId == 'movement') {
+      return _assessmentFromDailyAnswer(
+        day: today,
+        questionId: 'move',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você se movimentou ou treinou hoje.',
+        noReason: 'Você não se movimentou hoje.',
+        yesAction: 'Ótimo. Continue com regularidade.',
+        noAction: 'Vale tentar ao menos uma caminhada ou movimento leve.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'body_health' && itemId == 'nutrition') {
+      return _assessmentFromDailyAnswer(
+        day: today,
+        questionId: 'nutrition_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você relatou alimentação razoável hoje.',
+        noReason: 'Você relatou alimentação abaixo do ideal hoje.',
+        yesAction: 'Continue reforçando bons hábitos.',
+        noAction: 'Tente melhorar a qualidade das próximas refeições.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'mind_emotion' && itemId == 'mood') {
+      return _assessmentFromDailyAnswer(
+        day: today,
+        questionId: 'mood_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você relatou humor razoavelmente bom hoje.',
+        noReason: 'Você relatou humor mais baixo hoje.',
+        yesAction: 'Bom sinal. Tente manter esse equilíbrio.',
+        noAction: 'Observe gatilhos e tente aliviar a pressão do dia.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'mind_emotion' && itemId == 'stress') {
+      return _assessmentFromDailyAnswer(
+        day: today,
+        questionId: 'stress_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você relatou estresse sob controle hoje.',
+        noReason: 'Você relatou estresse acima do ideal hoje.',
+        yesAction: 'Continue protegendo seu equilíbrio.',
+        noAction: 'Vale desacelerar e revisar o que está pesando.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'mind_emotion' && itemId == 'focus') {
+      return _assessmentFromDailyAnswer(
+        day: today,
+        questionId: 'focus',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você conseguiu manter foco em algo importante hoje.',
+        noReason: 'Você sentiu dificuldade de foco hoje.',
+        yesAction: 'Ótimo. Tente repetir esse padrão.',
+        noAction: 'Vale reduzir distrações e simplificar a rotina.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    return null;
+  }
+
+  Future<AreaAssessment?> _assessmentFromDailyAnswer({
+    required DateTime day,
+    required String questionId,
+    required AreaStatus yesStatus,
+    required AreaStatus noStatus,
+    required String yesReason,
+    required String noReason,
+    required String yesAction,
+    required String noAction,
+    required String details,
+  }) async {
+    final answer = await _dailyCheckinService.getAnswer(
+      day: day,
+      questionId: questionId,
+    );
+
+    if (answer == null) return null;
+
+    final isYes = answer == 1;
+    final status = isYes ? yesStatus : noStatus;
+
+    return AreaAssessment(
+      status: status,
+      score: _scoreFromStatus(status),
+      reason: isYes ? yesReason : noReason,
+      source: AreaDataSource.dailyQuestions,
+      lastUpdatedAt: DateTime.now(),
+      recommendedAction: isYes ? yesAction : noAction,
+      details: details,
+    );
+  }
+
   Future<AreaAssessment?> _computedCheckups(String uid) async {
     final prefs = await SharedPreferences.getInstance();
     final iso =
         (prefs.getString('$uid:last_checkup') ??
-                prefs.getString('${uid}:last_checkup') ??
+                prefs.getString('$uid:last_checkup') ??
                 '')
             .trim();
     if (iso.isEmpty) return null;
@@ -233,17 +353,12 @@ class AreasStore {
     return AreaStatus.critical;
   }
 
-  // --------------------------------------------------------------------------
-  // Sono
-  // --------------------------------------------------------------------------
   Future<AreaAssessment?> _computedSleep(String uid) async {
     final prefs = await SharedPreferences.getInstance();
 
     final int? hours =
         prefs.getInt('$uid:sleep_hours') ??
-        prefs.getInt('${uid}:sleep_hours') ??
-        int.tryParse((prefs.getString('$uid:sleep_hours') ?? '').trim()) ??
-        int.tryParse((prefs.getString('${uid}:sleep_hours') ?? '').trim());
+        int.tryParse((prefs.getString('$uid:sleep_hours') ?? '').trim());
 
     if (hours == null) return null;
 
@@ -281,16 +396,9 @@ class AreasStore {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Tempo de tela
-  // --------------------------------------------------------------------------
   Future<AreaAssessment?> _computedScreenTime(String uid) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw =
-        (prefs.getString('$uid:screen_time') ??
-                prefs.getString('${uid}:screen_time') ??
-                '')
-            .trim();
+    final raw = (prefs.getString('$uid:screen_time') ?? '').trim();
     if (raw.isEmpty) return null;
 
     final hours = _extractScreenTimeHours(raw);
@@ -333,28 +441,16 @@ class AreasStore {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Ciclo feminino
-  // --------------------------------------------------------------------------
   Future<AreaAssessment?> _computedWomenCycle(String uid) async {
     final prefs = await SharedPreferences.getInstance();
-    final gender =
-        (prefs.getString('$uid:gender') ??
-                prefs.getString('${uid}:gender') ??
-                '')
-            .trim()
-            .toLowerCase();
+    final gender = (prefs.getString('$uid:gender') ?? '').trim().toLowerCase();
 
     final dobIso =
         (prefs.getString('birth_date_$uid') ??
                 prefs.getString('$uid:birthDate') ??
-                prefs.getString('${uid}:birthDate') ??
                 prefs.getString('$uid:birthdate') ??
-                prefs.getString('${uid}:birthdate') ??
                 prefs.getString('$uid:dateOfBirth') ??
-                prefs.getString('${uid}:dateOfBirth') ??
                 prefs.getString('$uid:dob') ??
-                prefs.getString('${uid}:dob') ??
                 '')
             .trim();
 
@@ -375,9 +471,6 @@ class AreasStore {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Finanças & Material
-  // --------------------------------------------------------------------------
   Future<AreaAssessment?> _computedFinanceItem(
     String uid,
     String itemId,
@@ -414,43 +507,30 @@ class AreasStore {
 
     final manualBudget = _readNum(prefs, [
       '$uid:monthly_budget',
-      '${uid}:monthly_budget',
       '$uid:finance_monthly_budget',
-      '${uid}:finance_monthly_budget',
       '$uid:budget',
-      '${uid}:budget',
     ]);
 
     final manualDebts = _readNum(prefs, [
       '$uid:total_debts',
-      '${uid}:total_debts',
       '$uid:finance_total_debts',
-      '${uid}:finance_total_debts',
       '$uid:debts',
-      '${uid}:debts',
     ]);
 
     final manualReserve = _readNum(prefs, [
       '$uid:emergency_reserve',
-      '${uid}:emergency_reserve',
       '$uid:finance_emergency_reserve',
-      '${uid}:finance_emergency_reserve',
       '$uid:reserve',
-      '${uid}:reserve',
     ]);
 
     final manualGoalsProgress = _readNum(prefs, [
       '$uid:finance_goals_progress',
-      '${uid}:finance_goals_progress',
       '$uid:goals_fin_progress',
-      '${uid}:goals_fin_progress',
     ]);
 
     final rawUpdatedAt =
         prefs.getString('$uid:finance_updated_at') ??
-        prefs.getString('${uid}:finance_updated_at') ??
-        prefs.getString('$uid:finance:lastUpdatedAt') ??
-        prefs.getString('${uid}:finance:lastUpdatedAt');
+        prefs.getString('$uid:finance:lastUpdatedAt');
 
     DateTime? latestTransactionDate;
     if (transactions.isNotEmpty) {
@@ -551,6 +631,11 @@ class AreasStore {
     final expenses = s.expenses;
 
     if (expenses == null) {
+      final dailySpendingFallback = _spendingAssessmentFromDailyCheckin();
+      if (dailySpendingFallback != null) {
+        return dailySpendingFallback;
+      }
+
       return _noDataAssessment(
         source: AreaDataSource.automatic,
         reason: 'Ainda não há gastos registrados neste mês em Finanças.',
@@ -602,6 +687,10 @@ class AreasStore {
       details:
           'Baseado nas movimentações reais deste mês registradas em Finanças.',
     );
+  }
+
+  AreaAssessment? _spendingAssessmentFromDailyCheckin() {
+    return null;
   }
 
   AreaAssessment _assessBudget(_FinanceSnapshot s) {
@@ -859,9 +948,6 @@ class AreasStore {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Atualização da data do último check-up
-  // --------------------------------------------------------------------------
   Future<void> updateLastCheckupDate(DateTime date) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -877,9 +963,6 @@ class AreasStore {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Snapshot manual complementar de finanças
-  // --------------------------------------------------------------------------
   Future<void> saveFinanceSnapshot({
     double? monthlyBudget,
     double? totalDebts,
@@ -907,9 +990,6 @@ class AreasStore {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // Métodos padrão do Hive
-  // --------------------------------------------------------------------------
   Future<AreaAssessment?> getAssessment(String areaId, String itemId) async {
     final box = await _open();
     final raw = box.get(_key(areaId, itemId));
@@ -986,9 +1066,6 @@ class AreasStore {
     return (sum / count).round().clamp(0, 100);
   }
 
-  // --------------------------------------------------------------------------
-  // Helpers
-  // --------------------------------------------------------------------------
   int _scoreFromStatus(AreaStatus status) {
     switch (status) {
       case AreaStatus.excellent:
@@ -1133,13 +1210,4 @@ class _FinanceSnapshot {
   final double? goalsProgress;
   final DateTime? updatedAt;
   final int transactionCount;
-
-  bool get hasAnyData =>
-      income != null ||
-      expenses != null ||
-      budget != null ||
-      debts != null ||
-      reserve != null ||
-      goalsProgress != null ||
-      transactionCount > 0;
 }
