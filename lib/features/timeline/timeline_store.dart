@@ -1,16 +1,10 @@
-// ============================================================================
-// FILE: lib/features/timeline/timeline_store.dart
-//
-// Store da Timeline:
-// - Agora agenda/cancela notificações quando cria/edita/remove eventos
-// - Sem isso, você cria evento e NUNCA será notificado
-// ============================================================================
+import 'package:flutter/foundation.dart';
 
 import '../../data/models/timeline_block.dart';
 import '../../services/notifications/notification_service.dart';
 import 'timeline_repository.dart';
 
-class TimelineStore {
+class TimelineStore extends ChangeNotifier {
   TimelineStore({required TimelineRepository repo}) : _repo = repo;
 
   final TimelineRepository _repo;
@@ -23,10 +17,11 @@ class TimelineStore {
       ..clear()
       ..addAll(await _repo.loadAll());
 
-    // Reagenda eventos futuros (seguro: mesmo ID sobrescreve)
     for (final b in _items) {
-      await NotificationService.instance.scheduleTenMinutesBefore(b);
+      await NotificationService.instance.scheduleForBlock(b);
     }
+
+    notifyListeners();
   }
 
   Future<void> _persist() async {
@@ -36,20 +31,53 @@ class TimelineStore {
   Future<void> add(TimelineBlock block) async {
     _items.add(block);
     await _persist();
+    await NotificationService.instance.scheduleForBlock(block);
+    notifyListeners();
+  }
 
-    await NotificationService.instance.scheduleTenMinutesBefore(block);
+  Future<void> update(TimelineBlock updated) async {
+    final i = _items.indexWhere((e) => e.id == updated.id);
+    if (i == -1) return;
+
+    _items[i] = updated;
+    await _persist();
+    await NotificationService.instance.cancelForBlock(updated.id);
+    await NotificationService.instance.scheduleForBlock(updated);
+    notifyListeners();
+  }
+
+  Future<void> toggleDone(String id) async {
+    final i = _items.indexWhere((e) => e.id == id);
+    if (i == -1) return;
+
+    final item = _items[i];
+    _items[i] = item.copyWith(isDone: !item.isDone);
+
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> removeById(String id) async {
+    _items.removeWhere((e) => e.id == id);
+    await _persist();
+    await NotificationService.instance.cancelForBlock(id);
+    notifyListeners();
+  }
+
+  DateTime _d(DateTime x) => DateTime(x.year, x.month, x.day);
+
+  TimelineBlock _occurrenceForDay(TimelineBlock base, DateTime day) {
+    return base.repeatType == TimelineRepeatType.none
+        ? base
+        : base.copyForDay(day);
   }
 
   List<TimelineBlock> itemsForDay(DateTime day) {
-    final d0 = DateTime(day.year, day.month, day.day);
-    final d1 = d0.add(const Duration(days: 1));
+    final target = _d(day);
 
     final list = _items
-        .where(
-          (e) =>
-              e.start.isAfter(d0.subtract(const Duration(seconds: 1))) &&
-              e.start.isBefore(d1),
-        )
+        .where((e) => e.occursOn(target))
+        .map((e) => _occurrenceForDay(e, target))
         .toList();
 
     list.sort((a, b) => a.start.compareTo(b.start));
@@ -57,41 +85,18 @@ class TimelineStore {
   }
 
   List<TimelineBlock> itemsBetween(DateTime start, DateTime endExclusive) {
-    final list = _items
-        .where(
-          (e) => !e.start.isBefore(start) && e.start.isBefore(endExclusive),
-        )
-        .toList();
+    final out = <TimelineBlock>[];
 
-    list.sort((a, b) => a.start.compareTo(b.start));
-    return list;
-  }
+    DateTime cursor = _d(start);
+    final endDay = _d(endExclusive);
 
-  Future<bool> update(TimelineBlock updated) async {
-    final i = _items.indexWhere((e) => e.id == updated.id);
-    if (i == -1) return false;
-
-    _items[i] = updated;
-    await _persist();
-
-    // Atualiza notificação (cancela e agenda de novo)
-    await NotificationService.instance.cancelForBlock(updated.id);
-    await NotificationService.instance.scheduleTenMinutesBefore(updated);
-
-    return true;
-  }
-
-  Future<bool> removeById(String id) async {
-    final before = _items.length;
-    _items.removeWhere((e) => e.id == id);
-    final changed = _items.length != before;
-
-    if (changed) {
-      await _persist();
-      await NotificationService.instance.cancelForBlock(id);
+    while (cursor.isBefore(endDay)) {
+      out.addAll(itemsForDay(cursor));
+      cursor = cursor.add(const Duration(days: 1));
     }
 
-    return changed;
+    out.sort((a, b) => a.start.compareTo(b.start));
+    return out;
   }
 
   DateTime _endOrDefault(TimelineBlock b) =>
@@ -106,7 +111,9 @@ class TimelineStore {
   }
 
   bool hasConflict(TimelineBlock candidate, {String? excludeId}) {
-    for (final e in _items) {
+    final dayItems = itemsForDay(candidate.start);
+
+    for (final e in dayItems) {
       if (excludeId != null && e.id == excludeId) continue;
       if (_overlaps(e, candidate)) return true;
     }

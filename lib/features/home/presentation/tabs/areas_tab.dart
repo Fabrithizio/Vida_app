@@ -44,6 +44,11 @@ class _AreasTabState extends State<AreasTab> {
   late Future<String> _nameFuture;
   late Future<DateTime?> _birthDateFuture;
 
+  UserSex? _resolvedSex;
+  String? _resolvedName;
+  DateTime? _resolvedBirthDate;
+  Map<String, int?>? _resolvedScores;
+
   @override
   void initState() {
     super.initState();
@@ -55,13 +60,30 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   void _refreshState() {
-    _sexFuture = _loadUserSex();
-    _nameFuture = _loadUserName();
-    _birthDateFuture = _loadBirthDate();
-    _scoreFuture = _sexFuture.then((_) async {
-      await _store.ensureBootstrappedFromOnboarding();
-      return _loadScores();
+    _sexFuture = _loadUserSex().then((value) {
+      _resolvedSex = value;
+      return value;
     });
+
+    _nameFuture = _loadUserName().then((value) {
+      _resolvedName = value;
+      return value;
+    });
+
+    _birthDateFuture = _loadBirthDate().then((value) {
+      _resolvedBirthDate = value;
+      return value;
+    });
+
+    _scoreFuture = _sexFuture
+        .then((_) async {
+          await _store.ensureBootstrappedFromOnboarding();
+          return _loadScores();
+        })
+        .then((value) {
+          _resolvedScores = value;
+          return value;
+        });
   }
 
   UserSex _parseSex(String raw) {
@@ -221,27 +243,34 @@ class _AreasTabState extends State<AreasTab> {
 
     return FutureBuilder<UserSex>(
       future: _sexFuture,
+      initialData: _resolvedSex,
       builder: (context, sexSnap) {
-        final sex = sexSnap.data ?? UserSex.female;
+        final sex = sexSnap.data ?? _resolvedSex ?? UserSex.female;
         final character = AreasModelAssets.character(sex);
 
         return FutureBuilder<String>(
           future: _nameFuture,
+          initialData: _resolvedName,
           builder: (context, nameSnap) {
-            final userName = (nameSnap.data ?? 'Usuário').trim();
+            final userName = (nameSnap.data ?? _resolvedName ?? 'Usuário')
+                .trim();
 
             return FutureBuilder<DateTime?>(
               future: _birthDateFuture,
+              initialData: _resolvedBirthDate,
               builder: (context, birthSnap) {
                 final ageInfo = _AgeAccessInfo.fromBirthDate(
-                  birthSnap.data,
+                  birthSnap.data ?? _resolvedBirthDate,
                   DateTime.now(),
                 );
 
                 return FutureBuilder<Map<String, int?>>(
                   future: _scoreFuture,
+                  initialData: _resolvedScores,
                   builder: (context, scoreSnap) {
-                    final scores = scoreSnap.data ?? <String, int?>{};
+                    final scores =
+                        scoreSnap.data ?? _resolvedScores ?? <String, int?>{};
+
                     final avg = _averageScore(scores);
                     final defined = _definedStatusesCount(scores);
                     final classification = _classificationLabel(avg);
@@ -257,11 +286,13 @@ class _AreasTabState extends State<AreasTab> {
 
                         final double gridHeight =
                             ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
-                        final double gridTop = h - gridHeight - gridBottom;
 
+                        final double gridTop = h - gridHeight - gridBottom;
                         final double characterHeight = h * 0.47;
+
                         final double avatarTopMin =
                             MediaQuery.of(context).padding.top + hudHeight + 18;
+
                         final double avatarTopMax =
                             gridTop - characterHeight - 4;
 

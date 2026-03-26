@@ -13,15 +13,14 @@ class HiveTimelineRepository implements TimelineRepository {
     return (u?.uid ?? 'anon').trim().isEmpty ? 'anon' : u!.uid;
   }
 
-  Future<Box<dynamic>> _open() async {
-    return Hive.openBox<dynamic>('$_boxPrefix${_uidOrAnon()}');
+  Future<Box> _open() async {
+    return Hive.openBox('$_boxPrefix${_uidOrAnon()}');
   }
 
   @override
   Future<List<TimelineBlock>> loadAll() async {
     final box = await _open();
     final raw = box.get(_key);
-
     if (raw is! List) return [];
 
     return raw
@@ -33,8 +32,7 @@ class HiveTimelineRepository implements TimelineRepository {
   @override
   Future<void> saveAll(List<TimelineBlock> items) async {
     final box = await _open();
-    final raw = items.map(_toMap).toList();
-    await box.put(_key, raw);
+    await box.put(_key, items.map(_toMap).toList());
   }
 
   Map<String, dynamic> _toMap(TimelineBlock b) {
@@ -44,6 +42,13 @@ class HiveTimelineRepository implements TimelineRepository {
       'title': b.title,
       'start': b.start.toIso8601String(),
       'end': b.end?.toIso8601String(),
+      'notes': b.notes,
+      'emoji': b.emoji,
+      'isDone': b.isDone,
+      'reminderMinutes': b.reminderMinutes,
+      'repeatType': b.repeatType.name,
+      'repeatWeekdays': b.repeatWeekdays,
+      'colorValue': b.colorValue,
     };
   }
 
@@ -54,6 +59,17 @@ class HiveTimelineRepository implements TimelineRepository {
       title: m['title'] as String,
       start: DateTime.parse(m['start'] as String),
       end: m['end'] == null ? null : DateTime.parse(m['end'] as String),
+      notes: m['notes'] as String?,
+      emoji: m['emoji'] as String?,
+      isDone: (m['isDone'] as bool?) ?? false,
+      reminderMinutes: (m['reminderMinutes'] as int?) ?? 10,
+      repeatType: TimelineRepeatType.values.byName(
+        (m['repeatType'] as String?) ?? TimelineRepeatType.none.name,
+      ),
+      repeatWeekdays:
+          (m['repeatWeekdays'] as List?)?.whereType<int>().toList() ??
+          const <int>[],
+      colorValue: m['colorValue'] as int?,
     );
   }
 }
