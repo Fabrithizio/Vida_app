@@ -5,6 +5,7 @@
 // - Bloqueia o uso do Areas até responder o check-in do dia
 // - Mostra perguntas rápidas
 // - Fecha automaticamente quando o dia estiver completo
+// - Agora usa seleção adaptativa das perguntas do dia
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -21,24 +22,27 @@ class _DailyCheckinOverlayState extends State<DailyCheckinOverlay> {
   final daily.DailyCheckinService _service = daily.DailyCheckinService();
   final DateTime _day = DateTime.now();
 
-  late final List<daily.DailyQuestion> _questions = _service.questionsForToday(
-    now: _day,
-  );
-
+  List<daily.DailyQuestion> _questions = [];
+  bool _loading = true;
   bool _saving = false;
   int _answered = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadAnsweredCount();
+    _boot();
   }
 
-  Future<void> _loadAnsweredCount() async {
+  Future<void> _boot() async {
+    final questions = await _service.questionsForToday(now: _day);
     final answered = await _service.answeredCount(_day);
+
     if (!mounted) return;
+
     setState(() {
+      _questions = questions;
       _answered = answered;
+      _loading = false;
     });
   }
 
@@ -65,6 +69,13 @@ class _DailyCheckinOverlayState extends State<DailyCheckinOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Color(0xCC000000),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final progress = _questions.isEmpty ? 0.0 : _answered / _questions.length;
     final remaining = (_questions.length - _answered).clamp(
       0,
@@ -117,7 +128,7 @@ class _DailyCheckinOverlayState extends State<DailyCheckinOverlay> {
                   Text(
                     remaining == 0
                         ? 'Tudo certo. Finalizando seu check-in...'
-                        : 'Responda as perguntas rápidas para liberar seu Painel da Vida.',
+                        : 'Hoje o check-in priorizou os pontos que mais merecem atenção.',
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   const SizedBox(height: 12),

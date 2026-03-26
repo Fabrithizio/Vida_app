@@ -4,6 +4,10 @@
 // Card de check-in diário (5 perguntas):
 // - Mostra as perguntas do dia
 // - Permite responder SIM / NÃO (salva offline)
+//
+// ALTERAÇÃO:
+// - Corrigido erro de Future<List<DailyQuestion>>
+// - Agora usa FutureBuilder para carregar perguntas
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -21,46 +25,72 @@ class _DailyCheckinCardState extends State<DailyCheckinCard> {
   final DailyCheckinService _svc = DailyCheckinService();
 
   late final DateTime _day = DateTime.now();
-  late final List<DailyQuestion> _questions = _svc.questionsForToday(now: _day);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F0F1A),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Check-in do dia',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: 14,
+    return FutureBuilder<List<DailyQuestion>>(
+      future: _svc.questionsForToday(now: _day),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 120,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const SizedBox(
+            height: 120,
+            child: Center(
+              child: Text(
+                'Erro ao carregar perguntas',
+                style: TextStyle(color: Colors.white70),
+              ),
             ),
+          );
+        }
+
+        final questions = snapshot.data ?? [];
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F0F1A),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white12),
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'Responda rápido para manter seu Painel atualizado.',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Check-in do dia',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Responda rápido para manter seu Painel atualizado.',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+
+              for (final q in questions) ...[
+                _QuestionRow(
+                  question: q,
+                  day: _day,
+                  svc: _svc,
+                  onChanged: () => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ],
           ),
-          const SizedBox(height: 10),
-          for (final q in _questions) ...[
-            _QuestionRow(
-              question: q,
-              day: _day,
-              svc: _svc,
-              onChanged: () => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 }

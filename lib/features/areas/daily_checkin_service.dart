@@ -6,6 +6,7 @@
 // - Salva respostas por usuário no Hive
 // - Marca o check-in do dia como concluído
 // - Informa se o usuário já pode usar o Areas
+// - Agora escolhe perguntas de forma adaptativa com base no histórico recente
 // ============================================================================
 
 import 'dart:math';
@@ -47,6 +48,7 @@ class DailyCheckinSummary {
 class DailyCheckinService {
   static const String _boxPrefix = 'daily_checkin_box_';
   static const int questionsPerDay = 5;
+  static const int _historyDays = 7;
 
   static const List<DailyQuestion> _pool = [
     DailyQuestion(
@@ -137,12 +139,127 @@ class DailyCheckinService {
     return '${_dayKey(d)}::completed';
   }
 
-  List<DailyQuestion> questionsForToday({required DateTime now}) {
+  String _questionsCacheKey(DateTime d) {
+    return '${_dayKey(d)}::questions';
+  }
+
+  Future<List<DailyQuestion>> questionsForToday({required DateTime now}) async {
+    final box = await _open();
+    final cacheKey = _questionsCacheKey(now);
+
+    final cached = box.get(cacheKey);
+    if (cached is List) {
+      final ids = cached.whereType<String>().toList();
+      final restored = ids
+          .map(_questionById)
+          .whereType<DailyQuestion>()
+          .toList();
+
+      if (restored.length == questionsPerDay) {
+        return restored;
+      }
+    }
+
+    final selected = await _buildAdaptiveQuestions(now);
+    await box.put(cacheKey, selected.map((q) => q.id).toList());
+    return selected;
+  }
+
+  Future<List<DailyQuestion>> _buildAdaptiveQuestions(DateTime now) async {
+    final box = await _open();
     final seed = now.year * 10000 + now.month * 100 + now.day;
     final random = Random(seed);
-    final items = List<DailyQuestion>.from(_pool);
-    items.shuffle(random);
-    return items.take(questionsPerDay).toList();
+
+    final candidates = <_WeightedQuestion>[];
+
+    for (final question in _pool) {
+      final score = await _priorityScore(
+        box: box,
+        now: now,
+        question: question,
+      );
+
+      candidates.add(
+        _WeightedQuestion(
+          question: question,
+          score: score + random.nextDouble() * 0.25,
+        ),
+      );
+    }
+
+    candidates.sort((a, b) => b.score.compareTo(a.score));
+
+    final selected = <DailyQuestion>[];
+    final usedAreas = <String>{};
+
+    for (final item in candidates) {
+      if (selected.length >= questionsPerDay) break;
+
+      final q = item.question;
+
+      if (!usedAreas.contains(q.areaId)) {
+        selected.add(q);
+        usedAreas.add(q.areaId);
+      }
+    }
+
+    if (selected.length < questionsPerDay) {
+      for (final item in candidates) {
+        if (selected.length >= questionsPerDay) break;
+        if (selected.any((q) => q.id == item.question.id)) continue;
+        selected.add(item.question);
+      }
+    }
+
+    return selected.take(questionsPerDay).toList();
+  }
+
+  Future<double> _priorityScore({
+    required Box<dynamic> box,
+    required DateTime now,
+    required DailyQuestion question,
+  }) async {
+    double score = 1.0;
+
+    for (var i = 1; i <= _historyDays; i++) {
+      final day = now.subtract(Duration(days: i));
+      final raw = box.get(_answerKey(day, question.id));
+
+      if (raw is int) {
+        final weight = (_historyDays - i + 1) / _historyDays;
+
+        if (raw == 0) {
+          score += 3.0 * weight;
+        } else if (raw == 1) {
+          score += 0.6 * weight;
+        }
+
+        score -= 0.45;
+      }
+    }
+
+    final yesterday = box.get(
+      _answerKey(now.subtract(const Duration(days: 1)), question.id),
+    );
+    if (yesterday is int) {
+      score -= 0.8;
+    }
+
+    final twoDaysAgo = box.get(
+      _answerKey(now.subtract(const Duration(days: 2)), question.id),
+    );
+    if (twoDaysAgo is int) {
+      score -= 0.35;
+    }
+
+    return score;
+  }
+
+  DailyQuestion? _questionById(String id) {
+    for (final q in _pool) {
+      if (q.id == id) return q;
+    }
+    return null;
   }
 
   Future<void> answer({
@@ -165,7 +282,7 @@ class DailyCheckinService {
 
   Future<int> answeredCount(DateTime day) async {
     final box = await _open();
-    final questions = questionsForToday(now: day);
+    final questions = await questionsForToday(now: day);
 
     var count = 0;
     for (final question in questions) {
@@ -177,7 +294,7 @@ class DailyCheckinService {
 
   Future<bool> tryCompleteIfAllAnswered(DateTime day) async {
     final box = await _open();
-    final questions = questionsForToday(now: day);
+    final questions = await questionsForToday(now: day);
 
     for (final question in questions) {
       final raw = box.get(_answerKey(day, question.id));
@@ -199,7 +316,7 @@ class DailyCheckinService {
   }
 
   Future<DailyCheckinSummary> summary(DateTime day) async {
-    final questions = questionsForToday(now: day);
+    final questions = await questionsForToday(now: day);
     final answered = await answeredCount(day);
     final completed = await isCompleted(day);
 
@@ -209,4 +326,11 @@ class DailyCheckinService {
       isCompleted: completed,
     );
   }
+}
+
+class _WeightedQuestion {
+  const _WeightedQuestion({required this.question, required this.score});
+
+  final DailyQuestion question;
+  final double score;
 }
