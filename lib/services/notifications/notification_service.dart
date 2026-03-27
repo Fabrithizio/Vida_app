@@ -1,18 +1,30 @@
+// ============================================================================
+// FILE: lib/services/notifications/notification_service.dart
+//
+// O que faz:
+// - inicializa notificações locais
+// - agenda lembretes para blocos da timeline
+//
+// O que mudou:
+// - adiciona scheduleForBlock() para compatibilidade
+// - evita perder evento criado muito perto da hora
+// ============================================================================
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-import '../../data/models/timeline_block.dart';
+import 'package:vida_app/data/models/timeline_block.dart';
 
 class NotificationService {
   NotificationService._();
 
   static final NotificationService instance = NotificationService._();
 
-  static const String _channelId = 'axyo_agenda';
+  static const String _channelId = 'vida_app_agenda';
   static const String _channelName = 'Agenda';
-  static const String _channelDescription = 'Lembretes da agenda';
+  static const String _channelDescription = 'Lembretes da agenda e timeline';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -52,6 +64,10 @@ class NotificationService {
     } catch (_) {}
 
     _initialized = true;
+
+    if (kDebugMode) {
+      print('NotificationService inicializado (tz.local=${tz.local.name})');
+    }
   }
 
   Future<void> _ensureInit() async {
@@ -64,10 +80,12 @@ class NotificationService {
       tz.setLocalLocation(tz.getLocation('America/Recife'));
       return;
     } catch (_) {}
+
     try {
       tz.setLocalLocation(tz.getLocation('America/Sao_Paulo'));
       return;
     } catch (_) {}
+
     tz.setLocalLocation(tz.UTC);
   }
 
@@ -79,19 +97,33 @@ class NotificationService {
   }
 
   Future<void> scheduleForBlock(TimelineBlock block) async {
+    await scheduleTenMinutesBefore(block);
+  }
+
+  Future<void> scheduleTenMinutesBefore(TimelineBlock block) async {
     await _ensureInit();
 
-    if (block.type == TimelineBlockType.note) return;
-    if (block.reminderMinutes <= 0) return;
+    if (block.type != TimelineBlockType.event) return;
 
-    final notifyAt = block.start.subtract(
-      Duration(minutes: block.reminderMinutes),
-    );
     final now = DateTime.now();
 
-    if (notifyAt.isBefore(now.subtract(const Duration(seconds: 30)))) {
+    if (block.start.isBefore(now.subtract(const Duration(seconds: 30)))) {
+      if (kDebugMode) {
+        print('Evento já passou, não agenda: ${block.title}');
+      }
       return;
     }
+
+    final rawNotifyAt = block.start.subtract(const Duration(minutes: 10));
+
+    final notifyAt = rawNotifyAt.isBefore(now.add(const Duration(seconds: 5)))
+        ? now.add(const Duration(seconds: 5))
+        : rawNotifyAt;
+
+    final startsSoon = block.start.difference(now).inMinutes <= 10;
+
+    final title = startsSoon ? 'Evento começando' : 'Lembrete do evento';
+    final body = startsSoon ? '${block.title} começa em breve.' : block.title;
 
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -104,25 +136,25 @@ class NotificationService {
     );
 
     final when = tz.TZDateTime.from(notifyAt, tz.local);
-    final title = block.reminderMinutes == 10
-        ? 'Lembrete (10 min)'
-        : 'Lembrete';
 
     try {
       await _plugin.zonedSchedule(
         _idFromString(block.id),
         title,
-        block.title,
+        body,
         when,
         details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
+
+      if (kDebugMode) {
+        print('Notificação EXACT agendada: $notifyAt | ${block.title}');
+      }
       return;
     } catch (e) {
       if (kDebugMode) {
-        // ignore: avoid_print
         print('Falhou EXACT, tentando INEXACT. Erro: $e');
       }
     }
@@ -130,12 +162,16 @@ class NotificationService {
     await _plugin.zonedSchedule(
       _idFromString(block.id),
       title,
-      block.title,
+      body,
       when,
       details,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
+
+    if (kDebugMode) {
+      print('Notificação INEXACT agendada: $notifyAt | ${block.title}');
+    }
   }
 }

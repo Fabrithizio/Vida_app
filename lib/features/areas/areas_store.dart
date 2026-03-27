@@ -17,6 +17,11 @@
 // - goals_fin  -> manual por enquanto
 // - energy, movement, nutrition, mood, stress, focus
 //   -> passam a vir do check-in diário
+//
+// Atualizações desta revisão:
+// - adiciona rastreamento de última atualização por área
+// - permite alertas de "área sem atualização"
+// - preserva a estrutura grande já existente
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -53,6 +58,9 @@ class AreasStore {
 
   String _key(String areaId, String itemId) => '$areaId::$itemId';
 
+  String _areaUpdatedPrefKey(String uid, String areaId) =>
+      '$uid:area_updated:$areaId';
+
   Future<void> ensureBootstrappedFromOnboarding() async {
     final box = await _open();
     if (box.isNotEmpty) return;
@@ -80,6 +88,10 @@ class AreasStore {
           source: source,
           lastUpdatedAt: DateTime.now(),
         ).toMap(),
+      );
+      await prefs.setString(
+        _areaUpdatedPrefKey(uid, areaId),
+        DateTime.now().toIso8601String(),
       );
     }
 
@@ -955,6 +967,10 @@ class AreasStore {
     final prefs = await SharedPreferences.getInstance();
     final iso = _toIsoDate(date);
     await prefs.setString('${user.uid}:last_checkup', iso);
+    await prefs.setString(
+      _areaUpdatedPrefKey(user.uid, 'body_health'),
+      DateTime.now().toIso8601String(),
+    );
 
     final computed = await _computedCheckups(user.uid);
     if (computed != null) {
@@ -986,6 +1002,38 @@ class AreasStore {
     await setNum('$uid:finance_goals_progress', goalsProgress);
     await prefs.setString(
       '$uid:finance_updated_at',
+      DateTime.now().toIso8601String(),
+    );
+    await prefs.setString(
+      _areaUpdatedPrefKey(uid, 'finance_material'),
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  Future<DateTime?> getAreaLastUpdate(String areaId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = (prefs.getString(_areaUpdatedPrefKey(user.uid, areaId)) ?? '')
+        .trim();
+
+    if (raw.isEmpty) return null;
+
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> markAreaUpdated(String areaId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _areaUpdatedPrefKey(user.uid, areaId),
       DateTime.now().toIso8601String(),
     );
   }
@@ -1020,6 +1068,7 @@ class AreasStore {
     ).toMap();
 
     await box.put(_key(areaId, itemId), value);
+    await markAreaUpdated(areaId);
   }
 
   Future<void> clearAssessment(String areaId, String itemId) async {
