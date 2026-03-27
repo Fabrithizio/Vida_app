@@ -199,6 +199,7 @@ class AreasStore {
 
     if (areaId == 'body_health' && itemId == 'energy') {
       return _assessmentFromDailyAnswer(
+        areaId: areaId,
         day: today,
         questionId: 'energy_ok',
         yesStatus: AreaStatus.good,
@@ -213,6 +214,7 @@ class AreasStore {
 
     if (areaId == 'body_health' && itemId == 'movement') {
       return _assessmentFromDailyAnswer(
+        areaId: areaId,
         day: today,
         questionId: 'move',
         yesStatus: AreaStatus.good,
@@ -227,6 +229,7 @@ class AreasStore {
 
     if (areaId == 'body_health' && itemId == 'nutrition') {
       return _assessmentFromDailyAnswer(
+        areaId: areaId,
         day: today,
         questionId: 'nutrition_ok',
         yesStatus: AreaStatus.good,
@@ -241,6 +244,7 @@ class AreasStore {
 
     if (areaId == 'mind_emotion' && itemId == 'mood') {
       return _assessmentFromDailyAnswer(
+        areaId: areaId,
         day: today,
         questionId: 'mood_ok',
         yesStatus: AreaStatus.good,
@@ -255,6 +259,7 @@ class AreasStore {
 
     if (areaId == 'mind_emotion' && itemId == 'stress') {
       return _assessmentFromDailyAnswer(
+        areaId: areaId,
         day: today,
         questionId: 'stress_ok',
         yesStatus: AreaStatus.good,
@@ -269,6 +274,7 @@ class AreasStore {
 
     if (areaId == 'mind_emotion' && itemId == 'focus') {
       return _assessmentFromDailyAnswer(
+        areaId: areaId,
         day: today,
         questionId: 'focus',
         yesStatus: AreaStatus.good,
@@ -285,6 +291,7 @@ class AreasStore {
   }
 
   Future<AreaAssessment?> _assessmentFromDailyAnswer({
+    required String areaId,
     required DateTime day,
     required String questionId,
     required AreaStatus yesStatus,
@@ -305,6 +312,8 @@ class AreasStore {
     final isYes = answer == 1;
     final status = isYes ? yesStatus : noStatus;
 
+    await markAreaUpdated(areaId);
+
     return AreaAssessment(
       status: status,
       score: _scoreFromStatus(status),
@@ -318,11 +327,7 @@ class AreasStore {
 
   Future<AreaAssessment?> _computedCheckups(String uid) async {
     final prefs = await SharedPreferences.getInstance();
-    final iso =
-        (prefs.getString('$uid:last_checkup') ??
-                prefs.getString('$uid:last_checkup') ??
-                '')
-            .trim();
+    final iso = (prefs.getString('$uid:last_checkup') ?? '').trim();
     if (iso.isEmpty) return null;
 
     final date = _parseIsoDate(iso);

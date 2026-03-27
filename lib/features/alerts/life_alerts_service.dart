@@ -47,11 +47,10 @@ class LifeAlertsService {
     alerts.addAll(_buildTimelineAlerts(now));
 
     alerts.sort((a, b) {
-      final priorityCompare = LifeAlert.comparePriority(
+      final p = LifeAlert.comparePriority(
         b.priority,
       ).compareTo(LifeAlert.comparePriority(a.priority));
-
-      if (priorityCompare != 0) return priorityCompare;
+      if (p != 0) return p;
       return b.createdAt.compareTo(a.createdAt);
     });
 
@@ -333,14 +332,11 @@ class LifeAlertsService {
   }
 
   String _humanizeDuration(Duration d) {
-    if (d.inMinutes < 60) {
-      return '${d.inMinutes} min';
-    }
+    if (d.inMinutes < 60) return '${d.inMinutes} min';
     if (d.inHours < 24) {
-      final hours = d.inHours;
-      final minutes = d.inMinutes % 60;
-      if (minutes == 0) return '$hours h';
-      return '${hours}h ${minutes}min';
+      final h = d.inHours;
+      final m = d.inMinutes % 60;
+      return m == 0 ? '$h h' : '${h}h ${m}min';
     }
     return '${d.inDays} dias';
   }

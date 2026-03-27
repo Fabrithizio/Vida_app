@@ -1,29 +1,27 @@
 // ============================================================================
 // FILE: lib/features/home/presentation/pages/home_page.dart
 //
-// Navegação sem swipe + botão de voz integrado:
-// - Sem PageView
-// - Sem FAB gigante
-// - Botão de voz central menor e estilizado
-// - Navegação apenas por BottomBar
+// O que este arquivo faz:
+// - Controla a navegação principal do app
+// - Alterna entre as abas principais
+// - Abre o hub de voz
 //
-// ALTERAÇÃO:
-// - Mantido layout original com 5 elementos na barra inferior
-// - Integrado HomeTasksStore sem mexer nas abas existentes
+// O que mudou nesta versão:
+// - Removido o botão flutuante laranja de teste de notificações
+// - Mantido o layout principal sem mudanças visuais extras
 // ============================================================================
 
 import 'package:flutter/material.dart';
-
-import '../../../shopping/shopping_list_store.dart';
-import '../../../timeline/hive_timeline_repository.dart';
-import '../../../timeline/timeline_store.dart';
-import '../../../home_tasks/home_tasks_store.dart';
-import '../../../../services/voice/voice_command_router.dart';
-import '../../../../presentation/voice/voice_hub_sheet.dart';
-import '../tabs/areas_tab.dart';
-import '../tabs/day_tab.dart';
-import '../tabs/profile_tab.dart';
-import '../../../finance/presentation/pages/finance_tab.dart';
+import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas_tab.dart';
+import 'package:vida_app/features/home/presentation/tabs/day_tab.dart';
+import 'package:vida_app/features/home/presentation/tabs/profile_tab.dart';
+import 'package:vida_app/features/home_tasks/home_tasks_store.dart';
+import 'package:vida_app/features/shopping/shopping_list_store.dart';
+import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
+import 'package:vida_app/features/timeline/timeline_store.dart';
+import 'package:vida_app/presentation/voice/voice_hub_sheet.dart';
+import 'package:vida_app/services/voice/voice_command_router.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -101,7 +99,6 @@ class _HomePageState extends State<HomePage> {
                 color: _iconColor(_index == 1),
               ),
             ),
-
             GestureDetector(
               onTap: _openVoiceHub,
               child: Container(
@@ -112,7 +109,7 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.green,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withValues(alpha: 0.4),
+                      color: Colors.green.withAlpha(100),
                       blurRadius: 12,
                       spreadRadius: 1,
                     ),
@@ -121,7 +118,6 @@ class _HomePageState extends State<HomePage> {
                 child: const Icon(Icons.mic, color: Colors.black, size: 22),
               ),
             ),
-
             IconButton(
               tooltip: 'Finanças',
               onPressed: () => _goTo(2),

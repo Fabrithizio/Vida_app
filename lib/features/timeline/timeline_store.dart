@@ -17,8 +17,9 @@ class TimelineStore extends ChangeNotifier {
       ..clear()
       ..addAll(await _repo.loadAll());
 
-    for (final b in _items) {
-      await NotificationService.instance.scheduleForBlock(b);
+    for (final block in _items) {
+      await NotificationService.instance.cancelForBlock(block.id);
+      await NotificationService.instance.scheduleForBlock(block);
     }
 
     notifyListeners();
@@ -31,27 +32,32 @@ class TimelineStore extends ChangeNotifier {
   Future<void> add(TimelineBlock block) async {
     _items.add(block);
     await _persist();
+
+    await NotificationService.instance.cancelForBlock(block.id);
     await NotificationService.instance.scheduleForBlock(block);
+
     notifyListeners();
   }
 
   Future<void> update(TimelineBlock updated) async {
-    final i = _items.indexWhere((e) => e.id == updated.id);
-    if (i == -1) return;
+    final index = _items.indexWhere((e) => e.id == updated.id);
+    if (index == -1) return;
 
-    _items[i] = updated;
+    _items[index] = updated;
     await _persist();
+
     await NotificationService.instance.cancelForBlock(updated.id);
     await NotificationService.instance.scheduleForBlock(updated);
+
     notifyListeners();
   }
 
   Future<void> toggleDone(String id) async {
-    final i = _items.indexWhere((e) => e.id == id);
-    if (i == -1) return;
+    final index = _items.indexWhere((e) => e.id == id);
+    if (index == -1) return;
 
-    final item = _items[i];
-    _items[i] = item.copyWith(isDone: !item.isDone);
+    final item = _items[index];
+    _items[index] = item.copyWith(isDone: !item.isDone);
 
     await _persist();
     notifyListeners();
