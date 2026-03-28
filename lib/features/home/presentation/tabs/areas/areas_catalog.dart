@@ -11,6 +11,7 @@ class AreaItemDef {
     this.hint,
     this.recommendedAction,
     this.supportsAutomaticData = false,
+    this.showOnlyForWomen = false,
   });
 
   final String id;
@@ -21,6 +22,7 @@ class AreaItemDef {
   final String? hint;
   final String? recommendedAction;
   final bool supportsAutomaticData;
+  final bool showOnlyForWomen;
 }
 
 class AreaDef {
@@ -59,18 +61,17 @@ class AreasCatalog {
       id: bodyHealth,
       title: 'Corpo & Saúde',
       titleShort: 'Saúde',
-      subtitle: 'Energia, sono e hábitos',
+      subtitle: 'Energia, sono e cuidados',
       description:
-          'Mostra como está sua saúde física, rotina de cuidados e sinais de bem-estar.',
+          'Mostra como está sua saúde física com base em hábitos, registros e sinais recentes.',
       icon: Icons.favorite,
       items: [
         AreaItemDef(
           id: 'energy',
           title: 'Energia',
-          description: 'Avalia disposição e sensação de energia no dia a dia.',
+          description: 'Disposição e energia percebida no dia a dia.',
           defaultSource: AreaDataSource.dailyQuestions,
-          weight: 1.0,
-          recommendedAction: 'Responder como foi sua energia nos últimos dias.',
+          recommendedAction: 'Responder como esteve sua energia.',
         ),
         AreaItemDef(
           id: 'sleep',
@@ -78,46 +79,48 @@ class AreasCatalog {
           description: 'Quantidade e qualidade do sono recente.',
           defaultSource: AreaDataSource.dailyQuestions,
           weight: 1.2,
-          recommendedAction:
-              'Atualizar horas de sono para manter a área confiável.',
+          recommendedAction: 'Atualizar horas de sono.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'movement',
           title: 'Movimento / Exercício',
-          description:
-              'Atividade física, movimento e frequência de exercícios.',
+          description: 'Constância de atividade física e movimento.',
           defaultSource: AreaDataSource.dailyQuestions,
-          weight: 1.0,
-          recommendedAction: 'Registrar atividade física recente.',
+          recommendedAction: 'Registrar se houve movimento ou treino.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'nutrition',
           title: 'Alimentação',
-          description:
-              'Consistência dos hábitos alimentares e qualidade da rotina.',
+          description: 'Qualidade e consistência da alimentação.',
           defaultSource: AreaDataSource.dailyQuestions,
-          weight: 1.0,
           recommendedAction: 'Responder como esteve sua alimentação.',
+        ),
+        AreaItemDef(
+          id: 'hydration',
+          title: 'Hidratação',
+          description: 'Percepção de hidratação e cuidado básico diário.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction:
+              'Registrar sua hidratação quando esse módulo estiver ativo.',
         ),
         AreaItemDef(
           id: 'checkups',
           title: 'Check-ups / Exames',
-          description:
-              'Acompanha o tempo desde o último check-up ou exame relevante.',
+          description: 'Tempo desde o último check-up ou exame relevante.',
           defaultSource: AreaDataSource.manual,
           weight: 1.1,
           recommendedAction: 'Atualizar a data do último check-up.',
         ),
         AreaItemDef(
           id: 'women_cycle',
-          title: 'Ciclo (se aplicável)',
-          description:
-              'Espaço para acompanhamento de ciclo e sinais relacionados.',
+          title: 'Ciclo menstrual',
+          description: 'Acompanhamento do ciclo para perfis femininos.',
           defaultSource: AreaDataSource.manual,
           weight: 0.8,
-          recommendedAction: 'Registrar ou revisar informações do ciclo.',
+          recommendedAction: 'Registrar dados do ciclo quando necessário.',
+          showOnlyForWomen: true,
         ),
       ],
     ),
@@ -126,7 +129,8 @@ class AreasCatalog {
       title: 'Mente & Emoções',
       titleShort: 'Emoções',
       subtitle: 'Humor, estresse e foco',
-      description: 'Resume seu estado emocional, mental e capacidade de foco.',
+      description:
+          'Resume seu estado mental usando sinais do dia a dia e percepção recente.',
       icon: Icons.psychology,
       items: [
         AreaItemDef(
@@ -139,32 +143,26 @@ class AreasCatalog {
         AreaItemDef(
           id: 'stress',
           title: 'Estresse',
-          description: 'Nível de tensão e sobrecarga recente.',
+          description: 'Nível de pressão e estresse recente.',
           defaultSource: AreaDataSource.dailyQuestions,
           weight: 1.1,
-          recommendedAction: 'Atualizar o nível de estresse percebido.',
-        ),
-        AreaItemDef(
-          id: 'anxiety',
-          title: 'Ansiedade',
-          description: 'Sinais de ansiedade e impacto no cotidiano.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          weight: 1.1,
-          recommendedAction: 'Registrar como esteve sua ansiedade.',
+          recommendedAction: 'Atualizar o nível de estresse.',
         ),
         AreaItemDef(
           id: 'focus',
           title: 'Foco',
-          description: 'Capacidade de manter atenção nas tarefas e objetivos.',
+          description: 'Capacidade de manter atenção no que importa.',
           defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder sobre seu nível de foco.',
+          recommendedAction: 'Responder como esteve seu foco.',
         ),
         AreaItemDef(
-          id: 'selfcare',
-          title: 'Autocuidado',
-          description: 'Rotina de cuidado pessoal e recuperação mental.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Marcar práticas recentes de autocuidado.',
+          id: 'mental_load',
+          title: 'Sobrecarga mental',
+          description: 'Percepção de peso mental e excesso de pressão.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.0,
+          recommendedAction:
+              'Responder o check-in diário para estimar esta subárea.',
         ),
       ],
     ),
@@ -172,66 +170,70 @@ class AreasCatalog {
       id: financeMaterial,
       title: 'Finanças & Material',
       titleShort: 'Finanças',
-      subtitle: 'Gastos, renda e metas',
+      subtitle: 'Renda, controle e segurança',
       description:
-          'Mostra a saúde financeira atual, equilíbrio entre entrada e saída e segurança material.',
+          'Mostra a saúde financeira atual com base nos dados do módulo de Finanças.',
       icon: Icons.account_balance_wallet,
       items: [
         AreaItemDef(
           id: 'income',
           title: 'Renda',
-          description:
-              'Capacidade atual de geração de renda e constância de entrada.',
-          defaultSource: AreaDataSource.manual,
+          description: 'Entradas reais e capacidade de gerar renda.',
+          defaultSource: AreaDataSource.automatic,
           weight: 1.2,
-          recommendedAction: 'Atualizar a renda mensal atual.',
+          recommendedAction: 'Registrar entradas na aba Finanças.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'spending',
           title: 'Gastos',
-          description: 'Volume de gastos recentes e controle sobre saídas.',
-          defaultSource: AreaDataSource.manual,
+          description: 'Saídas recentes e controle sobre despesas.',
+          defaultSource: AreaDataSource.automatic,
           weight: 1.2,
-          recommendedAction: 'Atualizar gastos do período.',
+          recommendedAction: 'Registrar gastos na aba Finanças.',
+          supportsAutomaticData: true,
+        ),
+        AreaItemDef(
+          id: 'monthly_flow',
+          title: 'Fluxo do mês',
+          description: 'Saldo entre entradas e saídas no mês atual.',
+          defaultSource: AreaDataSource.automatic,
+          weight: 1.2,
+          recommendedAction: 'Manter entradas e saídas atualizadas.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'budget',
           title: 'Orçamento / Controle',
-          description:
-              'Nível de organização financeira e acompanhamento do orçamento.',
-          defaultSource: AreaDataSource.manual,
+          description: 'Comparação entre orçamento e gasto real.',
+          defaultSource: AreaDataSource.mixed,
           weight: 1.1,
-          recommendedAction: 'Revisar o orçamento atual.',
+          recommendedAction: 'Definir orçamento e registrar gastos.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'debts',
           title: 'Dívidas',
-          description: 'Impacto das dívidas na situação financeira atual.',
+          description: 'Peso das dívidas na situação atual.',
           defaultSource: AreaDataSource.manual,
           weight: 1.3,
-          recommendedAction: 'Atualizar dívidas ou parcelamentos ativos.',
+          recommendedAction: 'Atualizar dívidas ou parcelamentos.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'savings',
           title: 'Reserva',
-          description:
-              'Presença de reserva financeira e segurança de curto prazo.',
+          description: 'Segurança financeira de curto prazo.',
           defaultSource: AreaDataSource.manual,
           weight: 1.1,
-          recommendedAction: 'Informar o status da sua reserva.',
+          recommendedAction: 'Informar sua reserva financeira.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'goals_fin',
           title: 'Metas financeiras',
-          description:
-              'Progresso em metas como economizar, quitar ou investir.',
+          description: 'Progresso para economizar, quitar ou investir.',
           defaultSource: AreaDataSource.manual,
-          weight: 0.9,
           recommendedAction: 'Atualizar avanço das metas financeiras.',
         ),
       ],
@@ -240,39 +242,42 @@ class AreasCatalog {
       id: workVocation,
       title: 'Trabalho & Vocação',
       titleShort: 'Trabalho',
-      subtitle: 'Carreira e rotina',
+      subtitle: 'Rotina e consistência',
       description:
-          'Avalia rotina produtiva, progresso e equilíbrio com a vida.',
+          'Avalia sua constância produtiva e o equilíbrio da rotina principal.',
       icon: Icons.work,
       items: [
         AreaItemDef(
           id: 'routine',
           title: 'Rotina',
-          description: 'Organização da rotina de trabalho ou estudo principal.',
+          description: 'Organização da rotina principal no dia a dia.',
           defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Atualizar como esteve sua rotina.',
+          recommendedAction: 'Responder como esteve sua rotina.',
         ),
         AreaItemDef(
           id: 'output',
           title: 'Entrega',
-          description: 'Percepção de progresso e entregas recentes.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve seu rendimento.',
+          description: 'Percepção de entrega e avanço em tarefas importantes.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction:
+              'Essa subárea pode ser ligada depois a metas e timeline.',
         ),
         AreaItemDef(
-          id: 'growth',
-          title: 'Crescimento',
-          description: 'Sinais de evolução, aprendizado e avanço na área.',
-          defaultSource: AreaDataSource.onboarding,
-          recommendedAction: 'Revisar metas de crescimento.',
+          id: 'consistency',
+          title: 'Consistência',
+          description: 'Capacidade de repetir o básico com frequência.',
+          defaultSource: AreaDataSource.dailyQuestions,
+          recommendedAction:
+              'Responder o check-in diário para alimentar esta subárea.',
         ),
         AreaItemDef(
           id: 'balance',
           title: 'Equilíbrio',
           description: 'Equilíbrio entre produtividade, descanso e pressão.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          defaultSource: AreaDataSource.manual,
           weight: 1.1,
-          recommendedAction: 'Atualizar percepção de equilíbrio.',
+          recommendedAction:
+              'Essa subárea pode ser ligada depois à agenda e rotina.',
         ),
       ],
     ),
@@ -280,17 +285,16 @@ class AreasCatalog {
       id: learningIntellect,
       title: 'Aprendizado & Intelecto',
       titleShort: 'Estudos',
-      subtitle: 'Estudo e progresso',
-      description:
-          'Mostra avanço intelectual, constância de estudo e desenvolvimento de habilidades.',
+      subtitle: 'Estudo e prática',
+      description: 'Mostra constância de estudo e evolução intelectual.',
       icon: Icons.school,
       items: [
         AreaItemDef(
           id: 'study',
           title: 'Tempo de estudo',
-          description: 'Consistência do tempo dedicado ao aprendizado.',
+          description: 'Constância do estudo recente.',
           defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Atualizar tempo de estudo recente.',
+          recommendedAction: 'Responder se houve estudo hoje.',
         ),
         AreaItemDef(
           id: 'courses',
@@ -302,42 +306,50 @@ class AreasCatalog {
         AreaItemDef(
           id: 'reading',
           title: 'Leitura',
-          description: 'Ritmo de leitura e contato com novos conteúdos.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Atualizar hábito de leitura.',
+          description: 'Ritmo de leitura e contato com conteúdo de qualidade.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction:
+              'Ligar depois a leitura, metas ou registros próprios.',
         ),
         AreaItemDef(
           id: 'skills',
           title: 'Habilidades',
-          description: 'Desenvolvimento prático de competências relevantes.',
+          description: 'Desenvolvimento de competências relevantes.',
           defaultSource: AreaDataSource.manual,
           weight: 1.1,
           recommendedAction: 'Registrar avanço em habilidades.',
+        ),
+        AreaItemDef(
+          id: 'review_practice',
+          title: 'Revisão / Prática',
+          description: 'Aplicação prática do que foi aprendido.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction:
+              'Ligar depois a metas, exercícios ou prática guiada.',
         ),
       ],
     ),
     AreaDef(
       id: relationsCommunity,
-      title: 'Relações & Comunidade',
+      title: 'Relações & Conexões',
       titleShort: 'Social',
-      subtitle: 'Família e amigos',
-      description:
-          'Resume vínculos sociais, proximidade e sensação de conexão.',
+      subtitle: 'Contato e vínculos',
+      description: 'Resume o quanto sua vida social está viva e presente.',
       icon: Icons.groups,
       items: [
         AreaItemDef(
           id: 'family',
           title: 'Família',
-          description: 'Qualidade da relação e contato com a família.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Atualizar como estiveram as relações familiares.',
+          description: 'Contato e qualidade da relação com a família.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction: 'Ligar depois a registros e check-ins sociais.',
         ),
         AreaItemDef(
           id: 'friends',
           title: 'Amigos',
-          description: 'Presença de amizade, apoio e convivência social.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como estiveram suas amizades.',
+          description: 'Presença de amizade, apoio e convivência.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction: 'Ligar depois a registros e check-ins sociais.',
         ),
         AreaItemDef(
           id: 'partner',
@@ -345,57 +357,48 @@ class AreasCatalog {
           description:
               'Acompanhamento do relacionamento afetivo, se aplicável.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Atualizar situação do relacionamento.',
+          recommendedAction:
+              'Atualizar situação do relacionamento quando esse módulo estiver ativo.',
         ),
         AreaItemDef(
-          id: 'community',
-          title: 'Comunidade',
-          description:
-              'Participação em grupo, comunidade ou sensação de pertencimento.',
+          id: 'social_contact',
+          title: 'Contato social recente',
+          description: 'Se houve conexão social relevante recentemente.',
           defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve sua conexão com pessoas.',
+          recommendedAction: 'Responder o check-in social do dia.',
         ),
       ],
     ),
     AreaDef(
       id: purposeValues,
-      title: 'Propósito & Valores',
-      titleShort: 'Propósito',
-      subtitle: 'Sentido e direção',
+      title: 'Direção Pessoal',
+      titleShort: 'Direção',
+      subtitle: 'Revisão leve',
       description:
-          'Ajuda a medir clareza de direção, coerência com valores e sentido da rotina.',
+          'Área de reflexão leve para direção, metas e gratidão. Deve ter peso menor no sistema principal.',
       icon: Icons.auto_awesome,
       items: [
         AreaItemDef(
-          id: 'purpose',
-          title: 'Propósito',
-          description: 'Clareza sobre direção e sentido de vida.',
-          defaultSource: AreaDataSource.onboarding,
-          weight: 1.2,
-          recommendedAction: 'Revisar sua direção atual.',
+          id: 'direction',
+          title: 'Direção atual',
+          description: 'Clareza sobre para onde sua vida está andando.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction:
+              'Revisar sua direção atual em momentos específicos.',
         ),
         AreaItemDef(
-          id: 'values',
-          title: 'Valores',
-          description: 'Alinhamento entre suas escolhas e seus valores.',
-          defaultSource: AreaDataSource.onboarding,
-          recommendedAction:
-              'Refletir se sua rotina está alinhada aos seus valores.',
+          id: 'goals_review',
+          title: 'Revisão de metas',
+          description: 'Revisão do rumo das metas pessoais.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction: 'Atualizar suas metas quando esse módulo voltar.',
         ),
         AreaItemDef(
           id: 'gratitude',
           title: 'Gratidão',
           description: 'Percepção de apreciação e presença no cotidiano.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve sua percepção do dia.',
-        ),
-        AreaItemDef(
-          id: 'spiritual',
-          title: 'Espiritualidade',
-          description:
-              'Espaço para práticas espirituais ou conexão interior, se fizer sentido.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Registrar práticas espirituais ou reflexivas.',
+          recommendedAction: 'Usar quando o módulo reflexivo estiver pronto.',
         ),
       ],
     ),
@@ -403,41 +406,38 @@ class AreasCatalog {
       id: environmentHome,
       title: 'Ambiente & Casa',
       titleShort: 'Casa',
-      subtitle: 'Organização',
+      subtitle: 'Ordem e manutenção',
       description:
-          'Mostra se seu ambiente está ajudando ou atrapalhando seu bem-estar.',
+          'Mostra se sua casa e ambiente estão ajudando sua vida ou atrapalhando.',
       icon: Icons.home,
       items: [
         AreaItemDef(
           id: 'organization',
           title: 'Organização',
-          description: 'Nível de organização do espaço e facilidade de rotina.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Atualizar como está sua organização.',
+          description: 'Nível de organização do espaço.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction: 'Ligar depois às tarefas domésticas.',
         ),
         AreaItemDef(
           id: 'cleaning',
-          title: 'Rotina',
-          description: 'Manutenção básica do ambiente e constância de cuidado.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve sua rotina com a casa.',
-        ),
-        AreaItemDef(
-          id: 'comfort',
-          title: 'Conforto',
-          description:
-              'Sensação de conforto, acolhimento e funcionalidade do espaço.',
+          title: 'Limpeza',
+          description: 'Constância da limpeza básica.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Avaliar o conforto do seu ambiente.',
+          recommendedAction: 'Ligar depois às tarefas domésticas.',
         ),
         AreaItemDef(
-          id: 'nature',
-          title: 'Natureza',
-          description:
-              'Contato com luz natural, ar livre e elementos de natureza.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction:
-              'Atualizar sua conexão com natureza e ambiente externo.',
+          id: 'home_tasks',
+          title: 'Pendências domésticas',
+          description: 'Tarefas e pequenas pendências da casa.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction: 'Ligar ao módulo de tarefas da casa.',
+        ),
+        AreaItemDef(
+          id: 'home_maintenance',
+          title: 'Manutenção da casa',
+          description: 'Reparos e cuidados maiores do ambiente.',
+          defaultSource: AreaDataSource.manual,
+          recommendedAction: 'Ligar depois a reparos e manutenção.',
         ),
       ],
     ),
@@ -445,7 +445,7 @@ class AreasCatalog {
       id: digitalTech,
       title: 'Digital & Tecnologia',
       titleShort: 'Digital',
-      subtitle: 'Foco e hábitos',
+      subtitle: 'Uso de tela e distração',
       description:
           'Resume como a tecnologia está ajudando ou atrapalhando sua vida atual.',
       icon: Icons.devices,
@@ -453,8 +453,7 @@ class AreasCatalog {
         AreaItemDef(
           id: 'screen_time',
           title: 'Tempo de tela',
-          description:
-              'Quantidade de tempo gasto em telas e impacto no equilíbrio.',
+          description: 'Quantidade de tempo gasto em telas.',
           defaultSource: AreaDataSource.manual,
           weight: 1.2,
           recommendedAction: 'Atualizar tempo médio de tela.',
@@ -463,27 +462,25 @@ class AreasCatalog {
         AreaItemDef(
           id: 'distraction',
           title: 'Distrações',
-          description:
-              'Nível de distração gerado por apps, notificações e excesso de estímulo.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          description: 'Quanto o digital está atrapalhando seu foco.',
+          defaultSource: AreaDataSource.estimated,
           weight: 1.1,
-          recommendedAction: 'Responder se houve muita distração digital.',
+          recommendedAction:
+              'Responder o check-in diário para estimar distração digital.',
         ),
         AreaItemDef(
-          id: 'digital_hygiene',
-          title: 'Higiene digital',
-          description:
-              'Qualidade dos hábitos digitais e uso intencional da tecnologia.',
+          id: 'night_use',
+          title: 'Uso noturno',
+          description: 'Uso de tela perto da hora de dormir.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Revisar hábitos digitais.',
+          recommendedAction: 'Pode ser ligado depois a dados do celular.',
         ),
         AreaItemDef(
-          id: 'privacy',
-          title: 'Privacidade',
-          description:
-              'Cuidados com privacidade, segurança e controle das contas.',
+          id: 'social_media',
+          title: 'Tempo em redes sociais',
+          description: 'Peso das redes sociais no seu uso digital.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Revisar configurações de privacidade.',
+          recommendedAction: 'Pode ser ligado depois a dados do celular.',
         ),
       ],
     ),
@@ -495,11 +492,32 @@ class AreasCatalog {
 
   static List<AreaDef> all() => List.unmodifiable(_defs);
 
-  static AreaItemDef? itemById(String areaId, String itemId) {
+  static List<AreaItemDef> itemsForArea(
+    String areaId, {
+    required bool includeWomenCycle,
+  }) {
     final area = byId(areaId);
-    for (final item in area.items) {
+    return area.items
+        .where((item) {
+          if (item.showOnlyForWomen && !includeWomenCycle) {
+            return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
+  }
+
+  static AreaItemDef? itemById(
+    String areaId,
+    String itemId, {
+    bool includeWomenCycle = true,
+  }) {
+    final items = itemsForArea(areaId, includeWomenCycle: includeWomenCycle);
+
+    for (final item in items) {
       if (item.id == itemId) return item;
     }
+
     return null;
   }
 }

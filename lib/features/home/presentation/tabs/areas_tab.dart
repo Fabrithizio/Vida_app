@@ -6,11 +6,12 @@
 // - Exibe score geral, idade e barra anual
 // - Abre detalhes de cada área
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
+// - Adiciona o ícone do livro com explicação clara do sistema de score
 //
 // Ajustes desta versão:
-// - Corrigido o gate diário com navegação fullscreen em vez de showDialog
-// - Removidas interpolações desnecessárias com uid
-// - Mantido o layout compacto da top bar
+// - women_cycle só entra no cálculo para perfil feminino
+// - score usa apenas as subáreas visíveis e realmente válidas
+// - adicionado atalho do livro sem mexer no layout principal do app
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,6 +25,7 @@ import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dar
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_overlay.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_sheet.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/score_rules_sheet.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({super.key});
@@ -139,13 +141,17 @@ class _AreasTabState extends State<AreasTab> {
 
   Future<Map<String, int?>> _loadScores() async {
     final defs = AreasCatalog.all();
+    final includeWomenCycle =
+        (_resolvedSex ?? UserSex.female) == UserSex.female;
     final map = <String, int?>{};
 
     for (final def in defs) {
-      map[def.id] = await _store.score(
+      final items = AreasCatalog.itemsForArea(
         def.id,
-        def.items.map((e) => e.id).toList(),
+        includeWomenCycle: includeWomenCycle,
       );
+
+      map[def.id] = await _store.score(def.id, items.map((e) => e.id).toList());
     }
 
     return map;
@@ -195,12 +201,27 @@ class _AreasTabState extends State<AreasTab> {
     _showSoonMessage('Central de alertas será ligada aqui em breve.');
   }
 
+  Future<void> _openScoreRules() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => const ScoreRulesSheet(),
+    );
+  }
+
   Future<void> _openArea(String areaId) async {
     final def = AreasCatalog.byId(areaId);
+    final includeWomenCycle =
+        (_resolvedSex ?? UserSex.female) == UserSex.female;
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AreaDetailPage(areaId: areaId, title: def.title),
+        builder: (_) => AreaDetailPage(
+          areaId: areaId,
+          title: def.title,
+          includeWomenCycle: includeWomenCycle,
+        ),
       ),
     );
 
@@ -330,6 +351,7 @@ class _AreasTabState extends State<AreasTab> {
                                   onCheckinTap: _openCheckin,
                                   onAvatarTap: _openAvatarEditor,
                                   onAlertsTap: _openAlertsCenter,
+                                  onScoreRulesTap: _openScoreRules,
                                 ),
                               ),
                             ),
@@ -403,6 +425,7 @@ class _TopHudCompact extends StatelessWidget {
     required this.onCheckinTap,
     required this.onAvatarTap,
     required this.onAlertsTap,
+    required this.onScoreRulesTap,
   });
 
   final String userName;
@@ -414,6 +437,7 @@ class _TopHudCompact extends StatelessWidget {
   final VoidCallback onCheckinTap;
   final VoidCallback onAvatarTap;
   final VoidCallback onAlertsTap;
+  final VoidCallback onScoreRulesTap;
 
   Color _scoreColor() {
     if (averageScore >= 80) return const Color(0xFF22C55E);
@@ -553,6 +577,11 @@ class _TopHudCompact extends StatelessWidget {
                   _MiniActionButton(
                     icon: Icons.check_circle_rounded,
                     onTap: onCheckinTap,
+                  ),
+                  const SizedBox(width: 6),
+                  _MiniActionButton(
+                    icon: Icons.menu_book_rounded,
+                    onTap: onScoreRulesTap,
                   ),
                   const SizedBox(width: 6),
                   _MiniActionButton(
@@ -858,7 +887,6 @@ class _AgeAccessInfo {
     final firstDayNextMonth = month == 12
         ? DateTime(year + 1, 1, 1)
         : DateTime(year, month + 1, 1);
-
     return firstDayNextMonth.subtract(const Duration(days: 1)).day;
   }
 }

@@ -131,7 +131,7 @@ class AreasStore {
     } else if (focus == 'Mental') {
       await seed(
         'mind_emotion',
-        'selfcare',
+        'mood',
         AreaStatus.good,
         reason: 'Área marcada como foco inicial no onboarding.',
         score: 70,
@@ -285,6 +285,110 @@ class AreasStore {
         noAction: 'Vale reduzir distrações e simplificar a rotina.',
         details: 'Baseado na resposta do check-in diário.',
       );
+    }
+
+    if (areaId == 'mind_emotion' && itemId == 'mental_load') {
+      return _assessmentFromDailyAnswer(
+        areaId: areaId,
+        day: today,
+        questionId: 'stress_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.critical,
+        yesReason: 'Sua sobrecarga mental pareceu controlada hoje.',
+        noReason: 'Você relatou sobrecarga mental alta hoje.',
+        yesAction: 'Continue protegendo seu descanso mental.',
+        noAction: 'Vale diminuir pressão, ajustar demandas e buscar pausas.',
+        details:
+            'Estimado a partir da resposta de estresse do check-in diário.',
+      ).then((assessment) {
+        if (assessment == null) return null;
+        return assessment.copyWith(
+          source: AreaDataSource.estimated,
+          details:
+              'Estimado a partir da resposta de estresse do check-in diário.',
+        );
+      });
+    }
+
+    if (areaId == 'work_vocation' && itemId == 'routine') {
+      return _assessmentFromDailyAnswer(
+        areaId: areaId,
+        day: today,
+        questionId: 'routine_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Sua rotina principal esteve minimamente organizada hoje.',
+        noReason: 'Sua rotina ficou desorganizada hoje.',
+        yesAction: 'Continue repetindo esse padrão de consistência.',
+        noAction: 'Vale simplificar o dia e definir poucas prioridades.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'work_vocation' && itemId == 'consistency') {
+      return _assessmentFromDailyAnswer(
+        areaId: areaId,
+        day: today,
+        questionId: 'routine_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você mostrou consistência mínima na rotina hoje.',
+        noReason: 'Sua consistência caiu hoje.',
+        yesAction: 'Bom sinal. Continue aparecendo e executando o básico.',
+        noAction: 'Tente reduzir atritos e voltar ao ritmo aos poucos.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'learning_intellect' && itemId == 'study') {
+      return _assessmentFromDailyAnswer(
+        areaId: areaId,
+        day: today,
+        questionId: 'study_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você estudou ou aprendeu algo importante hoje.',
+        noReason: 'Hoje faltou avanço em estudo ou aprendizado.',
+        yesAction: 'Continue fortalecendo essa constância.',
+        noAction: 'Tente encaixar uma sessão curta de estudo.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'relations_community' && itemId == 'social_contact') {
+      return _assessmentFromDailyAnswer(
+        areaId: areaId,
+        day: today,
+        questionId: 'social_ok',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.attention,
+        yesReason: 'Você teve uma boa conexão social hoje.',
+        noReason: 'Hoje faltou conexão social de qualidade.',
+        yesAction: 'Continue cuidando das suas conexões.',
+        noAction: 'Vale chamar alguém importante ou retomar contato.',
+        details: 'Baseado na resposta do check-in diário.',
+      );
+    }
+
+    if (areaId == 'digital_tech' && itemId == 'distraction') {
+      return _assessmentFromDailyAnswer(
+        areaId: areaId,
+        day: today,
+        questionId: 'focus',
+        yesStatus: AreaStatus.good,
+        noStatus: AreaStatus.critical,
+        yesReason: 'As distrações digitais não parecem ter dominado seu dia.',
+        noReason: 'Seu foco caiu e isso sugere distração digital relevante.',
+        yesAction: 'Continue protegendo seu foco.',
+        noAction: 'Vale reduzir notificações e limitar apps de distração.',
+        details: 'Estimado a partir da resposta de foco do check-in diário.',
+      ).then((assessment) {
+        if (assessment == null) return null;
+        return assessment.copyWith(
+          source: AreaDataSource.estimated,
+          details: 'Estimado a partir da resposta de foco do check-in diário.',
+        );
+      });
     }
 
     return null;
@@ -500,6 +604,8 @@ class AreasStore {
         return _assessIncome(snapshot);
       case 'spending':
         return _assessSpending(snapshot);
+      case 'monthly_flow':
+        return _assessMonthlyFlow(snapshot);
       case 'budget':
         return _assessBudget(snapshot);
       case 'debts':
@@ -708,6 +814,67 @@ class AreasStore {
 
   AreaAssessment? _spendingAssessmentFromDailyCheckin() {
     return null;
+  }
+
+  AreaAssessment _assessMonthlyFlow(_FinanceSnapshot s) {
+    final income = s.income;
+    final expenses = s.expenses;
+
+    if (income == null && expenses == null) {
+      return _noDataAssessment(
+        source: AreaDataSource.automatic,
+        reason: 'Ainda não há movimentações suficientes neste mês.',
+        action: 'Use a aba Finanças para ativar esta subárea.',
+      );
+    }
+
+    if (income == null || expenses == null) {
+      return AreaAssessment(
+        status: AreaStatus.attention,
+        score: _scoreFromStatus(AreaStatus.attention),
+        reason:
+            'Ainda faltam dados completos de entradas e saídas para medir seu fluxo do mês.',
+        source: AreaDataSource.automatic,
+        lastUpdatedAt: s.updatedAt,
+        recommendedAction:
+            'Registre entradas e saídas para o fluxo ficar confiável.',
+        details: 'Subárea depende das movimentações reais deste mês.',
+      );
+    }
+
+    final net = income - expenses;
+
+    late final AreaStatus status;
+    late final String action;
+
+    if (net >= income * 0.20) {
+      status = AreaStatus.excellent;
+      action = 'Seu fluxo do mês está bem saudável.';
+    } else if (net >= 0) {
+      status = AreaStatus.good;
+      action = 'Seu mês está positivo, mas com folga menor.';
+    } else if (net >= -income * 0.15) {
+      status = AreaStatus.attention;
+      action = 'Seu fluxo ficou negativo. Vale corrigir antes que piore.';
+    } else {
+      status = AreaStatus.critical;
+      action = 'Saídas bem acima das entradas. Reorganizar isso é prioridade.';
+    }
+
+    final signal = net >= 0 ? '+' : '-';
+    final absoluteNet = net.abs();
+
+    return AreaAssessment(
+      status: status,
+      score: _scoreFromStatus(status),
+      reason:
+          'Fluxo do mês: $signal${_money(absoluteNet)} (${_money(income)} de entrada e ${_money(expenses)} de saída).',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: s.updatedAt,
+      recommendedAction: action,
+      details:
+          'Calculado automaticamente a partir das movimentações reais do mês.',
+    );
   }
 
   AreaAssessment _assessBudget(_FinanceSnapshot s) {
