@@ -6,6 +6,12 @@
 // - Lista as subáreas válidas para o perfil atual
 // - Exibe score, status, fonte, tendência e última atualização
 // - Abre um painel com explicação objetiva de como cada subárea está sendo lida
+//
+// Correções desta versão:
+// - Mantém a arquitetura original do projeto
+// - Remove a divergência entre o score geral exibido e o status geral do topo
+// - O topo agora deriva o status diretamente do SCORE da área
+// - remove a dependência do overallStatus legado, que estava conflitando com a régua nova
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -78,6 +84,23 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     return 'Crítico';
   }
 
+  Color _scoreColor(int? score) {
+    if (score == null) return const Color(0xFF94A3B8);
+    if (score >= 85) return const Color(0xFF22C55E);
+    if (score >= 68) return const Color(0xFFF59E0B);
+    if (score >= 45) return const Color(0xFFFB923C);
+    if (score >= 25) return const Color(0xFFEF4444);
+    return const Color(0xFFB91C1C);
+  }
+
+  AreaStatus _statusFromScore(int? score) {
+    if (score == null) return AreaStatus.noData;
+    if (score >= 85) return AreaStatus.excellent;
+    if (score >= 68) return AreaStatus.good;
+    if (score >= 45) return AreaStatus.attention;
+    return AreaStatus.critical;
+  }
+
   String _sourceLabel(AreaDataSource source) {
     switch (source) {
       case AreaDataSource.manual:
@@ -103,14 +126,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
       includeWomenCycle: includeWomenCycle,
     );
     return _store.score(def.id, items.map((e) => e.id).toList());
-  }
-
-  Future<AreaStatus?> _areaOverallStatus(AreaDef def, bool includeWomenCycle) {
-    final items = AreasCatalog.itemsForArea(
-      def.id,
-      includeWomenCycle: includeWomenCycle,
-    );
-    return _store.overallStatus(def.id, items.map((e) => e.id).toList());
   }
 
   String _buildExplanation(AreaAssessment? assessment) {
@@ -356,258 +371,250 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
           body: FutureBuilder<int?>(
             future: _areaScore(def, includeWomenCycle),
             builder: (context, scoreSnap) {
-              return FutureBuilder<AreaStatus?>(
-                future: _areaOverallStatus(def, includeWomenCycle),
-                builder: (context, statusSnap) {
-                  final overallStatus = statusSnap.data ?? AreaStatus.noData;
-                  final overallColor = _statusColor(overallStatus);
-                  final overallScore = scoreSnap.data;
+              final overallScore = scoreSnap.data;
+              final overallStatus = _statusFromScore(overallScore);
+              final overallColor = _scoreColor(overallScore);
 
-                  return ListView(
-                    padding: const EdgeInsets.all(12),
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              overallColor.withValues(alpha: 0.18),
-                              const Color(0xFF0F0F1A),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: overallColor.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: Column(
+              return ListView(
+                padding: const EdgeInsets.all(12),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          overallColor.withValues(alpha: 0.18),
+                          const Color(0xFF0F0F1A),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: overallColor.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 46,
-                                  height: 46,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white10,
-                                    border: Border.all(color: Colors.white24),
-                                  ),
-                                  child: Icon(def.icon, color: Colors.white),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        def.title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 17,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        def.subtitle,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: overallColor.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: overallColor.withValues(
-                                        alpha: 0.35,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        _scoreLabel(overallScore),
-                                        style: TextStyle(
-                                          color: overallColor,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 18,
-                                          height: 1,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        _scoreClass(overallScore),
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
                             Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
+                              width: 46,
+                              height: 46,
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white10),
+                                shape: BoxShape.circle,
+                                color: Colors.white10,
+                                border: Border.all(color: Colors.white24),
                               ),
+                              child: Icon(def.icon, color: Colors.white),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    def.description,
+                                    def.title,
                                     style: const TextStyle(
-                                      color: Colors.white70,
-                                      height: 1.35,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 17,
                                     ),
                                   ),
-                                  const SizedBox(height: 10),
-                                  Row(
-                                    children: [
-                                      AreaStatusDot(
-                                        status: overallStatus,
-                                        size: 14,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Status geral: ${overallStatus.label}',
-                                        style: TextStyle(
-                                          color: overallColor,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    def.subtitle,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: overallColor.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: overallColor.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    _scoreLabel(overallScore),
+                                    style: TextStyle(
+                                      color: overallColor,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 18,
+                                      height: 1,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    _scoreClass(overallScore),
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ],
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Subáreas',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...items.map((item) {
-                        return FutureBuilder<AreaAssessment?>(
-                          future: _store.getComputedAssessment(def.id, item.id),
-                          builder: (context, snap) {
-                            final a = snap.data;
-                            final status = a?.status ?? AreaStatus.noData;
-                            final color = _statusColor(status);
-
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(18),
-                              onTap: () => _openItemDetails(def, item, a),
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0F0F1A),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: color.withValues(alpha: 0.22),
-                                  ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                def.description,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  height: 1.35,
                                 ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    AreaStatusDot(status: status, size: 14),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  AreaStatusDot(
+                                    status: overallStatus,
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Status geral: ${_scoreClass(overallScore)}',
+                                    style: TextStyle(
+                                      color: overallColor,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Subáreas',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...items.map((item) {
+                    return FutureBuilder<AreaAssessment?>(
+                      future: _store.getComputedAssessment(def.id, item.id),
+                      builder: (context, snap) {
+                        final a = snap.data;
+                        final status = a?.status ?? AreaStatus.noData;
+                        final color = _statusColor(status);
+
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () => _openItemDetails(def, item, a),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0F0F1A),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: color.withValues(alpha: 0.22),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                AreaStatusDot(status: status, size: 14),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
                                         children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  item.title,
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
+                                          Expanded(
+                                            child: Text(
+                                              item.title,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 14,
                                               ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                _scoreLabel(a?.score),
-                                                style: TextStyle(
-                                                  color: color,
-                                                  fontWeight: FontWeight.w900,
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 5),
-                                          Text(
-                                            a?.reason ?? item.description,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                              height: 1.35,
                                             ),
                                           ),
-                                          const SizedBox(height: 8),
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 6,
-                                            children: [
-                                              _MiniPill(
-                                                text: _scoreClass(a?.score),
-                                                color: color,
-                                              ),
-                                              _MiniPill(
-                                                text: a != null
-                                                    ? _sourceLabel(a.source)
-                                                    : 'Sem fonte',
-                                                color: Colors.white70,
-                                              ),
-                                            ],
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            _scoreLabel(a?.score),
+                                            style: TextStyle(
+                                              color: color,
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 13,
+                                            ),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        a?.reason ?? item.description,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 6,
+                                        children: [
+                                          _MiniPill(
+                                            text: _scoreClass(a?.score),
+                                            color: color,
+                                          ),
+                                          _MiniPill(
+                                            text: a != null
+                                                ? _sourceLabel(a.source)
+                                                : 'Sem fonte',
+                                            color: Colors.white70,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              ],
+                            ),
+                          ),
                         );
-                      }),
-                    ],
-                  );
-                },
+                      },
+                    );
+                  }),
+                ],
               );
             },
           ),

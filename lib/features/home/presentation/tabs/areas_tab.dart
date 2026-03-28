@@ -8,12 +8,12 @@
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
 // - Adiciona o ícone do livro com explicação clara do sistema de score
 //
-// Ajustes desta versão:
+// Correções desta versão:
 // - women_cycle só entra no cálculo para perfil feminino
 // - score usa apenas as subáreas visíveis e realmente válidas
-// - adicionado atalho do livro sem mexer no layout principal do app
-// - corrigido uso de includeWomenCycle no catálogo
-// - removido includeWomenCycle do AreaDetailPage
+// - atalho do livro mantido sem mexer no layout principal do app
+// - classificação visual unificada com o sistema novo:
+//   85+ Ótimo | 68+ Bom | 45+ Médio | 25+ Ruim | abaixo disso Crítico
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -170,9 +170,11 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   String _classificationLabel(double score) {
-    if (score >= 80) return 'Ótimo';
-    if (score >= 50) return 'Bom';
-    if (score > 0) return 'Atenção';
+    if (score >= 85) return 'Ótimo';
+    if (score >= 68) return 'Bom';
+    if (score >= 45) return 'Médio';
+    if (score >= 25) return 'Ruim';
+    if (score > 0) return 'Crítico';
     return 'Inicial';
   }
 
@@ -436,9 +438,11 @@ class _TopHudCompact extends StatelessWidget {
   final VoidCallback onScoreRulesTap;
 
   Color _scoreColor() {
-    if (averageScore >= 80) return const Color(0xFF22C55E);
-    if (averageScore >= 50) return const Color(0xFFF59E0B);
-    return const Color(0xFFEF4444);
+    if (averageScore >= 85) return const Color(0xFF22C55E);
+    if (averageScore >= 68) return const Color(0xFFF59E0B);
+    if (averageScore >= 45) return const Color(0xFFFB923C);
+    if (averageScore >= 25) return const Color(0xFFEF4444);
+    return const Color(0xFFB91C1C);
   }
 
   @override
@@ -778,10 +782,12 @@ class _AreaCard extends StatelessWidget {
 
   Color _color() {
     final s = score;
-    if (s == null) return Colors.grey;
-    if (s >= 80) return Colors.green;
-    if (s >= 50) return Colors.orange;
-    return Colors.red;
+    if (s == null) return const Color(0xFF94A3B8);
+    if (s >= 85) return const Color(0xFF22C55E);
+    if (s >= 68) return const Color(0xFFF59E0B);
+    if (s >= 45) return const Color(0xFFFB923C);
+    if (s >= 25) return const Color(0xFFEF4444);
+    return const Color(0xFFB91C1C);
   }
 
   @override
