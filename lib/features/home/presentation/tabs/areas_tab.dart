@@ -12,6 +12,8 @@
 // - women_cycle só entra no cálculo para perfil feminino
 // - score usa apenas as subáreas visíveis e realmente válidas
 // - adicionado atalho do livro sem mexer no layout principal do app
+// - corrigido uso de includeWomenCycle no catálogo
+// - removido includeWomenCycle do AreaDetailPage
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -212,16 +214,10 @@ class _AreasTabState extends State<AreasTab> {
 
   Future<void> _openArea(String areaId) async {
     final def = AreasCatalog.byId(areaId);
-    final includeWomenCycle =
-        (_resolvedSex ?? UserSex.female) == UserSex.female;
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AreaDetailPage(
-          areaId: areaId,
-          title: def.title,
-          includeWomenCycle: includeWomenCycle,
-        ),
+        builder: (_) => AreaDetailPage(areaId: areaId, title: def.title),
       ),
     );
 

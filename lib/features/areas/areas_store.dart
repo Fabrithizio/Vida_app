@@ -35,6 +35,7 @@ import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
 import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
 import 'package:vida_app/features/finance/data/repositories/hive_finance_repository.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
 
 class AreasStore {
   AreasStore({FinanceRepository? financeRepository})
@@ -406,27 +407,130 @@ class AreasStore {
     required String noAction,
     required String details,
   }) async {
-    final answer = await _dailyCheckinService.getAnswer(
+    final history = await _readDailyBinaryHistory(
       day: day,
       questionId: questionId,
+      days: 14,
     );
 
-    if (answer == null) return null;
+    if (history.isEmpty) return null;
 
-    final isYes = answer == 1;
-    final status = isYes ? yesStatus : noStatus;
+    final score = _weightedBinaryHistoryScore(history);
+    final status = _statusFromNumericScore(score);
+    final trend = _trendFromBinaryHistory(history);
+    final lastAnsweredAt = history.first.date;
+    final daysSinceLast = day.difference(lastAnsweredAt).inDays;
+    final yesCount = history.where((e) => e.value == 1).length;
+    final total = history.length;
+    final latestAnswerYes = history.first.value == 1;
 
     await markAreaUpdated(areaId);
 
+    final reason = latestAnswerYes ? yesReason : noReason;
+    final action = latestAnswerYes ? yesAction : noAction;
+    final trendSentence = switch (trend) {
+      'improving' => 'Tendência recente: melhorando.',
+      'worsening' => 'Tendência recente: piorando.',
+      _ => 'Tendência recente: estável.',
+    };
+
+    final staleSentence = daysSinceLast <= 0
+        ? 'Você registrou essa subárea hoje.'
+        : daysSinceLast == 1
+        ? 'Último registro foi ontem.'
+        : 'Último registro foi há $daysSinceLast dias.';
+
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
-      reason: isYes ? yesReason : noReason,
+      score: score,
+      reason: reason,
       source: AreaDataSource.dailyQuestions,
-      lastUpdatedAt: DateTime.now(),
-      recommendedAction: isYes ? yesAction : noAction,
-      details: details,
+      lastUpdatedAt: lastAnsweredAt,
+      recommendedAction: action,
+      details:
+          '$details\n\nHistórico usado: $total registros nos últimos 14 dias, com $yesCount respostas positivas. $trendSentence $staleSentence',
     );
+  }
+
+  Future<List<_DailyBinaryPoint>> _readDailyBinaryHistory({
+    required DateTime day,
+    required String questionId,
+    required int days,
+  }) async {
+    final points = <_DailyBinaryPoint>[];
+
+    for (var offset = 0; offset < days; offset++) {
+      final date = day.subtract(Duration(days: offset));
+      final answer = await _dailyCheckinService.getAnswer(
+        day: date,
+        questionId: questionId,
+      );
+      if (answer == null) continue;
+      points.add(_DailyBinaryPoint(date: date, value: answer.clamp(0, 1)));
+    }
+
+    return points;
+  }
+
+  int _weightedBinaryHistoryScore(List<_DailyBinaryPoint> history) {
+    if (history.isEmpty) return 0;
+
+    double weightedSum = 0;
+    double weightSum = 0;
+
+    for (var index = 0; index < history.length; index++) {
+      final point = history[index];
+      final weight = 1.0 - (index * 0.045);
+      final safeWeight = weight < 0.35 ? 0.35 : weight;
+      weightedSum += point.value * safeWeight;
+      weightSum += safeWeight;
+    }
+
+    var score = weightSum == 0 ? 0 : ((weightedSum / weightSum) * 100);
+
+    final lastGap = DateTime.now().difference(history.first.date).inDays;
+    if (lastGap > 3) {
+      final penalty = ((lastGap - 3) * 4).clamp(0, 24);
+      score -= penalty.toDouble();
+    }
+
+    if (history.length < 3) {
+      score -= (3 - history.length) * 6;
+    }
+
+    return score.round().clamp(0, 100);
+  }
+
+  String _trendFromBinaryHistory(List<_DailyBinaryPoint> history) {
+    if (history.length < 4) return 'stable';
+
+    final recent = history.where((p) {
+      final gap = DateTime.now().difference(p.date).inDays;
+      return gap <= 6;
+    }).toList();
+    final previous = history.where((p) {
+      final gap = DateTime.now().difference(p.date).inDays;
+      return gap >= 7 && gap <= 13;
+    }).toList();
+
+    if (recent.isEmpty || previous.isEmpty) return 'stable';
+
+    final recentAvg =
+        recent.map((e) => e.value).reduce((a, b) => a + b) / recent.length;
+    final previousAvg =
+        previous.map((e) => e.value).reduce((a, b) => a + b) / previous.length;
+
+    final delta = recentAvg - previousAvg;
+    if (delta >= 0.18) return 'improving';
+    if (delta <= -0.18) return 'worsening';
+    return 'stable';
+  }
+
+  AreaStatus _statusFromNumericScore(int score) {
+    if (score >= 85) return AreaStatus.excellent;
+    if (score >= 68) return AreaStatus.good;
+    if (score >= 45) return AreaStatus.attention;
+    return AreaStatus.critical;
   }
 
   Future<AreaAssessment?> _computedCheckups(String uid) async {
@@ -439,39 +543,57 @@ class AreasStore {
 
     final now = DateTime.now();
     final days = now.difference(date).inDays;
-    final months = _monthsBetween(date, now);
-    final status = _statusForCheckups(months);
+    final score = _checkupScore(days);
+    final status = _statusFromNumericScore(score);
 
     final String reason;
     final String recommendedAction;
 
-    if (status == AreaStatus.excellent) {
+    if (score >= 85) {
       reason =
-          'Seu check-up está em dia. Faz $days dias desde o último registro.';
-      recommendedAction = 'Continue mantendo esse cuidado em dia.';
-    } else if (status == AreaStatus.good) {
-      reason = 'Fique atento às datas. Faz $days dias desde o último check-up.';
-      recommendedAction = 'Vale se planejar para não deixar passar.';
+          'Seu check-up está bem em dia. Faz $days dias desde o último registro.';
+      recommendedAction = 'Continue mantendo esse cuidado com regularidade.';
+    } else if (score >= 68) {
+      reason =
+          'Seu check-up ainda está aceitável, mas já merece atenção. Faz $days dias desde o último registro.';
+      recommendedAction = 'Vale se planejar para renovar esse cuidado.';
+    } else if (score >= 45) {
+      reason =
+          'Seu check-up está ficando desatualizado. Faz $days dias desde o último registro.';
+      recommendedAction = 'Tente agendar uma revisão em breve.';
     } else {
-      reason = 'Já faz $days dias desde o último check-up registrado.';
+      reason =
+          'Seu check-up está atrasado. Faz $days dias desde o último registro.';
       recommendedAction = 'Atualize a data ou programe um novo check-up.';
     }
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason: reason,
       source: AreaDataSource.manual,
-      lastUpdatedAt: now,
+      lastUpdatedAt: date,
       recommendedAction: recommendedAction,
-      details: 'Último check-up registrado em ${_toIsoDate(date)}.',
+      details:
+          'Essa subárea usa o tempo desde o último evento registrado. Último check-up: ${_toIsoDate(date)}.',
     );
   }
 
+  int _checkupScore(int days) {
+    if (days <= 180) {
+      final normalized = days / 180;
+      return (100 - (normalized * 15)).round().clamp(85, 100);
+    }
+    if (days <= 365) {
+      final normalized = (days - 180) / 185;
+      return (84 - (normalized * 39)).round().clamp(45, 84);
+    }
+    final normalized = ((days - 365) / 365).clamp(0, 1);
+    return (44 - (normalized * 29)).round().clamp(15, 44);
+  }
+
   AreaStatus _statusForCheckups(int months) {
-    if (months < 6) return AreaStatus.excellent;
-    if (months < 12) return AreaStatus.good;
-    return AreaStatus.critical;
+    return _statusFromNumericScore(_checkupScore(months * 30));
   }
 
   Future<AreaAssessment?> _computedSleep(String uid) async {
@@ -483,38 +605,43 @@ class AreasStore {
 
     if (hours == null) return null;
 
-    late final AreaStatus status;
+    final score = _sleepScore(hours.toDouble());
+    final status = _statusFromNumericScore(score);
+
     late final String reason;
     late final String action;
 
-    if (hours < 5) {
-      status = AreaStatus.critical;
-      reason = '$hours h por noite. Sono muito abaixo do ideal.';
-      action = 'Tente aumentar seu tempo de sono e revisar sua rotina noturna.';
-    } else if (hours <= 6) {
-      status = AreaStatus.attention;
-      reason = '$hours h por noite. Seu sono pede atenção.';
-      action = 'Busque mais consistência para chegar perto do ideal.';
-    } else if (hours <= 8) {
-      status = AreaStatus.excellent;
+    if (score >= 85) {
       reason =
-          '$hours h por noite. Faixa excelente para a maioria das pessoas.';
-      action = 'Continue mantendo esse padrão.';
+          '$hours h por noite. Faixa muito boa para a maioria das pessoas.';
+      action = 'Continue protegendo esse padrão de sono.';
+    } else if (score >= 68) {
+      reason = '$hours h por noite. Está bom, mas ainda dá para refinar.';
+      action = 'Tente manter mais regularidade no horário de dormir.';
+    } else if (score >= 45) {
+      reason = '$hours h por noite. Seu sono pede atenção.';
+      action = 'Busque mais consistência e mais horas de descanso.';
     } else {
-      status = AreaStatus.good;
-      reason = '$hours h por noite. Está bom, mas observe a qualidade do sono.';
-      action = 'Mantenha consistência e perceba se acorda bem.';
+      reason = '$hours h por noite. Seu sono está abaixo do ideal.';
+      action = 'Vale revisar rotina noturna e proteger mais horas de sono.';
     }
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason: reason,
-      source: AreaDataSource.dailyQuestions,
+      source: AreaDataSource.manual,
       lastUpdatedAt: DateTime.now(),
       recommendedAction: action,
-      details: 'Dado vindo do registro atual de horas de sono.',
+      details:
+          'Por enquanto esta subárea usa o valor registrado no app. No futuro poderá vir de relógio inteligente.',
     );
+  }
+
+  int _sleepScore(double hours) {
+    final distance = (hours - 7.5).abs();
+    final raw = 100 - (distance * 18);
+    return raw.round().clamp(10, 100);
   }
 
   Future<AreaAssessment?> _computedScreenTime(String uid) async {
@@ -533,33 +660,35 @@ class AreasStore {
       );
     }
 
-    late final AreaStatus status;
-    late final String action;
+    final score = _screenTimeScore(hours);
+    final status = _statusFromNumericScore(score);
 
-    if (hours < 2) {
-      status = AreaStatus.excellent;
+    late final String action;
+    if (score >= 85) {
       action = 'Ótimo controle digital. Continue assim.';
-    } else if (hours < 4) {
-      status = AreaStatus.good;
+    } else if (score >= 68) {
       action = 'Uso aceitável. Só mantenha atenção se subir.';
-    } else if (hours < 6) {
-      status = AreaStatus.attention;
-      action = 'Vale reduzir um pouco o uso para proteger foco e rotina.';
+    } else if (score >= 45) {
+      action = 'Vale reduzir um pouco para proteger foco e rotina.';
     } else {
-      status = AreaStatus.critical;
       action = 'Tempo de tela alto. Tente criar limites diários.';
     }
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason: 'Tempo de tela registrado: $raw.',
       source: AreaDataSource.manual,
       lastUpdatedAt: DateTime.now(),
       recommendedAction: action,
       details:
-          'Valor interpretado aproximadamente como ${hours.toStringAsFixed(1)} horas.',
+          'Pontuação calculada de forma gradual a partir de aproximadamente ${hours.toStringAsFixed(1)} horas. No futuro poderá vir direto do sistema do celular.',
     );
+  }
+
+  int _screenTimeScore(double hours) {
+    final raw = 100 - ((hours - 2) * 12);
+    return raw.round().clamp(5, 100);
   }
 
   Future<AreaAssessment?> _computedWomenCycle(String uid) async {
@@ -1248,6 +1377,66 @@ class AreasStore {
     await box.delete(_key(areaId, itemId));
   }
 
+  Future<String?> trendLabel(String areaId, String itemId) async {
+    if (areaId == 'body_health' && itemId == 'energy') {
+      return _trendLabelForQuestion('energy_ok');
+    }
+    if (areaId == 'body_health' && itemId == 'movement') {
+      return _trendLabelForQuestion('move');
+    }
+    if (areaId == 'body_health' && itemId == 'nutrition') {
+      return _trendLabelForQuestion('nutrition_ok');
+    }
+    if (areaId == 'mind_emotion' && itemId == 'mood') {
+      return _trendLabelForQuestion('mood_ok');
+    }
+    if (areaId == 'mind_emotion' && itemId == 'stress') {
+      return _trendLabelForQuestion('stress_ok');
+    }
+    if (areaId == 'mind_emotion' && itemId == 'focus') {
+      return _trendLabelForQuestion('focus');
+    }
+    if (areaId == 'mind_emotion' && itemId == 'mental_load') {
+      return _trendLabelForQuestion('stress_ok');
+    }
+    if (areaId == 'work_vocation' && itemId == 'routine') {
+      return _trendLabelForQuestion('routine_ok');
+    }
+    if (areaId == 'work_vocation' && itemId == 'consistency') {
+      return _trendLabelForQuestion('routine_ok');
+    }
+    if (areaId == 'learning_intellect' && itemId == 'study') {
+      return _trendLabelForQuestion('study_ok');
+    }
+    if (areaId == 'relations_community' && itemId == 'social_contact') {
+      return _trendLabelForQuestion('social_ok');
+    }
+    if (areaId == 'digital_tech' && itemId == 'distraction') {
+      return _trendLabelForQuestion('focus');
+    }
+    return null;
+  }
+
+  Future<String?> _trendLabelForQuestion(String questionId) async {
+    final history = await _readDailyBinaryHistory(
+      day: DateTime.now(),
+      questionId: questionId,
+      days: 14,
+    );
+
+    if (history.length < 4) return null;
+
+    final trend = _trendFromBinaryHistory(history);
+    switch (trend) {
+      case 'improving':
+        return '📈 Melhorando';
+      case 'worsening':
+        return '📉 Piorando';
+      default:
+        return '➖ Estável';
+    }
+  }
+
   Future<AreaStatus?> overallStatus(String areaId, List<String> itemIds) async {
     final statuses = <AreaStatus>[];
 
@@ -1270,8 +1459,8 @@ class AreasStore {
   }
 
   Future<int?> score(String areaId, List<String> itemIds) async {
-    int sum = 0;
-    int count = 0;
+    double weightedSum = 0;
+    double totalWeight = 0;
 
     for (final itemId in itemIds) {
       final assessment = await getComputedAssessment(areaId, itemId);
@@ -1279,12 +1468,20 @@ class AreasStore {
         continue;
       }
 
-      sum += assessment.score ?? _scoreFromStatus(assessment.status);
-      count += 1;
+      final item = AreasCatalog.itemById(
+        areaId,
+        itemId,
+        includeWomenCycle: true,
+      );
+      final weight = item?.weight ?? 1.0;
+      final itemScore = assessment.score ?? _scoreFromStatus(assessment.status);
+
+      weightedSum += itemScore * weight;
+      totalWeight += weight;
     }
 
-    if (count == 0) return null;
-    return (sum / count).round().clamp(0, 100);
+    if (totalWeight == 0) return null;
+    return (weightedSum / totalWeight).round().clamp(0, 100);
   }
 
   int _scoreFromStatus(AreaStatus status) {
@@ -1409,6 +1606,13 @@ class AreasStore {
     if (b == null) return a;
     return a.isAfter(b) ? a : b;
   }
+}
+
+class _DailyBinaryPoint {
+  const _DailyBinaryPoint({required this.date, required this.value});
+
+  final DateTime date;
+  final int value;
 }
 
 class _FinanceSnapshot {

@@ -2,9 +2,9 @@
 // FILE: lib/features/home/presentation/tabs/areas/score_rules_sheet.dart
 //
 // O que faz:
-// - Mostra ao usuário, de forma curta e clara, como o score do Areas funciona
-// - Explica fontes de dados, cálculo por subárea e cálculo do score geral
-// - Aumenta a confiança no app sem mudar o layout principal
+// - Explica de forma curta e confiável como o score do Areas é calculado
+// - Mostra as regras novas: score 0 a 100, histórico de 14 dias, decaimento
+// - Explica tendência, fontes de dados e o que ainda será automático no futuro
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -56,39 +56,51 @@ class ScoreRulesSheet extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               const _RuleCard(
-                title: '1. O score nasce das subáreas',
+                title: '1. Cada subárea recebe uma nota de 0 a 100',
                 text:
-                    'Cada área é formada por subáreas. Exemplo: Finanças usa renda, gastos, fluxo do mês, orçamento, dívidas e reserva.',
+                    'O app não usa mais só “ótimo” ou “ruim” como base. Primeiro ele calcula uma nota numérica. Depois essa nota vira um texto visual para facilitar a leitura.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                title: '2. Só entra no cálculo o que tem dado',
+                title: '2. O histórico de 14 dias entra na conta',
                 text:
-                    'Se uma subárea ainda não tem informação suficiente, ela não entra na média. Isso evita pontuação falsa.',
+                    'As subáreas ligadas ao check-in usam histórico recente. Assim, um único dia bom ou ruim não distorce tudo sozinho.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                title: '3. O app usa fontes diferentes',
+                title: '3. Dias recentes valem mais',
                 text:
-                    'Hoje o sistema pode usar check-in diário, dados salvos no app, registros manuais e dados do módulo de Finanças.',
+                    'O sistema dá mais peso para os registros mais novos. Isso faz o score reagir mais rápido quando você melhora ou piora.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                title: '4. Cada subárea vira uma nota',
+                title: '4. Sem dado recente, a nota pode cair',
                 text:
-                    'Ótimo ≈ nota alta. Bom ≈ nota boa. Atenção ≈ nota média. Crítico ≈ nota baixa. Depois a área tira uma média dessas subáreas.',
+                    'Algumas subáreas têm decaimento. Se o sistema ficar muito tempo sem registro novo, a nota perde força aos poucos em vez de ficar congelada.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                title: '5. O score geral é a média das áreas',
+                title: '5. Cada tipo de subárea usa uma lógica própria',
                 text:
-                    'O número principal no topo resume como suas áreas estão agora, usando apenas as áreas que já têm dados válidos.',
+                    'Algumas usam respostas do check-in. Outras usam eventos, como check-up. E outras serão automáticas no futuro, como sono por relógio e tempo de tela pelo celular.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                title: '6. Nem tudo é automático ainda',
+                title: '6. Tendência mostra a direção recente',
                 text:
-                    'Algumas subáreas já estão ligadas ao app agora. Outras já fazem sentido no sistema, mas serão conectadas a novos módulos e integrações nas próximas etapas.',
+                    '📈 melhorando = a média recente subiu\n📉 piorando = a média recente caiu\n➖ estável = mudou pouco',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                title: '7. O score da área é formado pelas subáreas',
+                text:
+                    'Cada área junta as subáreas que já têm dados válidos. O sistema já está preparado para pesos diferentes no futuro, quando algumas partes passarem a valer mais que outras.',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                title: '8. Fontes usadas hoje e depois',
+                text:
+                    'Hoje o app usa check-in, registros do próprio sistema, datas salvas e o módulo de Finanças. Depois ele poderá usar fontes automáticas como smartwatch e dados do celular.',
               ),
               const SizedBox(height: 14),
               Container(
@@ -100,7 +112,7 @@ class ScoreRulesSheet extends StatelessWidget {
                   border: Border.all(color: Colors.white12),
                 ),
                 child: const Text(
-                  'Resumo rápido: o score não tenta adivinhar sua vida. Ele usa os dados que o app já tem, ignora o que ainda está sem base e recalcula conforme você usa o sistema.',
+                  'Resumo rápido: o score tenta refletir sua situação atual de forma gradual. Ele olha o histórico recente, reage ao que mudou e evita notas exageradas por causa de um único dia.',
                   style: TextStyle(
                     color: Colors.white70,
                     height: 1.35,
