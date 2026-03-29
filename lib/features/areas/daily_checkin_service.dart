@@ -3,10 +3,15 @@
 //
 // O que faz:
 // - Gerencia as perguntas diárias do usuário
-// - Salva respostas por usuário no Hive
+// - Salva respostas graduais por usuário no Hive
 // - Marca o check-in do dia como concluído
 // - Informa se o usuário já pode usar o Areas
-// - Agora escolhe perguntas de forma adaptativa com base no histórico recente
+// - Escolhe perguntas de forma adaptativa com base no histórico recente
+//
+// Ajustes desta versão:
+// - histórico ampliado para 14 dias
+// - respostas agora usam escala gradual de 0 a 4
+// - adiciona metadados das opções para o sheet reutilizar sem duplicar regra
 // ============================================================================
 
 import 'dart:math';
@@ -24,6 +29,18 @@ class DailyQuestion {
   final String id;
   final String areaId;
   final String text;
+}
+
+class DailyAnswerOption {
+  const DailyAnswerOption({
+    required this.value,
+    required this.label,
+    required this.shortLabel,
+  });
+
+  final int value;
+  final String label;
+  final String shortLabel;
 }
 
 class DailyCheckinSummary {
@@ -48,7 +65,17 @@ class DailyCheckinSummary {
 class DailyCheckinService {
   static const String _boxPrefix = 'daily_checkin_box_';
   static const int questionsPerDay = 5;
-  static const int _historyDays = 7;
+  static const int historyDays = 14;
+  static const int minAnswerValue = 0;
+  static const int maxAnswerValue = 4;
+
+  static const List<DailyAnswerOption> answerOptions = [
+    DailyAnswerOption(value: 0, label: 'Nada', shortLabel: 'Nada'),
+    DailyAnswerOption(value: 1, label: 'Pouco', shortLabel: 'Pouco'),
+    DailyAnswerOption(value: 2, label: 'Médio', shortLabel: 'Médio'),
+    DailyAnswerOption(value: 3, label: 'Bem', shortLabel: 'Bem'),
+    DailyAnswerOption(value: 4, label: 'Excelente', shortLabel: 'Ótimo'),
+  ];
 
   static const List<DailyQuestion> _pool = [
     DailyQuestion(
@@ -60,57 +87,57 @@ class DailyCheckinService {
     DailyQuestion(
       id: 'move',
       areaId: 'body_health',
-      text: 'Você se movimentou, caminhou ou treinou hoje?',
+      text: 'Quanto você se movimentou, caminhou ou treinou hoje?',
     ),
     DailyQuestion(
       id: 'nutrition_ok',
       areaId: 'body_health',
-      text: 'Sua alimentação esteve razoável hoje?',
+      text: 'Como esteve sua alimentação hoje?',
     ),
     DailyQuestion(
       id: 'energy_ok',
       areaId: 'body_health',
-      text: 'Você teve uma energia boa na maior parte do dia?',
+      text: 'Como esteve sua energia ao longo do dia?',
     ),
     DailyQuestion(
       id: 'focus',
       areaId: 'mind_emotion',
-      text: 'Você conseguiu manter foco em algo importante hoje?',
+      text: 'Como esteve seu foco em algo importante hoje?',
     ),
     DailyQuestion(
       id: 'stress_ok',
       areaId: 'mind_emotion',
-      text: 'Seu nível de estresse esteve controlado hoje?',
+      text: 'Quanto seu estresse ficou sob controle hoje?',
     ),
     DailyQuestion(
       id: 'mood_ok',
       areaId: 'mind_emotion',
-      text: 'Seu humor esteve razoavelmente bem hoje?',
+      text: 'Como esteve seu humor hoje?',
     ),
     DailyQuestion(
       id: 'fin_tx',
       areaId: 'finance_material',
-      text: 'Você registrou ou acompanhou seus gastos hoje?',
+      text: 'Quanto você acompanhou ou registrou seus gastos hoje?',
     ),
     DailyQuestion(
       id: 'fin_control',
       areaId: 'finance_material',
-      text: 'Você evitou gastos desnecessários hoje?',
+      text: 'Quanto você conseguiu evitar gastos desnecessários hoje?',
     ),
     DailyQuestion(
       id: 'routine_ok',
       areaId: 'work_vocation',
-      text: 'Sua rotina esteve minimamente organizada hoje?',
+      text: 'Como esteve sua organização de rotina hoje?',
     ),
     DailyQuestion(
       id: 'study_ok',
       areaId: 'learning_intellect',
-      text: 'Você estudou ou aprendeu algo importante hoje?',
+      text: 'Quanto você estudou ou aprendeu algo importante hoje?',
     ),
     DailyQuestion(
       id: 'social_ok',
       areaId: 'relations_community',
-      text: 'Você teve uma boa conexão com alguém hoje?',
+      text: 'Como esteve sua conexão com alguém importante hoje?',
     ),
   ];
 
@@ -196,7 +223,6 @@ class DailyCheckinService {
       if (selected.length >= questionsPerDay) break;
 
       final q = item.question;
-
       if (!usedAreas.contains(q.areaId)) {
         selected.add(q);
         usedAreas.add(q.areaId);
@@ -221,20 +247,17 @@ class DailyCheckinService {
   }) async {
     double score = 1.0;
 
-    for (var i = 1; i <= _historyDays; i++) {
+    for (var i = 1; i <= historyDays; i++) {
       final day = now.subtract(Duration(days: i));
       final raw = box.get(_answerKey(day, question.id));
 
       if (raw is int) {
-        final weight = (_historyDays - i + 1) / _historyDays;
+        final normalized = _normalizeAnswer(raw);
+        final weight = (historyDays - i + 1) / historyDays;
 
-        if (raw == 0) {
-          score += 3.0 * weight;
-        } else if (raw == 1) {
-          score += 0.6 * weight;
-        }
-
-        score -= 0.45;
+        score += (1.0 - normalized) * 3.2 * weight;
+        score += (normalized < 0.5 ? 0.8 : 0.0) * weight;
+        score -= 0.18;
       }
     }
 
@@ -262,13 +285,23 @@ class DailyCheckinService {
     return null;
   }
 
+  double normalizeAnswerValue(int value) => _normalizeAnswer(value);
+
+  String answerLabel(int value) {
+    for (final option in answerOptions) {
+      if (option.value == value) return option.label;
+    }
+    return value.toString();
+  }
+
   Future<void> answer({
     required DateTime day,
     required String questionId,
     required int value,
   }) async {
     final box = await _open();
-    await box.put(_answerKey(day, questionId), value);
+    final safeValue = value.clamp(minAnswerValue, maxAnswerValue).toInt();
+    await box.put(_answerKey(day, questionId), safeValue);
   }
 
   Future<int?> getAnswer({
@@ -277,7 +310,9 @@ class DailyCheckinService {
   }) async {
     final box = await _open();
     final raw = box.get(_answerKey(day, questionId));
-    return raw is int ? raw : null;
+    return raw is int
+        ? raw.clamp(minAnswerValue, maxAnswerValue).toInt()
+        : null;
   }
 
   Future<int> answeredCount(DateTime day) async {
@@ -325,6 +360,11 @@ class DailyCheckinService {
       answered: answered,
       isCompleted: completed,
     );
+  }
+
+  double _normalizeAnswer(int raw) {
+    final safe = raw.clamp(minAnswerValue, maxAnswerValue).toInt();
+    return safe / maxAnswerValue;
   }
 }
 

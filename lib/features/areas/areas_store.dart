@@ -203,8 +203,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'energy_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você relatou boa energia hoje.',
         noReason: 'Você relatou energia abaixo do ideal hoje.',
         yesAction: 'Tente manter esse ritmo e consistência.',
@@ -218,8 +216,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'move',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você se movimentou ou treinou hoje.',
         noReason: 'Você não se movimentou hoje.',
         yesAction: 'Ótimo. Continue com regularidade.',
@@ -233,8 +229,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'nutrition_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você relatou alimentação razoável hoje.',
         noReason: 'Você relatou alimentação abaixo do ideal hoje.',
         yesAction: 'Continue reforçando bons hábitos.',
@@ -248,8 +242,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'mood_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você relatou humor razoavelmente bom hoje.',
         noReason: 'Você relatou humor mais baixo hoje.',
         yesAction: 'Bom sinal. Tente manter esse equilíbrio.',
@@ -263,8 +255,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'stress_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você relatou estresse sob controle hoje.',
         noReason: 'Você relatou estresse acima do ideal hoje.',
         yesAction: 'Continue protegendo seu equilíbrio.',
@@ -278,8 +268,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'focus',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você conseguiu manter foco em algo importante hoje.',
         noReason: 'Você sentiu dificuldade de foco hoje.',
         yesAction: 'Ótimo. Tente repetir esse padrão.',
@@ -293,8 +281,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'stress_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.critical,
         yesReason: 'Sua sobrecarga mental pareceu controlada hoje.',
         noReason: 'Você relatou sobrecarga mental alta hoje.',
         yesAction: 'Continue protegendo seu descanso mental.',
@@ -316,8 +302,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'routine_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Sua rotina principal esteve minimamente organizada hoje.',
         noReason: 'Sua rotina ficou desorganizada hoje.',
         yesAction: 'Continue repetindo esse padrão de consistência.',
@@ -331,8 +315,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'routine_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você mostrou consistência mínima na rotina hoje.',
         noReason: 'Sua consistência caiu hoje.',
         yesAction: 'Bom sinal. Continue aparecendo e executando o básico.',
@@ -346,8 +328,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'study_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você estudou ou aprendeu algo importante hoje.',
         noReason: 'Hoje faltou avanço em estudo ou aprendizado.',
         yesAction: 'Continue fortalecendo essa constância.',
@@ -361,8 +341,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'social_ok',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.attention,
         yesReason: 'Você teve uma boa conexão social hoje.',
         noReason: 'Hoje faltou conexão social de qualidade.',
         yesAction: 'Continue cuidando das suas conexões.',
@@ -376,8 +354,6 @@ class AreasStore {
         areaId: areaId,
         day: today,
         questionId: 'focus',
-        yesStatus: AreaStatus.good,
-        noStatus: AreaStatus.critical,
         yesReason: 'As distrações digitais não parecem ter dominado seu dia.',
         noReason: 'Seu foco caiu e isso sugere distração digital relevante.',
         yesAction: 'Continue protegendo seu foco.',
@@ -399,35 +375,46 @@ class AreasStore {
     required String areaId,
     required DateTime day,
     required String questionId,
-    required AreaStatus yesStatus,
-    required AreaStatus noStatus,
     required String yesReason,
     required String noReason,
     required String yesAction,
     required String noAction,
     required String details,
   }) async {
-    final history = await _readDailyBinaryHistory(
+    final history = await _readDailyScaledHistory(
       day: day,
       questionId: questionId,
-      days: 14,
+      days: DailyCheckinService.historyDays,
     );
 
     if (history.isEmpty) return null;
 
-    final score = _weightedBinaryHistoryScore(history);
+    final score = _weightedScaledHistoryScore(history);
     final status = _statusFromNumericScore(score);
-    final trend = _trendFromBinaryHistory(history);
+    final trend = _trendFromScaledHistory(history);
     final lastAnsweredAt = history.first.date;
     final daysSinceLast = day.difference(lastAnsweredAt).inDays;
-    final yesCount = history.where((e) => e.value == 1).length;
     final total = history.length;
-    final latestAnswerYes = history.first.value == 1;
+    final averageLevel =
+        history.map((e) => e.value).reduce((a, b) => a + b) / history.length;
+    final latestValue = history.first.value;
 
     await markAreaUpdated(areaId);
 
-    final reason = latestAnswerYes ? yesReason : noReason;
-    final action = latestAnswerYes ? yesAction : noAction;
+    final bool latestPositive = latestValue >= 3;
+    final bool latestNegative = latestValue <= 1;
+
+    final reason = latestPositive
+        ? yesReason
+        : latestNegative
+        ? noReason
+        : 'Sua resposta mais recente ficou em um nível intermediário.';
+    final action = latestPositive
+        ? yesAction
+        : latestNegative
+        ? noAction
+        : 'Tente elevar essa subárea aos poucos nos próximos dias.';
+
     final trendSentence = switch (trend) {
       'improving' => 'Tendência recente: melhorando.',
       'worsening' => 'Tendência recente: piorando.',
@@ -440,6 +427,16 @@ class AreasStore {
         ? 'Último registro foi ontem.'
         : 'Último registro foi há $daysSinceLast dias.';
 
+    final intensitySentence = latestValue >= 4
+        ? 'Sua resposta mais recente ficou no nível mais alto.'
+        : latestValue == 3
+        ? 'Sua resposta mais recente ficou em um nível bom.'
+        : latestValue == 2
+        ? 'Sua resposta mais recente ficou em um nível médio.'
+        : latestValue == 1
+        ? 'Sua resposta mais recente ficou em um nível baixo.'
+        : 'Sua resposta mais recente ficou no nível mais baixo.';
+
     return AreaAssessment(
       status: status,
       score: score,
@@ -448,16 +445,16 @@ class AreasStore {
       lastUpdatedAt: lastAnsweredAt,
       recommendedAction: action,
       details:
-          '$details\n\nHistórico usado: $total registros nos últimos 14 dias, com $yesCount respostas positivas. $trendSentence $staleSentence',
+          '$details\n\nHistórico usado: $total registros nos últimos ${DailyCheckinService.historyDays} dias, com média ${averageLevel.toStringAsFixed(1)}/4. $intensitySentence $trendSentence $staleSentence',
     );
   }
 
-  Future<List<_DailyBinaryPoint>> _readDailyBinaryHistory({
+  Future<List<_DailyScaledPoint>> _readDailyScaledHistory({
     required DateTime day,
     required String questionId,
     required int days,
   }) async {
-    final points = <_DailyBinaryPoint>[];
+    final points = <_DailyScaledPoint>[];
 
     for (var offset = 0; offset < days; offset++) {
       final date = day.subtract(Duration(days: offset));
@@ -466,13 +463,23 @@ class AreasStore {
         questionId: questionId,
       );
       if (answer == null) continue;
-      points.add(_DailyBinaryPoint(date: date, value: answer.clamp(0, 1)));
+      points.add(
+        _DailyScaledPoint(
+          date: date,
+          value: answer
+              .clamp(
+                DailyCheckinService.minAnswerValue,
+                DailyCheckinService.maxAnswerValue,
+              )
+              .toInt(),
+        ),
+      );
     }
 
     return points;
   }
 
-  int _weightedBinaryHistoryScore(List<_DailyBinaryPoint> history) {
+  int _weightedScaledHistoryScore(List<_DailyScaledPoint> history) {
     if (history.isEmpty) return 0;
 
     double weightedSum = 0;
@@ -480,9 +487,11 @@ class AreasStore {
 
     for (var index = 0; index < history.length; index++) {
       final point = history[index];
-      final weight = 1.0 - (index * 0.045);
-      final safeWeight = weight < 0.35 ? 0.35 : weight;
-      weightedSum += point.value * safeWeight;
+      final weight = 1.0 - (index * 0.04);
+      final safeWeight = weight < 0.32 ? 0.32 : weight;
+      final normalized = point.value / DailyCheckinService.maxAnswerValue;
+
+      weightedSum += normalized * safeWeight;
       weightSum += safeWeight;
     }
 
@@ -494,14 +503,14 @@ class AreasStore {
       score -= penalty.toDouble();
     }
 
-    if (history.length < 3) {
-      score -= (3 - history.length) * 6;
+    if (history.length < 4) {
+      score -= (4 - history.length) * 5;
     }
 
     return score.round().clamp(0, 100);
   }
 
-  String _trendFromBinaryHistory(List<_DailyBinaryPoint> history) {
+  String _trendFromScaledHistory(List<_DailyScaledPoint> history) {
     if (history.length < 4) return 'stable';
 
     final recent = history.where((p) {
@@ -521,8 +530,8 @@ class AreasStore {
         previous.map((e) => e.value).reduce((a, b) => a + b) / previous.length;
 
     final delta = recentAvg - previousAvg;
-    if (delta >= 0.18) return 'improving';
-    if (delta <= -0.18) return 'worsening';
+    if (delta >= 0.45) return 'improving';
+    if (delta <= -0.45) return 'worsening';
     return 'stable';
   }
 
@@ -1418,15 +1427,15 @@ class AreasStore {
   }
 
   Future<String?> _trendLabelForQuestion(String questionId) async {
-    final history = await _readDailyBinaryHistory(
+    final history = await _readDailyScaledHistory(
       day: DateTime.now(),
       questionId: questionId,
-      days: 14,
+      days: DailyCheckinService.historyDays,
     );
 
     if (history.length < 4) return null;
 
-    final trend = _trendFromBinaryHistory(history);
+    final trend = _trendFromScaledHistory(history);
     switch (trend) {
       case 'improving':
         return '📈 Melhorando';
@@ -1608,8 +1617,8 @@ class AreasStore {
   }
 }
 
-class _DailyBinaryPoint {
-  const _DailyBinaryPoint({required this.date, required this.value});
+class _DailyScaledPoint {
+  const _DailyScaledPoint({required this.date, required this.value});
 
   final DateTime date;
   final int value;
