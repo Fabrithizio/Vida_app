@@ -19,9 +19,10 @@
 //   -> passam a vir do check-in diário
 //
 // Atualizações desta revisão:
-// - adiciona rastreamento de última atualização por área
-// - permite alertas de "área sem atualização"
-// - preserva a estrutura grande já existente
+// - remove duplicações do sistema antigo de daily check-in
+// - mantém o cálculo novo com histórico escalonado
+// - corrige helpers internos para o modelo atual do DailyCheckinService
+// - preserva o layout e a estrutura geral do app
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -199,191 +200,199 @@ class AreasStore {
     final today = DateTime.now();
 
     if (areaId == 'body_health' && itemId == 'energy') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'energy_ok',
-        yesReason: 'Você relatou boa energia hoje.',
-        noReason: 'Você relatou energia abaixo do ideal hoje.',
-        yesAction: 'Tente manter esse ritmo e consistência.',
-        noAction: 'Vale observar sono, alimentação e descanso.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['energy_ok', 'sleep_ok'],
+        positiveReason: 'Sua energia recente está em um nível bom.',
+        negativeReason: 'Sua energia recente está abaixo do ideal.',
+        positiveAction: 'Tente manter o que está ajudando sua energia.',
+        negativeAction:
+            'Vale observar sono, alimentação, descanso e ritmo do dia.',
+        details:
+            'Estimado a partir das respostas recentes sobre energia e sono.',
       );
     }
 
     if (areaId == 'body_health' && itemId == 'movement') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'move',
-        yesReason: 'Você se movimentou ou treinou hoje.',
-        noReason: 'Você não se movimentou hoje.',
-        yesAction: 'Ótimo. Continue com regularidade.',
-        noAction: 'Vale tentar ao menos uma caminhada ou movimento leve.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['move'],
+        positiveReason: 'Seu nível recente de movimento está bom.',
+        negativeReason: 'Seu nível recente de movimento está baixo.',
+        positiveAction: 'Ótimo. Continue com regularidade.',
+        negativeAction:
+            'Vale tentar ao menos uma caminhada, treino leve ou alongamento.',
+        details: 'Baseado nas respostas recentes sobre movimento.',
       );
     }
 
     if (areaId == 'body_health' && itemId == 'nutrition') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'nutrition_ok',
-        yesReason: 'Você relatou alimentação razoável hoje.',
-        noReason: 'Você relatou alimentação abaixo do ideal hoje.',
-        yesAction: 'Continue reforçando bons hábitos.',
-        noAction: 'Tente melhorar a qualidade das próximas refeições.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['nutrition_ok', 'hydration_ok'],
+        positiveReason: 'Seu cuidado recente com alimentação está bom.',
+        negativeReason: 'Seu cuidado recente com alimentação precisa melhorar.',
+        positiveAction: 'Continue reforçando bons hábitos.',
+        negativeAction:
+            'Tente melhorar a qualidade das refeições e da hidratação.',
+        details:
+            'Baseado nas respostas recentes sobre alimentação e hidratação.',
       );
     }
 
     if (areaId == 'mind_emotion' && itemId == 'mood') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'mood_ok',
-        yesReason: 'Você relatou humor razoavelmente bom hoje.',
-        noReason: 'Você relatou humor mais baixo hoje.',
-        yesAction: 'Bom sinal. Tente manter esse equilíbrio.',
-        noAction: 'Observe gatilhos e tente aliviar a pressão do dia.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['mood_ok', 'mental_recovery'],
+        positiveReason: 'Seu humor recente parece mais equilibrado.',
+        negativeReason: 'Seu humor recente mostra oscilação ou queda.',
+        positiveAction:
+            'Mantenha os hábitos que estão ajudando seu equilíbrio.',
+        negativeAction:
+            'Observe gatilhos e proteja melhor seus momentos de recuperação.',
+        details:
+            'Baseado nas respostas recentes sobre humor e recuperação mental.',
       );
     }
 
     if (areaId == 'mind_emotion' && itemId == 'stress') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'stress_ok',
-        yesReason: 'Você relatou estresse sob controle hoje.',
-        noReason: 'Você relatou estresse acima do ideal hoje.',
-        yesAction: 'Continue protegendo seu equilíbrio.',
-        noAction: 'Vale desacelerar e revisar o que está pesando.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['stress_ok', 'mental_recovery'],
+        positiveReason: 'Seu estresse recente parece bem controlado.',
+        negativeReason: 'Seu estresse recente está acima do ideal.',
+        positiveAction: 'Continue protegendo seu equilíbrio.',
+        negativeAction: 'Vale reduzir pressão, rever carga e criar pausas.',
+        details:
+            'Baseado nas respostas recentes sobre estresse e recuperação mental.',
       );
     }
 
     if (areaId == 'mind_emotion' && itemId == 'focus') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'focus',
-        yesReason: 'Você conseguiu manter foco em algo importante hoje.',
-        noReason: 'Você sentiu dificuldade de foco hoje.',
-        yesAction: 'Ótimo. Tente repetir esse padrão.',
-        noAction: 'Vale reduzir distrações e simplificar a rotina.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['focus', 'study_quality'],
+        positiveReason: 'Seu foco recente está em um bom nível.',
+        negativeReason: 'Seu foco recente ficou abaixo do ideal.',
+        positiveAction: 'Repita as condições que favoreceram esse foco.',
+        negativeAction: 'Vale simplificar a rotina e reduzir distrações.',
+        details:
+            'Baseado nas respostas recentes sobre foco e qualidade de estudo.',
       );
     }
 
     if (areaId == 'mind_emotion' && itemId == 'mental_load') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'stress_ok',
-        yesReason: 'Sua sobrecarga mental pareceu controlada hoje.',
-        noReason: 'Você relatou sobrecarga mental alta hoje.',
-        yesAction: 'Continue protegendo seu descanso mental.',
-        noAction: 'Vale diminuir pressão, ajustar demandas e buscar pausas.',
+        questionIds: const ['stress_ok', 'mental_recovery'],
+        positiveReason: 'Sua carga mental recente parece mais controlada.',
+        negativeReason: 'Sua carga mental recente parece pesada.',
+        positiveAction: 'Continue preservando pausas e limites.',
+        negativeAction:
+            'Vale aliviar demandas e criar mais respiros ao longo do dia.',
         details:
-            'Estimado a partir da resposta de estresse do check-in diário.',
-      ).then((assessment) {
-        if (assessment == null) return null;
-        return assessment.copyWith(
-          source: AreaDataSource.estimated,
-          details:
-              'Estimado a partir da resposta de estresse do check-in diário.',
-        );
-      });
+            'Estimado a partir das respostas recentes sobre estresse e recuperação mental.',
+        estimated: true,
+      );
     }
 
     if (areaId == 'work_vocation' && itemId == 'routine') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'routine_ok',
-        yesReason: 'Sua rotina principal esteve minimamente organizada hoje.',
-        noReason: 'Sua rotina ficou desorganizada hoje.',
-        yesAction: 'Continue repetindo esse padrão de consistência.',
-        noAction: 'Vale simplificar o dia e definir poucas prioridades.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['routine_ok', 'day_planning'],
+        positiveReason: 'Sua rotina recente está mais organizada.',
+        negativeReason: 'Sua rotina recente está desorganizada.',
+        positiveAction: 'Continue repetindo esse padrão.',
+        negativeAction:
+            'Tente definir menos prioridades e organizar melhor o básico.',
+        details:
+            'Baseado nas respostas recentes sobre rotina e execução do planejamento.',
       );
     }
 
     if (areaId == 'work_vocation' && itemId == 'consistency') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'routine_ok',
-        yesReason: 'Você mostrou consistência mínima na rotina hoje.',
-        noReason: 'Sua consistência caiu hoje.',
-        yesAction: 'Bom sinal. Continue aparecendo e executando o básico.',
-        noAction: 'Tente reduzir atritos e voltar ao ritmo aos poucos.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['routine_ok', 'day_planning'],
+        positiveReason: 'Sua consistência recente está boa.',
+        negativeReason: 'Sua consistência recente caiu.',
+        positiveAction: 'Continue aparecendo e executando o básico.',
+        negativeAction: 'Reduza atritos e retome o ritmo aos poucos.',
+        details: 'Baseado nas respostas recentes sobre constância da rotina.',
       );
     }
 
     if (areaId == 'learning_intellect' && itemId == 'study') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'study_ok',
-        yesReason: 'Você estudou ou aprendeu algo importante hoje.',
-        noReason: 'Hoje faltou avanço em estudo ou aprendizado.',
-        yesAction: 'Continue fortalecendo essa constância.',
-        noAction: 'Tente encaixar uma sessão curta de estudo.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['study_ok', 'study_quality'],
+        positiveReason: 'Seu estudo recente está em um bom ritmo.',
+        negativeReason: 'Seu estudo recente está abaixo do ideal.',
+        positiveAction: 'Continue fortalecendo essa constância.',
+        negativeAction: 'Tente encaixar sessões curtas com mais qualidade.',
+        details: 'Baseado nas respostas recentes sobre estudo.',
       );
     }
 
     if (areaId == 'relations_community' && itemId == 'social_contact') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'social_ok',
-        yesReason: 'Você teve uma boa conexão social hoje.',
-        noReason: 'Hoje faltou conexão social de qualidade.',
-        yesAction: 'Continue cuidando das suas conexões.',
-        noAction: 'Vale chamar alguém importante ou retomar contato.',
-        details: 'Baseado na resposta do check-in diário.',
+        questionIds: const ['social_ok', 'social_presence'],
+        positiveReason: 'Sua conexão social recente está boa.',
+        negativeReason: 'Sua conexão social recente ficou abaixo do ideal.',
+        positiveAction: 'Continue cuidando dessas conexões.',
+        negativeAction: 'Vale retomar contato com alguém importante.',
+        details:
+            'Baseado nas respostas recentes sobre presença e conexão social.',
       );
     }
 
     if (areaId == 'digital_tech' && itemId == 'distraction') {
-      return _assessmentFromDailyAnswer(
+      return _assessmentFromDailyQuestions(
         areaId: areaId,
         day: today,
-        questionId: 'focus',
-        yesReason: 'As distrações digitais não parecem ter dominado seu dia.',
-        noReason: 'Seu foco caiu e isso sugere distração digital relevante.',
-        yesAction: 'Continue protegendo seu foco.',
-        noAction: 'Vale reduzir notificações e limitar apps de distração.',
-        details: 'Estimado a partir da resposta de foco do check-in diário.',
-      ).then((assessment) {
-        if (assessment == null) return null;
-        return assessment.copyWith(
-          source: AreaDataSource.estimated,
-          details: 'Estimado a partir da resposta de foco do check-in diário.',
-        );
-      });
+        questionIds: const ['focus', 'digital_balance'],
+        positiveReason:
+            'As distrações digitais recentes parecem mais controladas.',
+        negativeReason:
+            'As distrações digitais recentes parecem estar atrapalhando.',
+        positiveAction: 'Continue protegendo seu foco.',
+        negativeAction:
+            'Vale reduzir notificações e limitar janelas de distração.',
+        details:
+            'Estimado a partir das respostas recentes sobre foco e controle digital.',
+        estimated: true,
+      );
     }
 
     return null;
   }
 
-  Future<AreaAssessment?> _assessmentFromDailyAnswer({
+  Future<AreaAssessment?> _assessmentFromDailyQuestions({
     required String areaId,
     required DateTime day,
-    required String questionId,
-    required String yesReason,
-    required String noReason,
-    required String yesAction,
-    required String noAction,
+    required List<String> questionIds,
+    required String positiveReason,
+    required String negativeReason,
+    required String positiveAction,
+    required String negativeAction,
     required String details,
+    bool estimated = false,
   }) async {
     final history = await _readDailyScaledHistory(
       day: day,
-      questionId: questionId,
+      questionIds: questionIds,
       days: DailyCheckinService.historyDays,
     );
 
@@ -395,25 +404,15 @@ class AreasStore {
     final lastAnsweredAt = history.first.date;
     final daysSinceLast = day.difference(lastAnsweredAt).inDays;
     final total = history.length;
-    final averageLevel =
-        history.map((e) => e.value).reduce((a, b) => a + b) / history.length;
     final latestValue = history.first.value;
+    final averageValue =
+        history.map((e) => e.value).reduce((a, b) => a + b) / total;
 
     await markAreaUpdated(areaId);
 
-    final bool latestPositive = latestValue >= 3;
-    final bool latestNegative = latestValue <= 1;
-
-    final reason = latestPositive
-        ? yesReason
-        : latestNegative
-        ? noReason
-        : 'Sua resposta mais recente ficou em um nível intermediário.';
-    final action = latestPositive
-        ? yesAction
-        : latestNegative
-        ? noAction
-        : 'Tente elevar essa subárea aos poucos nos próximos dias.';
+    final positive = latestValue >= 65;
+    final reason = positive ? positiveReason : negativeReason;
+    final action = positive ? positiveAction : negativeAction;
 
     final trendSentence = switch (trend) {
       'improving' => 'Tendência recente: melhorando.',
@@ -427,53 +426,50 @@ class AreasStore {
         ? 'Último registro foi ontem.'
         : 'Último registro foi há $daysSinceLast dias.';
 
-    final intensitySentence = latestValue >= 4
-        ? 'Sua resposta mais recente ficou no nível mais alto.'
-        : latestValue == 3
-        ? 'Sua resposta mais recente ficou em um nível bom.'
-        : latestValue == 2
-        ? 'Sua resposta mais recente ficou em um nível médio.'
-        : latestValue == 1
-        ? 'Sua resposta mais recente ficou em um nível baixo.'
-        : 'Sua resposta mais recente ficou no nível mais baixo.';
-
     return AreaAssessment(
       status: status,
       score: score,
       reason: reason,
-      source: AreaDataSource.dailyQuestions,
+      source: estimated
+          ? AreaDataSource.estimated
+          : AreaDataSource.dailyQuestions,
       lastUpdatedAt: lastAnsweredAt,
       recommendedAction: action,
       details:
-          '$details\n\nHistórico usado: $total registros nos últimos ${DailyCheckinService.historyDays} dias, com média ${averageLevel.toStringAsFixed(1)}/4. $intensitySentence $trendSentence $staleSentence',
+          '$details\n\nHistórico usado: $total registros nos últimos ${DailyCheckinService.historyDays} dias. Média recente: ${averageValue.toStringAsFixed(0)}/100. $trendSentence $staleSentence',
     );
   }
 
   Future<List<_DailyScaledPoint>> _readDailyScaledHistory({
     required DateTime day,
-    required String questionId,
+    required List<String> questionIds,
     required int days,
   }) async {
     final points = <_DailyScaledPoint>[];
 
     for (var offset = 0; offset < days; offset++) {
       final date = day.subtract(Duration(days: offset));
-      final answer = await _dailyCheckinService.getAnswer(
-        day: date,
-        questionId: questionId,
-      );
-      if (answer == null) continue;
-      points.add(
-        _DailyScaledPoint(
-          date: date,
-          value: answer
-              .clamp(
-                DailyCheckinService.minAnswerValue,
-                DailyCheckinService.maxAnswerValue,
-              )
-              .toInt(),
-        ),
-      );
+      final values = <double>[];
+
+      for (final questionId in questionIds) {
+        final answer = await _dailyCheckinService.getAnswer(
+          day: date,
+          questionId: questionId,
+        );
+        if (answer == null) continue;
+
+        final normalized = _dailyCheckinService.normalizeStoredValue(
+          questionId: questionId,
+          rawValue: answer,
+        );
+
+        values.add((normalized / DailyCheckinService.maxAnswerValue) * 100.0);
+      }
+
+      if (values.isEmpty) continue;
+
+      final avg = values.reduce((a, b) => a + b) / values.length;
+      points.add(_DailyScaledPoint(date: date, value: avg));
     }
 
     return points;
@@ -487,15 +483,14 @@ class AreasStore {
 
     for (var index = 0; index < history.length; index++) {
       final point = history[index];
-      final weight = 1.0 - (index * 0.04);
-      final safeWeight = weight < 0.32 ? 0.32 : weight;
-      final normalized = point.value / DailyCheckinService.maxAnswerValue;
+      final weight = 1.0 - (index * 0.045);
+      final safeWeight = weight < 0.35 ? 0.35 : weight;
 
-      weightedSum += normalized * safeWeight;
+      weightedSum += point.value * safeWeight;
       weightSum += safeWeight;
     }
 
-    var score = weightSum == 0 ? 0 : ((weightedSum / weightSum) * 100);
+    var score = weightSum == 0 ? 0 : (weightedSum / weightSum);
 
     final lastGap = DateTime.now().difference(history.first.date).inDays;
     if (lastGap > 3) {
@@ -503,8 +498,8 @@ class AreasStore {
       score -= penalty.toDouble();
     }
 
-    if (history.length < 4) {
-      score -= (4 - history.length) * 5;
+    if (history.length < 3) {
+      score -= (3 - history.length) * 6;
     }
 
     return score.round().clamp(0, 100);
@@ -517,6 +512,7 @@ class AreasStore {
       final gap = DateTime.now().difference(p.date).inDays;
       return gap <= 6;
     }).toList();
+
     final previous = history.where((p) {
       final gap = DateTime.now().difference(p.date).inDays;
       return gap >= 7 && gap <= 13;
@@ -530,8 +526,9 @@ class AreasStore {
         previous.map((e) => e.value).reduce((a, b) => a + b) / previous.length;
 
     final delta = recentAvg - previousAvg;
-    if (delta >= 0.45) return 'improving';
-    if (delta <= -0.45) return 'worsening';
+
+    if (delta >= 8) return 'improving';
+    if (delta <= -8) return 'worsening';
     return 'stable';
   }
 
@@ -1388,48 +1385,48 @@ class AreasStore {
 
   Future<String?> trendLabel(String areaId, String itemId) async {
     if (areaId == 'body_health' && itemId == 'energy') {
-      return _trendLabelForQuestion('energy_ok');
+      return _trendLabelForQuestions(const ['energy_ok', 'sleep_ok']);
     }
     if (areaId == 'body_health' && itemId == 'movement') {
-      return _trendLabelForQuestion('move');
+      return _trendLabelForQuestions(const ['move']);
     }
     if (areaId == 'body_health' && itemId == 'nutrition') {
-      return _trendLabelForQuestion('nutrition_ok');
+      return _trendLabelForQuestions(const ['nutrition_ok', 'hydration_ok']);
     }
     if (areaId == 'mind_emotion' && itemId == 'mood') {
-      return _trendLabelForQuestion('mood_ok');
+      return _trendLabelForQuestions(const ['mood_ok', 'mental_recovery']);
     }
     if (areaId == 'mind_emotion' && itemId == 'stress') {
-      return _trendLabelForQuestion('stress_ok');
+      return _trendLabelForQuestions(const ['stress_ok', 'mental_recovery']);
     }
     if (areaId == 'mind_emotion' && itemId == 'focus') {
-      return _trendLabelForQuestion('focus');
+      return _trendLabelForQuestions(const ['focus', 'study_quality']);
     }
     if (areaId == 'mind_emotion' && itemId == 'mental_load') {
-      return _trendLabelForQuestion('stress_ok');
+      return _trendLabelForQuestions(const ['stress_ok', 'mental_recovery']);
     }
     if (areaId == 'work_vocation' && itemId == 'routine') {
-      return _trendLabelForQuestion('routine_ok');
+      return _trendLabelForQuestions(const ['routine_ok', 'day_planning']);
     }
     if (areaId == 'work_vocation' && itemId == 'consistency') {
-      return _trendLabelForQuestion('routine_ok');
+      return _trendLabelForQuestions(const ['routine_ok', 'day_planning']);
     }
     if (areaId == 'learning_intellect' && itemId == 'study') {
-      return _trendLabelForQuestion('study_ok');
+      return _trendLabelForQuestions(const ['study_ok', 'study_quality']);
     }
     if (areaId == 'relations_community' && itemId == 'social_contact') {
-      return _trendLabelForQuestion('social_ok');
+      return _trendLabelForQuestions(const ['social_ok', 'social_presence']);
     }
     if (areaId == 'digital_tech' && itemId == 'distraction') {
-      return _trendLabelForQuestion('focus');
+      return _trendLabelForQuestions(const ['focus', 'digital_balance']);
     }
     return null;
   }
 
-  Future<String?> _trendLabelForQuestion(String questionId) async {
+  Future<String?> _trendLabelForQuestions(List<String> questionIds) async {
     final history = await _readDailyScaledHistory(
       day: DateTime.now(),
-      questionId: questionId,
+      questionIds: questionIds,
       days: DailyCheckinService.historyDays,
     );
 
@@ -1621,7 +1618,7 @@ class _DailyScaledPoint {
   const _DailyScaledPoint({required this.date, required this.value});
 
   final DateTime date;
-  final int value;
+  final double value;
 }
 
 class _FinanceSnapshot {

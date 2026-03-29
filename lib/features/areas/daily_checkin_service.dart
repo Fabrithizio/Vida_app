@@ -3,15 +3,17 @@
 //
 // O que faz:
 // - Gerencia as perguntas diárias do usuário
+// - Usa perguntas adaptadas ao tipo de subárea
 // - Salva respostas graduais por usuário no Hive
 // - Marca o check-in do dia como concluído
 // - Informa se o usuário já pode usar o Areas
 // - Escolhe perguntas de forma adaptativa com base no histórico recente
 //
 // Ajustes desta versão:
-// - histórico ampliado para 14 dias
-// - respostas agora usam escala gradual de 0 a 4
-// - adiciona metadados das opções para o sheet reutilizar sem duplicar regra
+// - adiciona tipos de escala por pergunta
+// - adiciona itemIds para ligar cada pergunta às subáreas corretas
+// - mantém compatibilidade com respostas antigas 0..4
+// - permite o AreasStore calcular score por múltiplas perguntas
 // ============================================================================
 
 import 'dart:math';
@@ -19,16 +21,30 @@ import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+enum DailyQuestionScaleType {
+  quality5,
+  frequency5,
+  intensity5,
+  balance5,
+  agreement5,
+}
+
 class DailyQuestion {
   const DailyQuestion({
     required this.id,
     required this.areaId,
+    required this.itemIds,
     required this.text,
+    required this.scaleType,
+    this.priorityBoost = 0,
   });
 
   final String id;
   final String areaId;
+  final List<String> itemIds;
   final String text;
+  final DailyQuestionScaleType scaleType;
+  final double priorityBoost;
 }
 
 class DailyAnswerOption {
@@ -69,75 +85,165 @@ class DailyCheckinService {
   static const int minAnswerValue = 0;
   static const int maxAnswerValue = 4;
 
-  static const List<DailyAnswerOption> answerOptions = [
-    DailyAnswerOption(value: 0, label: 'Nada', shortLabel: 'Nada'),
-    DailyAnswerOption(value: 1, label: 'Pouco', shortLabel: 'Pouco'),
-    DailyAnswerOption(value: 2, label: 'Médio', shortLabel: 'Médio'),
-    DailyAnswerOption(value: 3, label: 'Bem', shortLabel: 'Bem'),
-    DailyAnswerOption(value: 4, label: 'Excelente', shortLabel: 'Ótimo'),
-  ];
-
   static const List<DailyQuestion> _pool = [
+    // BODY HEALTH
     DailyQuestion(
       id: 'sleep_ok',
       areaId: 'body_health',
-      text:
-          'Você dormiu bem ou está conseguindo cuidar melhor do seu sono hoje?',
+      itemIds: ['sleep', 'energy'],
+      text: 'Como esteve a qualidade do seu sono na última noite?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.25,
     ),
     DailyQuestion(
       id: 'move',
       areaId: 'body_health',
+      itemIds: ['movement'],
       text: 'Quanto você se movimentou, caminhou ou treinou hoje?',
+      scaleType: DailyQuestionScaleType.frequency5,
+      priorityBoost: 0.35,
     ),
     DailyQuestion(
       id: 'nutrition_ok',
       areaId: 'body_health',
+      itemIds: ['nutrition'],
       text: 'Como esteve sua alimentação hoje?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.35,
+    ),
+    DailyQuestion(
+      id: 'hydration_ok',
+      areaId: 'body_health',
+      itemIds: ['nutrition'],
+      text: 'Como foi seu cuidado com água e hidratação hoje?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.18,
     ),
     DailyQuestion(
       id: 'energy_ok',
       areaId: 'body_health',
+      itemIds: ['energy'],
       text: 'Como esteve sua energia ao longo do dia?',
+      scaleType: DailyQuestionScaleType.intensity5,
+      priorityBoost: 0.35,
     ),
+
+    // MIND / EMOTION
     DailyQuestion(
       id: 'focus',
       areaId: 'mind_emotion',
+      itemIds: ['focus', 'distraction'],
       text: 'Como esteve seu foco em algo importante hoje?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.35,
     ),
     DailyQuestion(
       id: 'stress_ok',
       areaId: 'mind_emotion',
+      itemIds: ['stress', 'mental_load'],
       text: 'Quanto seu estresse ficou sob controle hoje?',
+      scaleType: DailyQuestionScaleType.balance5,
+      priorityBoost: 0.4,
     ),
     DailyQuestion(
       id: 'mood_ok',
       areaId: 'mind_emotion',
+      itemIds: ['mood'],
       text: 'Como esteve seu humor hoje?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.35,
     ),
+    DailyQuestion(
+      id: 'mental_recovery',
+      areaId: 'mind_emotion',
+      itemIds: ['mental_load', 'mood'],
+      text:
+          'Você conseguiu ter pausas mentais ou se recuperar bem ao longo do dia?',
+      scaleType: DailyQuestionScaleType.frequency5,
+      priorityBoost: 0.22,
+    ),
+
+    // FINANCE
     DailyQuestion(
       id: 'fin_tx',
       areaId: 'finance_material',
+      itemIds: ['budget'],
       text: 'Quanto você acompanhou ou registrou seus gastos hoje?',
+      scaleType: DailyQuestionScaleType.frequency5,
+      priorityBoost: 0.2,
     ),
     DailyQuestion(
       id: 'fin_control',
       areaId: 'finance_material',
+      itemIds: ['spending', 'budget'],
       text: 'Quanto você conseguiu evitar gastos desnecessários hoje?',
+      scaleType: DailyQuestionScaleType.balance5,
+      priorityBoost: 0.2,
     ),
+
+    // WORK / VOCATION
     DailyQuestion(
       id: 'routine_ok',
       areaId: 'work_vocation',
+      itemIds: ['routine', 'consistency'],
       text: 'Como esteve sua organização de rotina hoje?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.35,
     ),
+    DailyQuestion(
+      id: 'day_planning',
+      areaId: 'work_vocation',
+      itemIds: ['routine', 'consistency'],
+      text: 'Quanto você conseguiu seguir o que planejou para hoje?',
+      scaleType: DailyQuestionScaleType.frequency5,
+      priorityBoost: 0.22,
+    ),
+
+    // LEARNING
     DailyQuestion(
       id: 'study_ok',
       areaId: 'learning_intellect',
+      itemIds: ['study'],
       text: 'Quanto você estudou ou aprendeu algo importante hoje?',
+      scaleType: DailyQuestionScaleType.frequency5,
+      priorityBoost: 0.35,
     ),
+    DailyQuestion(
+      id: 'study_quality',
+      areaId: 'learning_intellect',
+      itemIds: ['study', 'focus'],
+      text: 'Se estudou, como foi a qualidade desse estudo?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.18,
+    ),
+
+    // RELATIONS
     DailyQuestion(
       id: 'social_ok',
       areaId: 'relations_community',
+      itemIds: ['social_contact'],
       text: 'Como esteve sua conexão com alguém importante hoje?',
+      scaleType: DailyQuestionScaleType.quality5,
+      priorityBoost: 0.25,
+    ),
+    DailyQuestion(
+      id: 'social_presence',
+      areaId: 'relations_community',
+      itemIds: ['social_contact'],
+      text:
+          'Você esteve presente de verdade nas suas conversas e relações hoje?',
+      scaleType: DailyQuestionScaleType.agreement5,
+      priorityBoost: 0.12,
+    ),
+
+    // DIGITAL
+    DailyQuestion(
+      id: 'digital_balance',
+      areaId: 'digital_tech',
+      itemIds: ['distraction'],
+      text: 'Quanto você conseguiu controlar distrações digitais hoje?',
+      scaleType: DailyQuestionScaleType.balance5,
+      priorityBoost: 0.25,
     ),
   ];
 
@@ -170,18 +276,139 @@ class DailyCheckinService {
     return '${_dayKey(d)}::questions';
   }
 
+  List<DailyQuestion> get allQuestions => List.unmodifiable(_pool);
+
+  DailyQuestion? questionById(String id) => _questionById(id);
+
+  List<DailyQuestion> questionsForItem(String itemId) {
+    return _pool
+        .where((q) => q.itemIds.contains(itemId))
+        .toList(growable: false);
+  }
+
+  List<DailyAnswerOption> optionsFor(DailyQuestion question) {
+    switch (question.scaleType) {
+      case DailyQuestionScaleType.quality5:
+        return const [
+          DailyAnswerOption(
+            value: 0,
+            label: 'Muito ruim',
+            shortLabel: 'Péssimo',
+          ),
+          DailyAnswerOption(value: 1, label: 'Ruim', shortLabel: 'Ruim'),
+          DailyAnswerOption(
+            value: 2,
+            label: 'Mais ou menos',
+            shortLabel: 'Médio',
+          ),
+          DailyAnswerOption(value: 3, label: 'Bom', shortLabel: 'Bom'),
+          DailyAnswerOption(value: 4, label: 'Muito bom', shortLabel: 'Ótimo'),
+        ];
+
+      case DailyQuestionScaleType.frequency5:
+        return const [
+          DailyAnswerOption(value: 0, label: 'Nada', shortLabel: 'Nada'),
+          DailyAnswerOption(value: 1, label: 'Pouco', shortLabel: 'Pouco'),
+          DailyAnswerOption(value: 2, label: 'Moderado', shortLabel: 'Médio'),
+          DailyAnswerOption(value: 3, label: 'Bastante', shortLabel: 'Bem'),
+          DailyAnswerOption(value: 4, label: 'Muito', shortLabel: 'Muito'),
+        ];
+
+      case DailyQuestionScaleType.intensity5:
+        return const [
+          DailyAnswerOption(
+            value: 0,
+            label: 'Muito baixa',
+            shortLabel: 'Muito baixa',
+          ),
+          DailyAnswerOption(value: 1, label: 'Baixa', shortLabel: 'Baixa'),
+          DailyAnswerOption(value: 2, label: 'Média', shortLabel: 'Média'),
+          DailyAnswerOption(value: 3, label: 'Boa', shortLabel: 'Boa'),
+          DailyAnswerOption(value: 4, label: 'Muito boa', shortLabel: 'Ótima'),
+        ];
+
+      case DailyQuestionScaleType.balance5:
+        return const [
+          DailyAnswerOption(
+            value: 0,
+            label: 'Muito mal',
+            shortLabel: 'Péssimo',
+          ),
+          DailyAnswerOption(value: 1, label: 'Mal', shortLabel: 'Ruim'),
+          DailyAnswerOption(
+            value: 2,
+            label: 'Mais ou menos',
+            shortLabel: 'Médio',
+          ),
+          DailyAnswerOption(value: 3, label: 'Bem', shortLabel: 'Bem'),
+          DailyAnswerOption(value: 4, label: 'Muito bem', shortLabel: 'Ótimo'),
+        ];
+
+      case DailyQuestionScaleType.agreement5:
+        return const [
+          DailyAnswerOption(
+            value: 0,
+            label: 'Discordo totalmente',
+            shortLabel: 'Nada',
+          ),
+          DailyAnswerOption(value: 1, label: 'Discordo', shortLabel: 'Pouco'),
+          DailyAnswerOption(
+            value: 2,
+            label: 'Mais ou menos',
+            shortLabel: 'Médio',
+          ),
+          DailyAnswerOption(value: 3, label: 'Concordo', shortLabel: 'Bem'),
+          DailyAnswerOption(
+            value: 4,
+            label: 'Concordo muito',
+            shortLabel: 'Muito',
+          ),
+        ];
+    }
+  }
+
+  String answerLabel(int value, {DailyQuestion? question}) {
+    final options = question == null ? _defaultOptions() : optionsFor(question);
+    for (final option in options) {
+      if (option.value == value) return option.label;
+    }
+    return value.toString();
+  }
+
+  double normalizeAnswerValue(int value) => _normalizeAnswer(value);
+
+  int normalizeStoredValue({
+    required String questionId,
+    required int rawValue,
+  }) {
+    final safe = rawValue.clamp(minAnswerValue, maxAnswerValue).toInt();
+    final question = _questionById(questionId);
+    if (question == null) return safe;
+    return safe;
+  }
+
+  double normalizedProgress01({
+    required String questionId,
+    required int rawValue,
+  }) {
+    final normalized = normalizeStoredValue(
+      questionId: questionId,
+      rawValue: rawValue,
+    );
+    return normalized / maxAnswerValue;
+  }
+
   Future<List<DailyQuestion>> questionsForToday({required DateTime now}) async {
     final box = await _open();
     final cacheKey = _questionsCacheKey(now);
-
     final cached = box.get(cacheKey);
+
     if (cached is List) {
       final ids = cached.whereType<String>().toList();
       final restored = ids
           .map(_questionById)
           .whereType<DailyQuestion>()
           .toList();
-
       if (restored.length == questionsPerDay) {
         return restored;
       }
@@ -198,7 +425,6 @@ class DailyCheckinService {
     final random = Random(seed);
 
     final candidates = <_WeightedQuestion>[];
-
     for (final question in _pool) {
       final score = await _priorityScore(
         box: box,
@@ -221,7 +447,6 @@ class DailyCheckinService {
 
     for (final item in candidates) {
       if (selected.length >= questionsPerDay) break;
-
       final q = item.question;
       if (!usedAreas.contains(q.areaId)) {
         selected.add(q);
@@ -237,7 +462,7 @@ class DailyCheckinService {
       }
     }
 
-    return selected.take(questionsPerDay).toList();
+    return selected.take(questionsPerDay).toList(growable: false);
   }
 
   Future<double> _priorityScore({
@@ -245,20 +470,23 @@ class DailyCheckinService {
     required DateTime now,
     required DailyQuestion question,
   }) async {
-    double score = 1.0;
+    double score = 1.0 + question.priorityBoost;
 
     for (var i = 1; i <= historyDays; i++) {
       final day = now.subtract(Duration(days: i));
       final raw = box.get(_answerKey(day, question.id));
 
-      if (raw is int) {
-        final normalized = _normalizeAnswer(raw);
-        final weight = (historyDays - i + 1) / historyDays;
-
-        score += (1.0 - normalized) * 3.2 * weight;
-        score += (normalized < 0.5 ? 0.8 : 0.0) * weight;
-        score -= 0.18;
+      if (raw is! int) {
+        score += 0.35;
+        continue;
       }
+
+      final normalized = _normalizeAnswer(raw);
+      final weight = (historyDays - i + 1) / historyDays;
+
+      score += (1.0 - normalized) * 3.0 * weight;
+      score += (normalized < 0.5 ? 0.8 : 0.0) * weight;
+      score -= 0.18;
     }
 
     final yesterday = box.get(
@@ -283,15 +511,6 @@ class DailyCheckinService {
       if (q.id == id) return q;
     }
     return null;
-  }
-
-  double normalizeAnswerValue(int value) => _normalizeAnswer(value);
-
-  String answerLabel(int value) {
-    for (final option in answerOptions) {
-      if (option.value == value) return option.label;
-    }
-    return value.toString();
   }
 
   Future<void> answer({
@@ -360,6 +579,16 @@ class DailyCheckinService {
       answered: answered,
       isCompleted: completed,
     );
+  }
+
+  List<DailyAnswerOption> _defaultOptions() {
+    return const [
+      DailyAnswerOption(value: 0, label: 'Nada', shortLabel: 'Nada'),
+      DailyAnswerOption(value: 1, label: 'Pouco', shortLabel: 'Pouco'),
+      DailyAnswerOption(value: 2, label: 'Médio', shortLabel: 'Médio'),
+      DailyAnswerOption(value: 3, label: 'Bem', shortLabel: 'Bem'),
+      DailyAnswerOption(value: 4, label: 'Excelente', shortLabel: 'Ótimo'),
+    ];
   }
 
   double _normalizeAnswer(int raw) {
