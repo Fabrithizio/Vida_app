@@ -3,12 +3,14 @@
 //
 // O que faz:
 // - Abre o check-in diário manualmente
-// - Mostra as perguntas do dia
-// - Salva respostas
+// - Mostra as perguntas do dia com as opções reais de cada escala
+// - Salva respostas graduais sem alterar o layout base do app
 // - Finaliza o check-in quando tudo for respondido
 //
-// Correção:
-// - questionsForToday agora é async, então este arquivo usa await corretamente
+// Nesta revisão:
+// - remove o SIM / NÃO fixo da UI
+// - passa a usar optionsFor(question) do DailyCheckinService
+// - mantém o visual geral já existente, trocando só a lógica das respostas
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -25,7 +27,7 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
   final daily.DailyCheckinService _service = daily.DailyCheckinService();
   final DateTime _day = DateTime.now();
 
-  List<daily.DailyQuestion> _questions = [];
+  List<daily.DailyQuestion> _questions = const [];
   bool _loading = true;
   bool _saving = false;
   int _answered = 0;
@@ -43,7 +45,6 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
     final completed = await _service.isCompleted(_day);
 
     if (!mounted) return;
-
     setState(() {
       _questions = questions;
       _answered = answered;
@@ -54,16 +55,13 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
 
   Future<void> _setAnswer(daily.DailyQuestion question, int value) async {
     if (!mounted) return;
-
     setState(() => _saving = true);
 
     await _service.answer(day: _day, questionId: question.id, value: value);
-
     final answered = await _service.answeredCount(_day);
     final done = await _service.tryCompleteIfAllAnswered(_day);
 
     if (!mounted) return;
-
     setState(() {
       _saving = false;
       _answered = answered;
@@ -204,52 +202,73 @@ class _QuestionRow extends StatelessWidget {
       future: service.getAnswer(day: day, questionId: question.id),
       builder: (context, snapshot) {
         final answer = snapshot.data;
+        final options = service.optionsFor(question);
 
-        Widget pill(String text, bool selected, VoidCallback onTap) {
-          return InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: onTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: selected
-                    ? Colors.green.withValues(alpha: 0.18)
-                    : Colors.white10,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: selected
-                      ? Colors.green.withValues(alpha: 0.55)
-                      : Colors.white12,
-                ),
-              ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: selected ? Colors.green : Colors.white70,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          );
-        }
-
-        return Row(
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                question.text,
-                style: const TextStyle(color: Colors.white, fontSize: 12.5),
-              ),
+            Text(
+              question.text,
+              style: const TextStyle(color: Colors.white, fontSize: 12.5),
             ),
-            const SizedBox(width: 10),
-            pill('SIM', answer == 1, () => onAnswer(1)),
-            const SizedBox(width: 8),
-            pill('NÃO', answer == 0, () => onAnswer(0)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in options)
+                  _AnswerPill(
+                    text: option.shortLabel,
+                    selected: answer == option.value,
+                    onTap: () => onAnswer(option.value),
+                  ),
+              ],
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+class _AnswerPill extends StatelessWidget {
+  const _AnswerPill({
+    required this.text,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String text;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected
+              ? Colors.green.withValues(alpha: 0.18)
+              : Colors.white10,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? Colors.green.withValues(alpha: 0.55)
+                : Colors.white12,
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: selected ? Colors.green : Colors.white70,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+          ),
+        ),
+      ),
     );
   }
 }

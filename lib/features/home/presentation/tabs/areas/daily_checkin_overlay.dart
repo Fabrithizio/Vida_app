@@ -3,9 +3,14 @@
 //
 // O que faz:
 // - Bloqueia o uso do Areas até responder o check-in do dia
-// - Mostra perguntas rápidas
-// - Fecha automaticamente quando o dia estiver completo
-// - Agora usa seleção adaptativa das perguntas do dia
+// - Mostra as perguntas rápidas obrigatórias do dia
+// - Salva as respostas no DailyCheckinService
+// - Fecha automaticamente quando todas as perguntas forem respondidas
+//
+// Nesta correção:
+// - mantém o layout base do app
+// - troca o antigo SIM / NÃO por opções vindas do DailyCheckinService
+// - usa a escala correta de cada pergunta
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -22,7 +27,7 @@ class _DailyCheckinOverlayState extends State<DailyCheckinOverlay> {
   final daily.DailyCheckinService _service = daily.DailyCheckinService();
   final DateTime _day = DateTime.now();
 
-  List<daily.DailyQuestion> _questions = [];
+  List<daily.DailyQuestion> _questions = const [];
   bool _loading = true;
   bool _saving = false;
   int _answered = 0;
@@ -38,7 +43,6 @@ class _DailyCheckinOverlayState extends State<DailyCheckinOverlay> {
     final answered = await _service.answeredCount(_day);
 
     if (!mounted) return;
-
     setState(() {
       _questions = questions;
       _answered = answered;
@@ -56,7 +60,6 @@ class _DailyCheckinOverlayState extends State<DailyCheckinOverlay> {
     final done = await _service.tryCompleteIfAllAnswered(_day);
 
     if (!mounted) return;
-
     setState(() {
       _saving = false;
       _answered = answered;
@@ -191,6 +194,7 @@ class _QuestionRow extends StatelessWidget {
       future: service.getAnswer(day: day, questionId: question.id),
       builder: (context, snapshot) {
         final answer = snapshot.data;
+        final options = service.optionsFor(question);
 
         Widget pill(String text, bool selected, VoidCallback onTap) {
           return InkWell(
@@ -221,19 +225,29 @@ class _QuestionRow extends StatelessWidget {
           );
         }
 
-        return Row(
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                question.text,
-                style: const TextStyle(color: Colors.white, fontSize: 12.5),
+            Text(
+              question.text,
+              style: const TextStyle(color: Colors.white, fontSize: 12.5),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < options.length; i++) ...[
+                    pill(
+                      options[i].shortLabel,
+                      answer == options[i].value,
+                      () => onAnswer(options[i].value),
+                    ),
+                    if (i != options.length - 1) const SizedBox(width: 8),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            pill('SIM', answer == 1, () => onAnswer(1)),
-            const SizedBox(width: 8),
-            pill('NÃO', answer == 0, () => onAnswer(0)),
           ],
         );
       },
