@@ -1175,6 +1175,50 @@ class AreasStore {
     return raw.round().clamp(5, 100);
   }
 
+  Future<AreaAssessment?> _computedScreenTime(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = (prefs.getString('$uid:screen_time') ?? '').trim();
+    if (raw.isEmpty) return null;
+
+    final hours = _extractScreenTimeHours(raw);
+    if (hours == null) {
+      return AreaAssessment(
+        status: AreaStatus.noData,
+        reason: 'Não foi possível interpretar o tempo de tela salvo.',
+        source: AreaDataSource.automatic,
+        lastUpdatedAt: DateTime.now(),
+        recommendedAction: 'Atualize esse campo em um formato reconhecido.',
+      );
+    }
+
+    final score = _screenTimeScore(hours);
+    final status = _statusFromNumericScore(score);
+
+    final action = switch (status) {
+      AreaStatus.excellent => 'Ótimo. Continue protegendo seu tempo de tela.',
+      AreaStatus.good => 'Bom. Só monitore para não subir.',
+      AreaStatus.attention => 'Vale reduzir um pouco o tempo de tela.',
+      AreaStatus.critical => 'Tempo de tela alto. Defina limites diários.',
+      AreaStatus.noData => 'Atualize seus dados.',
+    };
+
+    return AreaAssessment(
+      status: status,
+      score: score,
+      reason: 'Tempo de tela hoje: $raw.',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: DateTime.now(),
+      recommendedAction: action,
+      details:
+          'Calculado automaticamente a partir do uso total de tela no dia.',
+    );
+  }
+
+  int _screenTimeScore(double hours) {
+    final raw = 100 - ((hours - 2.0) * 14.0);
+    return raw.round().clamp(5, 100);
+  }
+
   AreaAssessment _noDataAssessment({
     required AreaDataSource source,
     required String reason,
@@ -1541,7 +1585,6 @@ class AreasStore {
   // Mantém como está no seu projeto.
   Future<AreaAssessment?> _computedCheckups(String uid) async => null;
   Future<AreaAssessment?> _computedSleep(String uid) async => null;
-  Future<AreaAssessment?> _computedScreenTime(String uid) async => null;
   Future<AreaAssessment?> _computedWomenCycle(String uid) async => null;
 }
 

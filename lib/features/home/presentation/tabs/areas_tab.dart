@@ -27,6 +27,7 @@ import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/device/device_usage_service.dart';
+import 'package:vida_app/features/device/usage_access_overlay.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/area_detail_page.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
@@ -45,8 +46,10 @@ class _AreasTabState extends State<AreasTab> {
   final AreasStore _store = AreasStore();
   final SessionStorage _session = SessionStorage();
   final DailyCheckinService _dailyCheckinService = DailyCheckinService();
+  final DeviceUsageService _deviceUsage = DeviceUsageService();
 
   bool _dailyGateAlreadyChecked = false;
+  bool _usageOverlayOpen = false;
 
   late Future<UserSex> _sexFuture;
   late Future<Map<String, int?>> _scoreFuture;
@@ -63,8 +66,9 @@ class _AreasTabState extends State<AreasTab> {
     super.initState();
     _refreshState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkDailyGate();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _checkDailyGate();
+      await _checkUsageAccessGate();
     });
   }
 
@@ -88,7 +92,7 @@ class _AreasTabState extends State<AreasTab> {
         .then((_) async {
           await _store.ensureBootstrappedFromOnboarding();
           try {
-            await DeviceUsageService().refreshAndPersistDigitalBuckets();
+            await _deviceUsage.refreshAndPersistDigitalBuckets();
           } catch (_) {}
           return _loadScores();
         })
@@ -263,6 +267,37 @@ class _AreasTabState extends State<AreasTab> {
     if (unlocked == true) {
       setState(() {});
     }
+  }
+
+  Future<void> _checkUsageAccessGate() async {
+    if (_usageOverlayOpen) return;
+
+    final supported = await _deviceUsage.isAndroidSupported();
+    if (!supported) return;
+
+    final has = await _deviceUsage.hasUsageAccess();
+    if (!mounted) return;
+
+    if (has) return;
+
+    _usageOverlayOpen = true;
+
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => UsageAccessOverlay(
+        onGranted: () async {
+          try {
+            await _deviceUsage.refreshAndPersistDigitalBuckets();
+          } catch (_) {}
+
+          _refreshState();
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+
+    _usageOverlayOpen = false;
   }
 
   @override
