@@ -187,6 +187,14 @@ class AreasStore {
       return _computedScreenTime(user.uid);
     }
 
+    if (areaId == 'digital_tech' && itemId == 'social_media') {
+      return _computedSocialMedia(user.uid);
+    }
+
+    if (areaId == 'digital_tech' && itemId == 'night_use') {
+      return _computedNightUse(user.uid);
+    }
+
     if (areaId == 'body_health' && itemId == 'women_cycle') {
       return _computedWomenCycle(user.uid);
     }
@@ -1077,6 +1085,94 @@ class AreasStore {
       recommendedAction: action,
       details: 'Subárea baseada no andamento manual das metas financeiras.',
     );
+  }
+
+  Future<AreaAssessment?> _computedSocialMedia(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = (prefs.getString('$uid:social_media') ?? '').trim();
+    if (raw.isEmpty) return null;
+
+    final hours = _extractScreenTimeHours(raw);
+    if (hours == null) {
+      return AreaAssessment(
+        status: AreaStatus.noData,
+        reason: 'Não foi possível interpretar o tempo em redes sociais salvo.',
+        source: AreaDataSource.automatic,
+        lastUpdatedAt: DateTime.now(),
+        recommendedAction: 'Atualize esse campo em um formato reconhecido.',
+      );
+    }
+
+    final score = _socialMediaScore(hours);
+    final status = _statusFromNumericScore(score);
+
+    final action = switch (status) {
+      AreaStatus.excellent => 'Ótimo. Continue protegendo seu tempo.',
+      AreaStatus.good => 'Bom. Só monitore para não subir.',
+      AreaStatus.attention => 'Vale reduzir um pouco redes sociais.',
+      AreaStatus.critical => 'Redes sociais estão pesando. Defina limites.',
+      AreaStatus.noData => 'Atualize seus dados.',
+    };
+
+    return AreaAssessment(
+      status: status,
+      score: score,
+      reason: 'Tempo em redes sociais hoje: $raw.',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: DateTime.now(),
+      recommendedAction: action,
+      details:
+          'Calculado automaticamente a partir do uso em apps sociais (Facebook, YouTube, WhatsApp, Instagram, TikTok, Kwai, Messenger, X, Telegram).',
+    );
+  }
+
+  int _socialMediaScore(double hours) {
+    final raw = 100 - ((hours - 1.0) * 18.0);
+    return raw.round().clamp(5, 100);
+  }
+
+  Future<AreaAssessment?> _computedNightUse(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = (prefs.getString('$uid:night_use') ?? '').trim();
+    if (raw.isEmpty) return null;
+
+    final hours = _extractScreenTimeHours(raw);
+    if (hours == null) {
+      return AreaAssessment(
+        status: AreaStatus.noData,
+        reason: 'Não foi possível interpretar o uso noturno salvo.',
+        source: AreaDataSource.automatic,
+        lastUpdatedAt: DateTime.now(),
+        recommendedAction: 'Atualize esse campo em um formato reconhecido.',
+      );
+    }
+
+    final score = _nightUseScore(hours);
+    final status = _statusFromNumericScore(score);
+
+    final action = switch (status) {
+      AreaStatus.excellent => 'Ótimo. Continue protegendo seu descanso.',
+      AreaStatus.good => 'Bom. Só evite estender muito à noite.',
+      AreaStatus.attention => 'Tente diminuir tela perto de dormir.',
+      AreaStatus.critical => 'Uso noturno alto. Crie um horário de desligar.',
+      AreaStatus.noData => 'Atualize seus dados.',
+    };
+
+    return AreaAssessment(
+      status: status,
+      score: score,
+      reason: 'Uso noturno (19:00–04:00): $raw.',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: DateTime.now(),
+      recommendedAction: action,
+      details:
+          'Calculado automaticamente somando uso de tela no período 19:00–04:00.',
+    );
+  }
+
+  int _nightUseScore(double hours) {
+    final raw = 100 - ((hours - 0.5) * 25.0);
+    return raw.round().clamp(5, 100);
   }
 
   AreaAssessment _noDataAssessment({

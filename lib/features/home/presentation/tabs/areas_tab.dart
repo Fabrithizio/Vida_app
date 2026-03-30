@@ -26,6 +26,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
+import 'package:vida_app/features/device/device_usage_service.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/area_detail_page.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
@@ -86,6 +87,9 @@ class _AreasTabState extends State<AreasTab> {
     _scoreFuture = _sexFuture
         .then((_) async {
           await _store.ensureBootstrappedFromOnboarding();
+          try {
+            await DeviceUsageService().refreshAndPersistDigitalBuckets();
+          } catch (_) {}
           return _loadScores();
         })
         .then((value) {
