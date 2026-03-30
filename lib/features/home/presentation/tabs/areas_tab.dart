@@ -14,6 +14,10 @@
 // - atalho do livro mantido sem mexer no layout principal do app
 // - classificação visual unificada com o sistema novo:
 //   85+ Ótimo | 68+ Bom | 45+ Médio | 25+ Ruim | abaixo disso Crítico
+//
+// Correção (bug atual):
+// - score geral agora é média das 9 áreas (null conta como 0)
+// - cor do score geral agora fica cinza quando score == 0 ("Inicial")
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -159,10 +163,11 @@ class _AreasTabState extends State<AreasTab> {
     return map;
   }
 
-  double _averageScore(Map<String, int?> scores) {
-    final valid = scores.values.whereType<int>().toList();
-    if (valid.isEmpty) return 0;
-    return valid.reduce((a, b) => a + b) / valid.length;
+  // FIX: média real das áreas (null conta como 0)
+  double _averageScore(Map<String, int?> scores, {required int totalAreas}) {
+    if (totalAreas <= 0) return 0;
+    final sum = scores.values.fold<int>(0, (acc, value) => acc + (value ?? 0));
+    return sum / totalAreas;
   }
 
   int _definedStatusesCount(Map<String, int?> scores) {
@@ -290,7 +295,7 @@ class _AreasTabState extends State<AreasTab> {
                     final scores =
                         scoreSnap.data ?? _resolvedScores ?? <String, int?>{};
 
-                    final avg = _averageScore(scores);
+                    final avg = _averageScore(scores, totalAreas: defs.length);
                     final defined = _definedStatusesCount(scores);
                     final classification = _classificationLabel(avg);
 
@@ -438,6 +443,7 @@ class _TopHudCompact extends StatelessWidget {
   final VoidCallback onScoreRulesTap;
 
   Color _scoreColor() {
+    if (averageScore <= 0) return const Color(0xFF94A3B8);
     if (averageScore >= 85) return const Color(0xFF22C55E);
     if (averageScore >= 68) return const Color(0xFFF59E0B);
     if (averageScore >= 45) return const Color(0xFFFB923C);

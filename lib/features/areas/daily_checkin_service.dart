@@ -14,6 +14,12 @@
 // - adiciona itemIds para ligar cada pergunta às subáreas corretas
 // - mantém compatibilidade com respostas antigas 0..4
 // - permite o AreasStore calcular score por múltiplas perguntas
+//
+// Correção (bug atual):
+// - compatibilidade REAL com histórico legado 0/1 (sim/não):
+//   * 0 => 0
+//   * 1 => 4 (melhor valor na escala 0..4)
+//   Isso evita que respostas antigas virem 25/100 e derrubem as áreas.
 // ============================================================================
 
 import 'dart:math';
@@ -375,16 +381,26 @@ class DailyCheckinService {
     return value.toString();
   }
 
-  double normalizeAnswerValue(int value) => _normalizeAnswer(value);
+  double normalizeAnswerValue(int value) =>
+      _normalizeAnswerValueFromStored(value);
 
   int normalizeStoredValue({
     required String questionId,
     required int rawValue,
   }) {
-    final safe = rawValue.clamp(minAnswerValue, maxAnswerValue).toInt();
     final question = _questionById(questionId);
-    if (question == null) return safe;
-    return safe;
+    final clamped = rawValue.clamp(minAnswerValue, maxAnswerValue).toInt();
+
+    // Compat legado:
+    // Antes: perguntas sim/não (0/1). Agora: escala 0..4.
+    // Para não derrubar score, interpretamos 1 como "máximo" quando o dado é claramente legado.
+    if (question != null && (clamped == 0 || clamped == 1)) {
+      // Heurística segura: 0/1 é legado. 1 => 4, 0 => 0.
+      // Se em algum caso você usou escala 0/1 de propósito, isso mudaria, mas no seu app antigo era binário.
+      return clamped == 1 ? maxAnswerValue : 0;
+    }
+
+    return clamped;
   }
 
   double normalizedProgress01({
@@ -481,7 +497,11 @@ class DailyCheckinService {
         continue;
       }
 
-      final normalized = _normalizeAnswer(raw);
+      final normalizedStored = normalizeStoredValue(
+        questionId: question.id,
+        rawValue: raw,
+      );
+      final normalized = _normalizeAnswerValueFromStored(normalizedStored);
       final weight = (historyDays - i + 1) / historyDays;
 
       score += (1.0 - normalized) * 3.0 * weight;
@@ -489,17 +509,17 @@ class DailyCheckinService {
       score -= 0.18;
     }
 
-    final yesterday = box.get(
+    final yesterdayRaw = box.get(
       _answerKey(now.subtract(const Duration(days: 1)), question.id),
     );
-    if (yesterday is int) {
+    if (yesterdayRaw is int) {
       score -= 0.8;
     }
 
-    final twoDaysAgo = box.get(
+    final twoDaysAgoRaw = box.get(
       _answerKey(now.subtract(const Duration(days: 2)), question.id),
     );
-    if (twoDaysAgo is int) {
+    if (twoDaysAgoRaw is int) {
       score -= 0.35;
     }
 
@@ -529,9 +549,10 @@ class DailyCheckinService {
   }) async {
     final box = await _open();
     final raw = box.get(_answerKey(day, questionId));
-    return raw is int
-        ? raw.clamp(minAnswerValue, maxAnswerValue).toInt()
-        : null;
+    if (raw is! int) return null;
+
+    // Importantíssimo: ao ler, normaliza legado 0/1 para não mostrar "Ruim" quando era "Sim".
+    return normalizeStoredValue(questionId: questionId, rawValue: raw);
   }
 
   Future<int> answeredCount(DateTime day) async {
@@ -591,8 +612,8 @@ class DailyCheckinService {
     ];
   }
 
-  double _normalizeAnswer(int raw) {
-    final safe = raw.clamp(minAnswerValue, maxAnswerValue).toInt();
+  double _normalizeAnswerValueFromStored(int stored) {
+    final safe = stored.clamp(minAnswerValue, maxAnswerValue).toInt();
     return safe / maxAnswerValue;
   }
 }
