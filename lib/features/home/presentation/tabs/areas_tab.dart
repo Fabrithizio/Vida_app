@@ -183,10 +183,10 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   String _classificationLabel(double score) {
-    if (score >= 85) return 'Ótimo';
-    if (score >= 68) return 'Bom';
-    if (score >= 45) return 'Médio';
-    if (score >= 25) return 'Ruim';
+    if (score >= 80) return 'Ótimo';
+    if (score >= 60) return 'Bom';
+    if (score >= 40) return 'Médio';
+    if (score >= 20) return 'Ruim';
     if (score > 0) return 'Crítico';
     return 'Inicial';
   }
@@ -483,10 +483,10 @@ class _TopHudCompact extends StatelessWidget {
 
   Color _scoreColor() {
     if (averageScore <= 0) return const Color(0xFF94A3B8);
-    if (averageScore >= 85) return const Color(0xFF22C55E);
-    if (averageScore >= 68) return const Color(0xFFF59E0B);
-    if (averageScore >= 45) return const Color(0xFFFB923C);
-    if (averageScore >= 25) return const Color(0xFFEF4444);
+    if (averageScore >= 80) return const Color(0xFF22C55E);
+    if (averageScore >= 60) return const Color(0xFFF59E0B);
+    if (averageScore >= 40) return const Color(0xFFFB923C);
+    if (averageScore >= 20) return const Color(0xFFEF4444);
     return const Color(0xFFB91C1C);
   }
 
@@ -828,10 +828,10 @@ class _AreaCard extends StatelessWidget {
   Color _color() {
     final s = score;
     if (s == null) return const Color(0xFF94A3B8);
-    if (s >= 85) return const Color(0xFF22C55E);
-    if (s >= 68) return const Color(0xFFF59E0B);
-    if (s >= 45) return const Color(0xFFFB923C);
-    if (s >= 25) return const Color(0xFFEF4444);
+    if (s >= 80) return const Color(0xFF22C55E);
+    if (s >= 60) return const Color(0xFFF59E0B);
+    if (s >= 40) return const Color(0xFFFB923C);
+    if (s >= 20) return const Color(0xFFEF4444);
     return const Color(0xFFB91C1C);
   }
 

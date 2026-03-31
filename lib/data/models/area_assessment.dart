@@ -1,3 +1,15 @@
+// ============================================================================
+// FILE: lib/data/models/area_assessment.dart
+//
+// O que faz:
+// - Representa uma avaliação de subárea/área
+// - Salva e lê status, score, motivo, fonte e metadados
+//
+// Nesta versão:
+// - remove leitura legada de status
+// - usa somente os nomes do sistema novo em storage
+// ============================================================================
+
 import 'area_data_source.dart';
 import 'area_status.dart';
 
@@ -72,7 +84,7 @@ class AreaAssessment {
     final rawLastUpdatedAt = map['lastUpdatedAt']?.toString();
 
     return AreaAssessment(
-      status: AreaStatusLegacyCompat.fromLegacyName(rawStatus ?? ''),
+      status: AreaStatusUi.fromStorageName(rawStatus ?? ''),
       score: rawScore is int ? rawScore : int.tryParse('${rawScore ?? ''}'),
       reason: map['reason'] as String?,
       source: AreaDataSourceUi.fromStorage(rawSource),

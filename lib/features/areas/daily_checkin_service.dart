@@ -12,16 +12,13 @@
 // Ajustes desta versão:
 // - adiciona tipos de escala por pergunta
 // - adiciona itemIds para ligar cada pergunta às subáreas corretas
-// - mantém compatibilidade com respostas antigas 0..4
+// - usa somente a escala nova 0..4
 // - permite o AreasStore calcular score por múltiplas perguntas
 //
-// Correção (bug atual):
-// - compatibilidade REAL com histórico legado 0/1 (sim/não):
-//   * 0 => 0
-//   * 1 => 4 (melhor valor na escala 0..4)
-//   Isso evita que respostas antigas virem 25/100 e derrubem as áreas.
+// Correção desta versão:
+// - remove a conversão legada 0/1 -> 0/4
+// - corrige o bug em que a 2ª opção era lida como a última
 // ============================================================================
-
 import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -388,19 +385,7 @@ class DailyCheckinService {
     required String questionId,
     required int rawValue,
   }) {
-    final question = _questionById(questionId);
-    final clamped = rawValue.clamp(minAnswerValue, maxAnswerValue).toInt();
-
-    // Compat legado:
-    // Antes: perguntas sim/não (0/1). Agora: escala 0..4.
-    // Para não derrubar score, interpretamos 1 como "máximo" quando o dado é claramente legado.
-    if (question != null && (clamped == 0 || clamped == 1)) {
-      // Heurística segura: 0/1 é legado. 1 => 4, 0 => 0.
-      // Se em algum caso você usou escala 0/1 de propósito, isso mudaria, mas no seu app antigo era binário.
-      return clamped == 1 ? maxAnswerValue : 0;
-    }
-
-    return clamped;
+    return rawValue.clamp(minAnswerValue, maxAnswerValue).toInt();
   }
 
   double normalizedProgress01({
@@ -549,10 +534,10 @@ class DailyCheckinService {
   }) async {
     final box = await _open();
     final raw = box.get(_answerKey(day, questionId));
+
     if (raw is! int) return null;
 
-    // Importantíssimo: ao ler, normaliza legado 0/1 para não mostrar "Ruim" quando era "Sim".
-    return normalizeStoredValue(questionId: questionId, rawValue: raw);
+    return raw.clamp(minAnswerValue, maxAnswerValue).toInt();
   }
 
   Future<int> answeredCount(DateTime day) async {

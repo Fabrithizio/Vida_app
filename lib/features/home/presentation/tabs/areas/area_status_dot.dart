@@ -1,5 +1,14 @@
+// ============================================================================
+// FILE: lib/features/home/presentation/tabs/areas/area_status_dot.dart
+//
 // O que esse arquivo faz:
-// Mostra a bolinha de status usada nas listas e detalhes das áreas.
+// - Mostra a bolinha de status usada nas listas e detalhes das áreas
+//
+// Atualização:
+// - removido AreaStatus.attention
+// - adaptado para o sistema novo:
+//   Ótimo / Bom / Médio / Ruim / Crítico
+// ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/area_status.dart';
@@ -21,10 +30,12 @@ class AreaStatusDot extends StatelessWidget {
         return const Color(0xFF22C55E);
       case AreaStatus.good:
         return const Color(0xFFF59E0B);
-      case AreaStatus.attention:
+      case AreaStatus.medium:
         return const Color(0xFFFB923C);
-      case AreaStatus.critical:
+      case AreaStatus.poor:
         return const Color(0xFFEF4444);
+      case AreaStatus.critical:
+        return const Color(0xFFB91C1C);
       case AreaStatus.noData:
         return const Color(0xFF94A3B8);
     }

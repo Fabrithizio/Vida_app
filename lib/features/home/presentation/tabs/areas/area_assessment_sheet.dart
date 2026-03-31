@@ -1,5 +1,16 @@
+// ============================================================================
+// FILE: lib/features/home/presentation/tabs/areas/area_assessment_sheet.dart
+//
 // O que esse arquivo faz:
-// Abre o bottom sheet para o usuário escolher o status manual de uma subárea e escrever o motivo quando necessário.
+// - Abre o bottom sheet para o usuário escolher o status manual de uma subárea
+// - Permite escrever o motivo quando o status exige explicação
+// - Retorna uma AreaAssessment pronta para salvar
+//
+// Atualização:
+// - removido AreaStatus.attention
+// - adaptado para o sistema novo:
+//   Ótimo / Bom / Médio / Ruim / Crítico
+// ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
@@ -41,7 +52,24 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
   }
 
   bool get _needsReason =>
-      _status == AreaStatus.attention || _status == AreaStatus.critical;
+      _status == AreaStatus.medium ||
+      _status == AreaStatus.poor ||
+      _status == AreaStatus.critical;
+
+  String get _reasonLabel {
+    switch (_status) {
+      case AreaStatus.critical:
+        return 'Por que está crítico?';
+      case AreaStatus.poor:
+        return 'Por que está ruim?';
+      case AreaStatus.medium:
+        return 'Por que está médio?';
+      case AreaStatus.excellent:
+      case AreaStatus.good:
+      case AreaStatus.noData:
+        return 'Motivo';
+    }
+  }
 
   void _save() {
     final reason = _reason.text.trim();
@@ -101,8 +129,13 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
                 icon: Icon(Icons.thumb_up_alt_rounded),
               ),
               ButtonSegment<AreaStatus>(
-                value: AreaStatus.attention,
-                label: Text('Atenção'),
+                value: AreaStatus.medium,
+                label: Text('Médio'),
+                icon: Icon(Icons.remove_circle_outline_rounded),
+              ),
+              ButtonSegment<AreaStatus>(
+                value: AreaStatus.poor,
+                label: Text('Ruim'),
                 icon: Icon(Icons.error_outline_rounded),
               ),
               ButtonSegment<AreaStatus>(
@@ -122,9 +155,7 @@ class _AreaAssessmentSheetState extends State<AreaAssessmentSheet> {
               controller: _reason,
               maxLines: 3,
               decoration: InputDecoration(
-                labelText: _status == AreaStatus.critical
-                    ? 'Por que está crítico?'
-                    : 'Por que precisa de atenção?',
+                labelText: _reasonLabel,
                 border: const OutlineInputBorder(),
               ),
             ),

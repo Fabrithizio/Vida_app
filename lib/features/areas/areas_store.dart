@@ -541,9 +541,10 @@ class AreasStore {
   }
 
   AreaStatus _statusFromNumericScore(int score) {
-    if (score >= 85) return AreaStatus.excellent;
-    if (score >= 68) return AreaStatus.good;
-    if (score >= 45) return AreaStatus.attention;
+    if (score >= 80) return AreaStatus.excellent;
+    if (score >= 60) return AreaStatus.good;
+    if (score >= 40) return AreaStatus.medium;
+    if (score >= 20) return AreaStatus.poor;
     return AreaStatus.critical;
   }
 
@@ -708,7 +709,7 @@ class AreasStore {
       reason = 'Entradas do mês em ${_money(income)}.';
       action = 'Boa base de entrada. Continue fortalecendo.';
     } else if (income > 0) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       reason = 'Entradas do mês em ${_money(income)} ainda pedem atenção.';
       action = 'Vale buscar mais previsibilidade ou crescimento de renda.';
     } else {
@@ -742,8 +743,8 @@ class AreasStore {
 
     if (income == null || income <= 0) {
       return AreaAssessment(
-        status: AreaStatus.attention,
-        score: _scoreFromStatus(AreaStatus.attention),
+        status: AreaStatus.medium,
+        score: _scoreFromStatus(AreaStatus.medium),
         reason:
             'Há ${_money(expenses)} em gastos, mas faltam entradas para comparar.',
         source: AreaDataSource.automatic,
@@ -766,7 +767,7 @@ class AreasStore {
       status = AreaStatus.good;
       action = 'Controle bom, mas acompanhe para não subir demais.';
     } else if (ratio <= 1.0) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       action = 'Gastos perto do limite da renda. Vale revisar excessos.';
     } else {
       status = AreaStatus.critical;
@@ -800,8 +801,8 @@ class AreasStore {
 
     if (income == null || expenses == null) {
       return AreaAssessment(
-        status: AreaStatus.attention,
-        score: _scoreFromStatus(AreaStatus.attention),
+        status: AreaStatus.medium,
+        score: _scoreFromStatus(AreaStatus.medium),
         reason:
             'Ainda faltam dados completos de entradas e saídas para medir seu fluxo do mês.',
         source: AreaDataSource.automatic,
@@ -824,7 +825,7 @@ class AreasStore {
       status = AreaStatus.good;
       action = 'Seu mês está positivo, mas com folga menor.';
     } else if (net >= -income * 0.15) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       action = 'Seu fluxo ficou negativo. Vale corrigir antes que piore.';
     } else {
       status = AreaStatus.critical;
@@ -892,7 +893,7 @@ class AreasStore {
       status = AreaStatus.good;
       action = 'Está no limite, mas ainda controlado.';
     } else if (ratio <= 1.15) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       action = 'Você passou um pouco do orçamento. Vale corrigir logo.';
     } else {
       status = AreaStatus.critical;
@@ -937,8 +938,8 @@ class AreasStore {
 
     if (income == null || income <= 0) {
       return AreaAssessment(
-        status: AreaStatus.attention,
-        score: _scoreFromStatus(AreaStatus.attention),
+        status: AreaStatus.medium,
+        score: _scoreFromStatus(AreaStatus.medium),
         reason:
             'Há ${_money(debts)} em dívidas, mas faltam entradas do mês para comparar o peso.',
         source: AreaDataSource.mixed,
@@ -959,7 +960,7 @@ class AreasStore {
       status = AreaStatus.good;
       action = 'Dívidas em nível administrável. Mantenha atenção.';
     } else if (ratio <= 1.5) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       action = 'O peso das dívidas já merece um plano de redução.';
     } else {
       status = AreaStatus.critical;
@@ -1027,7 +1028,7 @@ class AreasStore {
       status = AreaStatus.good;
       action = 'Boa reserva. Continue fortalecendo.';
     } else if (monthsCovered >= 1) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       action = 'Reserva ainda curta. Vale aumentar aos poucos.';
     } else {
       status = AreaStatus.critical;
@@ -1068,7 +1069,7 @@ class AreasStore {
       status = AreaStatus.good;
       action = 'Bom progresso. Continue mantendo ritmo.';
     } else if (progress >= 25) {
-      status = AreaStatus.attention;
+      status = AreaStatus.medium;
       action = 'Progresso ainda lento. Vale revisar foco.';
     } else {
       status = AreaStatus.critical;
@@ -1109,7 +1110,8 @@ class AreasStore {
     final action = switch (status) {
       AreaStatus.excellent => 'Ótimo. Continue protegendo seu tempo.',
       AreaStatus.good => 'Bom. Só monitore para não subir.',
-      AreaStatus.attention => 'Vale reduzir um pouco redes sociais.',
+      AreaStatus.medium => 'Use com moderação para não subir.',
+      AreaStatus.poor => 'Vale reduzir bastante redes sociais.',
       AreaStatus.critical => 'Redes sociais estão pesando. Defina limites.',
       AreaStatus.noData => 'Atualize seus dados.',
     };
@@ -1153,7 +1155,8 @@ class AreasStore {
     final action = switch (status) {
       AreaStatus.excellent => 'Ótimo. Continue protegendo seu descanso.',
       AreaStatus.good => 'Bom. Só evite estender muito à noite.',
-      AreaStatus.attention => 'Tente diminuir tela perto de dormir.',
+      AreaStatus.medium => 'Tente reduzir um pouco a tela perto de dormir.',
+      AreaStatus.poor => 'Tente reduzir bastante a tela perto de dormir.',
       AreaStatus.critical => 'Uso noturno alto. Crie um horário de desligar.',
       AreaStatus.noData => 'Atualize seus dados.',
     };
@@ -1197,7 +1200,8 @@ class AreasStore {
     final action = switch (status) {
       AreaStatus.excellent => 'Ótimo. Continue protegendo seu tempo de tela.',
       AreaStatus.good => 'Bom. Só monitore para não subir.',
-      AreaStatus.attention => 'Vale reduzir um pouco o tempo de tela.',
+      AreaStatus.medium => 'Tente reduzir um pouco o tempo de tela.',
+      AreaStatus.poor => 'Tente reduzir bastante o tempo de tela.',
       AreaStatus.critical => 'Tempo de tela alto. Defina limites diários.',
       AreaStatus.noData => 'Atualize seus dados.',
     };
@@ -1424,7 +1428,8 @@ class AreasStore {
     if (statuses.isEmpty) return null;
 
     if (statuses.contains(AreaStatus.critical)) return AreaStatus.critical;
-    if (statuses.contains(AreaStatus.attention)) return AreaStatus.attention;
+    if (statuses.contains(AreaStatus.poor)) return AreaStatus.poor;
+    if (statuses.contains(AreaStatus.medium)) return AreaStatus.medium;
     if (statuses.contains(AreaStatus.good)) return AreaStatus.good;
     if (statuses.contains(AreaStatus.excellent)) return AreaStatus.excellent;
 
@@ -1460,13 +1465,15 @@ class AreasStore {
   int _scoreFromStatus(AreaStatus status) {
     switch (status) {
       case AreaStatus.excellent:
-        return 92;
+        return 90;
       case AreaStatus.good:
-        return 74;
-      case AreaStatus.attention:
-        return 52;
+        return 70;
+      case AreaStatus.medium:
+        return 50;
+      case AreaStatus.poor:
+        return 30;
       case AreaStatus.critical:
-        return 28;
+        return 10;
       case AreaStatus.noData:
         return 0;
     }
