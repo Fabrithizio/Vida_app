@@ -1,3 +1,19 @@
+// ============================================================================
+// FILE: lib/features/home/presentation/tabs/areas/areas_catalog.dart
+//
+// O que faz:
+// - Define o catálogo oficial das áreas e subáreas do painel Areas
+// - Centraliza títulos, descrições, pesos e fonte padrão de cada item
+// - Controla o que aparece ou não conforme o perfil do usuário
+//
+// Atualização desta versão:
+// - alinha o catálogo ao sistema novo de score 0..100
+// - atualiza Ambiente & Casa para refletir a ligação já existente com tarefas reais
+// - troca a apresentação de "Direção Pessoal" para "Hábitos & Constância"
+//   sem quebrar o id interno atual da área
+// - remove textos antigos do tipo "ligar depois" onde a automação já existe
+// ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 
@@ -371,34 +387,42 @@ class AreasCatalog {
     ),
     AreaDef(
       id: purposeValues,
-      title: 'Direção Pessoal',
-      titleShort: 'Direção',
-      subtitle: 'Revisão leve',
+      title: 'Hábitos & Constância',
+      titleShort: 'Hábitos',
+      subtitle: 'Base, repetição e recuperação',
       description:
-          'Área de reflexão leve para direção, metas e gratidão. Deve ter peso menor no sistema principal.',
-      icon: Icons.auto_awesome,
+          'Resume se você está conseguindo manter a base do dia a dia com regularidade, recuperação e repetição do básico.',
+      icon: Icons.autorenew_rounded,
       items: [
         AreaItemDef(
           id: 'direction',
-          title: 'Direção atual',
-          description: 'Clareza sobre para onde sua vida está andando.',
-          defaultSource: AreaDataSource.manual,
+          title: 'Base da rotina',
+          description:
+              'Se o básico do dia a dia está minimamente organizado e funcional.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.1,
           recommendedAction:
-              'Revisar sua direção atual em momentos específicos.',
+              'Esta subárea será ligada aos sinais da rotina e do check-in.',
         ),
         AreaItemDef(
           id: 'goals_review',
-          title: 'Revisão de metas',
-          description: 'Revisão do rumo das metas pessoais.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Atualizar suas metas quando esse módulo voltar.',
+          title: 'Constância',
+          description:
+              'Capacidade de repetir ações úteis com regularidade, mesmo sem perfeição.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.2,
+          recommendedAction:
+              'Esta subárea será ligada à constância do check-in e da rotina.',
         ),
         AreaItemDef(
           id: 'gratitude',
-          title: 'Gratidão',
-          description: 'Percepção de apreciação e presença no cotidiano.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Usar quando o módulo reflexivo estiver pronto.',
+          title: 'Recuperação',
+          description:
+              'Capacidade de voltar para o eixo depois de dias ruins ou cansativos.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.0,
+          recommendedAction:
+              'Esta subárea será ligada a sinais de recuperação e equilíbrio.',
         ),
       ],
     ),
@@ -406,38 +430,45 @@ class AreasCatalog {
       id: environmentHome,
       title: 'Ambiente & Casa',
       titleShort: 'Casa',
-      subtitle: 'Ordem e manutenção',
+      subtitle: 'Ordem, limpeza e manutenção',
       description:
-          'Mostra se sua casa e ambiente estão ajudando sua vida ou atrapalhando.',
+          'Mostra se sua casa e ambiente estão ajudando sua vida ou atrapalhando, com base nas tarefas reais da casa.',
       icon: Icons.home,
       items: [
         AreaItemDef(
           id: 'organization',
           title: 'Organização',
-          description: 'Nível de organização do espaço.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Ligar depois às tarefas domésticas.',
+          description:
+              'Nível de organização do espaço e constância desse cuidado.',
+          defaultSource: AreaDataSource.automatic,
+          recommendedAction: 'Concluir tarefas de organização da casa.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'cleaning',
           title: 'Limpeza',
-          description: 'Constância da limpeza básica.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Ligar depois às tarefas domésticas.',
+          description:
+              'Constância da limpeza básica e do cuidado com o ambiente.',
+          defaultSource: AreaDataSource.automatic,
+          recommendedAction: 'Concluir tarefas de limpeza da casa.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'home_tasks',
           title: 'Pendências domésticas',
-          description: 'Tarefas e pequenas pendências da casa.',
+          description:
+              'Quantidade e peso de pendências pequenas que continuam abertas em casa.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Ligar ao módulo de tarefas da casa.',
+          recommendedAction:
+              'Esta subárea será ligada ao total de pendências da casa.',
         ),
         AreaItemDef(
           id: 'home_maintenance',
           title: 'Manutenção da casa',
-          description: 'Reparos e cuidados maiores do ambiente.',
+          description: 'Reparos, consertos e cuidados maiores do ambiente.',
           defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Ligar depois a reparos e manutenção.',
+          recommendedAction:
+              'Esta subárea será ligada às tarefas de manutenção.',
         ),
       ],
     ),
@@ -474,6 +505,7 @@ class AreasCatalog {
           description: 'Uso de tela perto da hora de dormir.',
           defaultSource: AreaDataSource.manual,
           recommendedAction: 'Pode ser ligado depois a dados do celular.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'social_media',
@@ -481,6 +513,7 @@ class AreasCatalog {
           description: 'Peso das redes sociais no seu uso digital.',
           defaultSource: AreaDataSource.manual,
           recommendedAction: 'Pode ser ligado depois a dados do celular.',
+          supportsAutomaticData: true,
         ),
       ],
     ),
@@ -513,11 +546,9 @@ class AreasCatalog {
     bool includeWomenCycle = true,
   }) {
     final items = itemsForArea(areaId, includeWomenCycle: includeWomenCycle);
-
     for (final item in items) {
       if (item.id == itemId) return item;
     }
-
     return null;
   }
 }

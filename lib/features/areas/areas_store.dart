@@ -6,6 +6,7 @@
 // - Calcula itens dinamicamente com base em SharedPreferences
 // - Conecta a área "Finanças & Material" ao módulo real de Finanças
 // - Usa respostas do check-in diário para alimentar áreas do painel
+// - Liga Ambiente & Casa às tarefas reais da casa
 //
 // Nesta versão:
 // - income     -> vem das entradas reais do mês atual no módulo Finanças
@@ -17,6 +18,8 @@
 // - goals_fin  -> manual por enquanto
 // - energy, movement, nutrition, mood, stress, focus
 //   -> passam a vir do check-in diário
+// - organization e cleaning
+//   -> passam a vir automaticamente das tarefas reais da casa
 //
 // Atualizações desta revisão:
 // - remove duplicações do sistema antigo de daily check-in
@@ -42,6 +45,7 @@ import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
 import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
 import 'package:vida_app/features/finance/data/repositories/hive_finance_repository.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
+import 'package:vida_app/features/home_tasks/home_tasks_store.dart';
 
 class AreasStore {
   AreasStore({FinanceRepository? financeRepository})
@@ -197,6 +201,10 @@ class AreasStore {
 
     if (areaId == 'body_health' && itemId == 'women_cycle') {
       return _computedWomenCycle(user.uid);
+    }
+
+    if (areaId == 'environment_home') {
+      return _computedEnvironmentItem(user.uid, itemId);
     }
 
     if (areaId == 'finance_material') {
@@ -548,6 +556,220 @@ class AreasStore {
     return AreaStatus.critical;
   }
 
+  int _scoreFromStops(double value, List<_ScoreStop> stops) {
+    if (stops.isEmpty) return 0;
+
+    final ordered = [...stops]..sort((a, b) => a.x.compareTo(b.x));
+
+    if (value <= ordered.first.x) {
+      return ordered.first.score.clamp(0, 100);
+    }
+
+    for (var i = 1; i < ordered.length; i++) {
+      final previous = ordered[i - 1];
+      final current = ordered[i];
+
+      if (value <= current.x) {
+        final span = current.x - previous.x;
+        if (span <= 0) return current.score.clamp(0, 100);
+
+        final t = (value - previous.x) / span;
+        final interpolated =
+            previous.score + ((current.score - previous.score) * t);
+
+        return interpolated.round().clamp(0, 100);
+      }
+    }
+
+    return ordered.last.score.clamp(0, 100);
+  }
+
+  String _financeActionFromStatus({
+    required AreaStatus status,
+    required String excellent,
+    required String good,
+    required String medium,
+    required String poor,
+    required String critical,
+  }) {
+    switch (status) {
+      case AreaStatus.excellent:
+        return excellent;
+      case AreaStatus.good:
+        return good;
+      case AreaStatus.medium:
+        return medium;
+      case AreaStatus.poor:
+        return poor;
+      case AreaStatus.critical:
+        return critical;
+      case AreaStatus.noData:
+        return 'Atualize os dados dessa subárea.';
+    }
+  }
+
+
+  Future<AreaAssessment?> _computedEnvironmentItem(
+    String uid,
+    String itemId,
+  ) async {
+    if (itemId == 'organization') {
+      return _computedHomeTaskCategory(
+        uid: uid,
+        areaId: 'environment_home',
+        itemId: itemId,
+        category: HomeTaskCategory.organization,
+        emptyReason:
+            'Ainda não há tarefas de organização registradas para medir essa subárea.',
+        reasonLabel: 'organização da casa',
+        details:
+            'Calculado automaticamente pelas tarefas de organização da casa, considerando o quanto já foi concluído e quão recente foi esse cuidado.',
+        excellentAction: 'Ótimo. Continue mantendo a organização em dia.',
+        goodAction: 'Bom nível de organização. Continue sustentando o ritmo.',
+        mediumAction: 'Sua organização está mediana. Vale retomar constância.',
+        poorAction: 'A organização da casa está ficando para trás.',
+        criticalAction: 'Organização muito baixa. Vale recomeçar pelo básico.',
+        completionWeight: 0.45,
+        recencyWeight: 0.25,
+        freshnessWeight: 0.30,
+      );
+    }
+
+    if (itemId == 'cleaning') {
+      return _computedHomeTaskCategory(
+        uid: uid,
+        areaId: 'environment_home',
+        itemId: itemId,
+        category: HomeTaskCategory.cleaning,
+        emptyReason:
+            'Ainda não há tarefas de limpeza registradas para medir essa subárea.',
+        reasonLabel: 'limpeza da casa',
+        details:
+            'Calculado automaticamente pelas tarefas de limpeza da casa, considerando tarefas concluídas, pendências e quão recente foi o cuidado com o ambiente.',
+        excellentAction: 'Ótimo. Sua rotina de limpeza está muito bem cuidada.',
+        goodAction: 'Bom ritmo de limpeza. Continue assim.',
+        mediumAction: 'Sua limpeza básica está mediana. Vale reforçar a constância.',
+        poorAction: 'A rotina de limpeza está fraca no momento.',
+        criticalAction: 'A limpeza da casa está muito atrasada. Recomece pelo essencial.',
+        completionWeight: 0.35,
+        recencyWeight: 0.35,
+        freshnessWeight: 0.30,
+      );
+    }
+
+    return getAssessment('environment_home', itemId);
+  }
+
+  Future<AreaAssessment?> _computedHomeTaskCategory({
+    required String uid,
+    required String areaId,
+    required String itemId,
+    required HomeTaskCategory category,
+    required String emptyReason,
+    required String reasonLabel,
+    required String details,
+    required String excellentAction,
+    required String goodAction,
+    required String mediumAction,
+    required String poorAction,
+    required String criticalAction,
+    required double completionWeight,
+    required double recencyWeight,
+    required double freshnessWeight,
+  }) async {
+    final store = HomeTasksStore();
+    await store.load();
+
+    final items = store.items.where((e) => e.category == category).toList();
+    if (items.isEmpty) {
+      return _noDataAssessment(
+        source: AreaDataSource.automatic,
+        reason: emptyReason,
+        action: 'Cadastre tarefas dessa categoria para ativar esta subárea.',
+      );
+    }
+
+    final now = DateTime.now();
+    final total = items.length;
+    final done = items.where((e) => e.done).toList();
+    final pending = items.where((e) => !e.done).toList();
+
+    final completionRatio = done.length / total;
+
+    final recentDone = done.where((e) {
+      final updated = DateTime.fromMillisecondsSinceEpoch(e.updatedAtMs);
+      return now.difference(updated).inDays <= 7;
+    }).length;
+    final recentDoneRatio = recentDone / total;
+
+    final lastDoneDate = done.isEmpty
+        ? null
+        : done
+              .map((e) => DateTime.fromMillisecondsSinceEpoch(e.updatedAtMs))
+              .reduce((a, b) => a.isAfter(b) ? a : b);
+
+    final freshnessScore = lastDoneDate == null
+        ? 0
+        : _scoreFromStops(now.difference(lastDoneDate).inDays.toDouble(), const [
+            _ScoreStop(0, 100),
+            _ScoreStop(2, 92),
+            _ScoreStop(7, 75),
+            _ScoreStop(14, 55),
+            _ScoreStop(21, 35),
+            _ScoreStop(30, 18),
+            _ScoreStop(45, 0),
+          ]);
+
+    var score = ((completionRatio * completionWeight) +
+                (recentDoneRatio * recencyWeight) +
+                ((freshnessScore / 100.0) * freshnessWeight)) *
+            100.0;
+
+    if (pending.isNotEmpty) {
+      final stalePending = pending.where((e) {
+        final updated = DateTime.fromMillisecondsSinceEpoch(e.updatedAtMs);
+        return now.difference(updated).inDays >= 14;
+      }).length;
+      score -= stalePending * 4.0;
+    }
+
+    final finalScore = score.round().clamp(0, 100);
+    final status = _statusFromNumericScore(finalScore);
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: excellentAction,
+      good: goodAction,
+      medium: mediumAction,
+      poor: poorAction,
+      critical: criticalAction,
+    );
+
+    await markAreaUpdated(areaId);
+
+    final reason =
+        'Você concluiu ${done.length} de $total tarefas de $reasonLabel; '
+        '$recentDone foram concluídas na última semana.';
+
+    return AreaAssessment(
+      status: status,
+      score: finalScore,
+      reason: reason,
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: lastDoneDate ?? now,
+      recommendedAction: action,
+      details:
+          '$details\n\nPendentes atuais: ${pending.length}. Última conclusão: ${_relativeDateLabel(lastDoneDate, now)}.',
+    );
+  }
+
+  String _relativeDateLabel(DateTime? date, DateTime now) {
+    if (date == null) return 'sem conclusão recente';
+    final gap = now.difference(date).inDays;
+    if (gap <= 0) return 'hoje';
+    if (gap == 1) return 'ontem';
+    return 'há $gap dias';
+  }
+
   Future<AreaAssessment?> _computedFinanceItem(
     String uid,
     String itemId,
@@ -696,42 +918,69 @@ class AreasStore {
       );
     }
 
-    late final AreaStatus status;
+    late final int score;
     late final String reason;
-    late final String action;
+    late final String details;
 
-    if (income >= 5000) {
-      status = AreaStatus.excellent;
-      reason = 'Entradas do mês em ${_money(income)}.';
-      action = 'Continue acompanhando a constância da sua renda.';
-    } else if (income >= 2500) {
-      status = AreaStatus.good;
-      reason = 'Entradas do mês em ${_money(income)}.';
-      action = 'Boa base de entrada. Continue fortalecendo.';
-    } else if (income > 0) {
-      status = AreaStatus.medium;
-      reason = 'Entradas do mês em ${_money(income)} ainda pedem atenção.';
-      action = 'Vale buscar mais previsibilidade ou crescimento de renda.';
+    final expenses = s.expenses;
+
+    if (expenses != null && expenses > 0) {
+      final coverage = income / expenses;
+      score = _scoreFromStops(coverage, const [
+        _ScoreStop(0.0, 5),
+        _ScoreStop(0.5, 20),
+        _ScoreStop(0.8, 40),
+        _ScoreStop(1.0, 60),
+        _ScoreStop(1.2, 75),
+        _ScoreStop(1.5, 90),
+        _ScoreStop(2.0, 100),
+      ]);
+
+      reason =
+          'Entradas reais de ${_money(income)}, cobrindo ${(coverage * 100).toStringAsFixed(0)}% dos gastos do mês.';
+      details =
+          'Calculado principalmente pela capacidade de a renda cobrir os gastos reais do mês.';
     } else {
-      status = AreaStatus.critical;
-      reason = 'Entradas registradas zeradas neste mês.';
-      action = 'Revise os lançamentos ou atualize sua renda.';
+      score = _scoreFromStops(income, const [
+        _ScoreStop(0, 5),
+        _ScoreStop(800, 20),
+        _ScoreStop(1500, 35),
+        _ScoreStop(2500, 55),
+        _ScoreStop(3500, 70),
+        _ScoreStop(5000, 85),
+        _ScoreStop(8000, 100),
+      ]);
+
+      reason = 'Entradas reais do mês em ${_money(income)}.';
+      details =
+          'Como ainda não há gastos suficientes para comparação, a nota usa apenas o valor de entrada do mês.';
     }
+
+    final status = _statusFromNumericScore(score);
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Sua renda cobre bem o mês atual. Continue mantendo constância.',
+      good: 'Boa base de entrada. Vale continuar fortalecendo essa estabilidade.',
+      medium: 'Sua renda sustenta parte importante do mês, mas ainda pede evolução.',
+      poor: 'Sua renda está curta para o padrão atual do mês. Vale ajustar ou reforçar entradas.',
+      critical: 'Sua renda está muito baixa para sustentar bem o mês atual.',
+    );
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason: reason,
       source: AreaDataSource.automatic,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: 'Baseado nas entradas reais lançadas na aba Finanças neste mês.',
+      details: details,
     );
   }
 
   AreaAssessment _assessSpending(_FinanceSnapshot s) {
     final income = s.income;
     final expenses = s.expenses;
+    final budget = s.budget;
 
     if (expenses == null) {
       return _noDataAssessment(
@@ -741,49 +990,70 @@ class AreasStore {
       );
     }
 
-    if (income == null || income <= 0) {
-      return AreaAssessment(
-        status: AreaStatus.medium,
-        score: _scoreFromStatus(AreaStatus.medium),
-        reason:
-            'Há ${_money(expenses)} em gastos, mas faltam entradas para comparar.',
-        source: AreaDataSource.automatic,
-        lastUpdatedAt: s.updatedAt,
-        recommendedAction:
-            'Registre suas entradas para medir o peso dos gastos.',
-        details: 'Baseado nas saídas reais do mês atual.',
-      );
-    }
+    late final int score;
+    late final String reason;
+    late final String details;
 
-    final ratio = expenses / income;
+    if (income != null && income > 0) {
+      final ratio = expenses / income;
+      score = _scoreFromStops(ratio, const [
+        _ScoreStop(0.00, 100),
+        _ScoreStop(0.30, 92),
+        _ScoreStop(0.55, 82),
+        _ScoreStop(0.80, 68),
+        _ScoreStop(1.00, 50),
+        _ScoreStop(1.15, 34),
+        _ScoreStop(1.40, 18),
+        _ScoreStop(2.00, 5),
+      ]);
 
-    late final AreaStatus status;
-    late final String action;
+      reason =
+          'Gastos reais de ${_money(expenses)} para entradas reais de ${_money(income)} (${(ratio * 100).toStringAsFixed(0)}% da renda).';
+      details =
+          'Quanto menor o peso dos gastos sobre a renda real do mês, maior a nota.';
+    } else if (budget != null && budget > 0) {
+      final ratio = expenses / budget;
+      score = _scoreFromStops(ratio, const [
+        _ScoreStop(0.00, 100),
+        _ScoreStop(0.50, 90),
+        _ScoreStop(0.80, 76),
+        _ScoreStop(1.00, 58),
+        _ScoreStop(1.10, 42),
+        _ScoreStop(1.25, 25),
+        _ScoreStop(1.50, 10),
+        _ScoreStop(2.00, 5),
+      ]);
 
-    if (ratio <= 0.55) {
-      status = AreaStatus.excellent;
-      action = 'Ótimo controle de saídas. Continue assim.';
-    } else if (ratio <= 0.80) {
-      status = AreaStatus.good;
-      action = 'Controle bom, mas acompanhe para não subir demais.';
-    } else if (ratio <= 1.0) {
-      status = AreaStatus.medium;
-      action = 'Gastos perto do limite da renda. Vale revisar excessos.';
+      reason =
+          'Gastos reais de ${_money(expenses)} comparados ao orçamento manual de ${_money(budget)}.';
+      details =
+          'Como faltam entradas reais, a nota usa o orçamento como referência principal.';
     } else {
-      status = AreaStatus.critical;
-      action = 'Seus gastos estão acima da renda. É prioridade reorganizar.';
+      score = 50;
+      reason =
+          'Há ${_money(expenses)} em gastos, mas ainda faltam entradas ou orçamento para medir o peso real.';
+      details =
+          'Sem uma referência confiável, esta subárea fica provisoriamente no meio da escala.';
     }
+
+    final status = _statusFromNumericScore(score);
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Ótimo controle de saídas. Continue assim.',
+      good: 'Controle bom. Só monitore para não subir.',
+      medium: 'Seus gastos já pedem revisão moderada.',
+      poor: 'Seus gastos estão pesando bastante. Vale cortar excessos.',
+      critical: 'Seus gastos estão muito altos para a sua base atual. Reorganizar isso é prioridade.',
+    );
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
-      reason:
-          'Gastos reais de ${_money(expenses)} para entradas reais de ${_money(income)} (${(ratio * 100).toStringAsFixed(0)}% da renda).',
+      score: score,
+      reason: reason,
       source: AreaDataSource.automatic,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details:
-          'Baseado nas movimentações reais deste mês registradas em Finanças.',
+      details: details,
     );
   }
 
@@ -799,10 +1069,10 @@ class AreasStore {
       );
     }
 
-    if (income == null || expenses == null) {
+    if (income == null || expenses == null || income <= 0) {
       return AreaAssessment(
         status: AreaStatus.medium,
-        score: _scoreFromStatus(AreaStatus.medium),
+        score: 50,
         reason:
             'Ainda faltam dados completos de entradas e saídas para medir seu fluxo do mês.',
         source: AreaDataSource.automatic,
@@ -814,37 +1084,42 @@ class AreasStore {
     }
 
     final net = income - expenses;
+    final margin = net / income;
 
-    late final AreaStatus status;
-    late final String action;
+    final score = _scoreFromStops(margin, const [
+      _ScoreStop(-1.00, 0),
+      _ScoreStop(-0.50, 10),
+      _ScoreStop(-0.20, 25),
+      _ScoreStop(0.00, 45),
+      _ScoreStop(0.10, 60),
+      _ScoreStop(0.20, 75),
+      _ScoreStop(0.35, 90),
+      _ScoreStop(0.60, 100),
+    ]);
 
-    if (net >= income * 0.20) {
-      status = AreaStatus.excellent;
-      action = 'Seu fluxo do mês está bem saudável.';
-    } else if (net >= 0) {
-      status = AreaStatus.good;
-      action = 'Seu mês está positivo, mas com folga menor.';
-    } else if (net >= -income * 0.15) {
-      status = AreaStatus.medium;
-      action = 'Seu fluxo ficou negativo. Vale corrigir antes que piore.';
-    } else {
-      status = AreaStatus.critical;
-      action = 'Saídas bem acima das entradas. Reorganizar isso é prioridade.';
-    }
-
+    final status = _statusFromNumericScore(score);
     final signal = net >= 0 ? '+' : '-';
     final absoluteNet = net.abs();
 
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Seu fluxo do mês está muito saudável.',
+      good: 'Seu mês está positivo. Continue protegendo essa folga.',
+      medium: 'Seu fluxo está apertado, mas ainda recuperável.',
+      poor: 'Seu fluxo do mês está fraco. Vale agir logo.',
+      critical: 'Seu fluxo está bem negativo. Reorganizar isso é prioridade.',
+    );
+
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason:
           'Fluxo do mês: $signal${_money(absoluteNet)} (${_money(income)} de entrada e ${_money(expenses)} de saída).',
       source: AreaDataSource.automatic,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
       details:
-          'Calculado automaticamente a partir das movimentações reais do mês.',
+          'Calculado automaticamente pela margem do mês: quanto maior a sobra sobre a renda, maior a nota.',
     );
   }
 
@@ -882,39 +1157,45 @@ class AreasStore {
     }
 
     final ratio = expenses / budget;
+    final score = _scoreFromStops(ratio, const [
+      _ScoreStop(0.00, 100),
+      _ScoreStop(0.50, 92),
+      _ScoreStop(0.80, 78),
+      _ScoreStop(1.00, 60),
+      _ScoreStop(1.10, 45),
+      _ScoreStop(1.25, 28),
+      _ScoreStop(1.50, 12),
+      _ScoreStop(2.00, 0),
+    ]);
 
-    late final AreaStatus status;
-    late final String action;
-
-    if (ratio <= 0.90) {
-      status = AreaStatus.excellent;
-      action = 'Seu orçamento está sob controle.';
-    } else if (ratio <= 1.0) {
-      status = AreaStatus.good;
-      action = 'Está no limite, mas ainda controlado.';
-    } else if (ratio <= 1.15) {
-      status = AreaStatus.medium;
-      action = 'Você passou um pouco do orçamento. Vale corrigir logo.';
-    } else {
-      status = AreaStatus.critical;
-      action = 'Orçamento estourado. Reorganize prioridades.';
-    }
+    final status = _statusFromNumericScore(score);
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Seu orçamento está muito bem controlado.',
+      good: 'Bom controle do orçamento. Continue atento.',
+      medium: 'Você está perto do limite do orçamento.',
+      poor: 'Você já passou bastante do orçamento. Vale corrigir logo.',
+      critical: 'Orçamento estourado. Reorganize prioridades.',
+    );
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason:
           'Gastos reais de ${_money(expenses)} frente a orçamento manual de ${_money(budget)}.',
       source: AreaDataSource.mixed,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: 'Combina gastos reais da aba Finanças com orçamento manual.',
+      details:
+          'A nota cai gradualmente conforme os gastos se aproximam ou passam do orçamento.',
     );
   }
 
   AreaAssessment _assessDebts(_FinanceSnapshot s) {
     final debts = s.debts;
     final income = s.income;
+    final budget = s.budget;
+    final expenses = s.expenses;
 
     if (debts == null) {
       return _noDataAssessment(
@@ -927,7 +1208,7 @@ class AreasStore {
     if (debts <= 0) {
       return AreaAssessment(
         status: AreaStatus.excellent,
-        score: _scoreFromStatus(AreaStatus.excellent),
+        score: 100,
         reason: 'Nenhuma dívida relevante registrada.',
         source: AreaDataSource.manual,
         lastUpdatedAt: s.updatedAt,
@@ -936,52 +1217,96 @@ class AreasStore {
       );
     }
 
-    if (income == null || income <= 0) {
-      return AreaAssessment(
-        status: AreaStatus.medium,
-        score: _scoreFromStatus(AreaStatus.medium),
-        reason:
-            'Há ${_money(debts)} em dívidas, mas faltam entradas do mês para comparar o peso.',
-        source: AreaDataSource.mixed,
-        lastUpdatedAt: s.updatedAt,
-        recommendedAction:
-            'Registre entradas ou atualize a renda para medir melhor essa pressão.',
-        details:
-            'Combina dívida manual com entradas reais do mês quando disponíveis.',
-      );
-    }
+    late final int score;
+    late final String reason;
+    late final String details;
 
-    final ratio = debts / income;
+    if (income != null && income > 0) {
+      final ratio = debts / income;
+      score = _scoreFromStops(ratio, const [
+        _ScoreStop(0.00, 100),
+        _ScoreStop(0.25, 88),
+        _ScoreStop(0.50, 72),
+        _ScoreStop(1.00, 48),
+        _ScoreStop(1.50, 28),
+        _ScoreStop(2.00, 14),
+        _ScoreStop(3.00, 5),
+      ]);
 
-    late final AreaStatus status;
-    late final String action;
+      reason =
+          'Dívidas de ${_money(debts)}, cerca de ${(ratio * 100).toStringAsFixed(0)}% das entradas do mês.';
+      details =
+          'Quanto maior o peso das dívidas sobre a renda do mês, menor a nota.';
+    } else if (budget != null && budget > 0) {
+      final ratio = debts / budget;
+      score = _scoreFromStops(ratio, const [
+        _ScoreStop(0.00, 100),
+        _ScoreStop(0.30, 82),
+        _ScoreStop(0.60, 64),
+        _ScoreStop(1.00, 42),
+        _ScoreStop(1.50, 22),
+        _ScoreStop(2.50, 8),
+      ]);
 
-    if (ratio <= 0.5) {
-      status = AreaStatus.good;
-      action = 'Dívidas em nível administrável. Mantenha atenção.';
-    } else if (ratio <= 1.5) {
-      status = AreaStatus.medium;
-      action = 'O peso das dívidas já merece um plano de redução.';
+      reason =
+          'Dívidas de ${_money(debts)} em comparação ao orçamento mensal de ${_money(budget)}.';
+      details =
+          'Como faltam entradas, o peso das dívidas foi comparado ao orçamento atual.';
+    } else if (expenses != null && expenses > 0) {
+      final ratio = debts / expenses;
+      score = _scoreFromStops(ratio, const [
+        _ScoreStop(0.00, 100),
+        _ScoreStop(0.30, 80),
+        _ScoreStop(0.60, 62),
+        _ScoreStop(1.00, 42),
+        _ScoreStop(1.50, 24),
+        _ScoreStop(2.50, 8),
+      ]);
+
+      reason =
+          'Dívidas de ${_money(debts)} em comparação aos gastos atuais de ${_money(expenses)}.';
+      details =
+          'Como faltam entradas, o peso das dívidas foi comparado ao padrão de gastos do mês.';
     } else {
-      status = AreaStatus.critical;
-      action = 'Dívidas muito altas em relação à renda. Prioridade máxima.';
+      score = _scoreFromStops(debts, const [
+        _ScoreStop(0, 100),
+        _ScoreStop(500, 82),
+        _ScoreStop(1500, 62),
+        _ScoreStop(3000, 40),
+        _ScoreStop(6000, 20),
+        _ScoreStop(10000, 5),
+      ]);
+
+      reason = 'Dívidas registradas em ${_money(debts)}.';
+      details =
+          'Sem referência mensal suficiente, a nota usa apenas o valor absoluto das dívidas.';
     }
+
+    final status = _statusFromNumericScore(score);
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Peso das dívidas muito bem controlado.',
+      good: 'Dívidas em nível administrável. Continue atento.',
+      medium: 'O peso das dívidas já merece um plano de redução.',
+      poor: 'As dívidas estão pesando bastante na sua vida financeira.',
+      critical: 'Dívidas muito altas. Prioridade máxima de reorganização.',
+    );
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
-      reason:
-          'Dívidas de ${_money(debts)}, cerca de ${(ratio * 100).toStringAsFixed(0)}% das entradas do mês.',
+      score: score,
+      reason: reason,
       source: AreaDataSource.mixed,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: 'Combina dívida manual com entradas reais lançadas em Finanças.',
+      details: details,
     );
   }
 
   AreaAssessment _assessSavings(_FinanceSnapshot s) {
     final reserve = s.reserve;
     final expenses = s.expenses;
+    final income = s.income;
 
     if (reserve == null) {
       return _noDataAssessment(
@@ -994,7 +1319,7 @@ class AreasStore {
     if (reserve <= 0) {
       return AreaAssessment(
         status: AreaStatus.critical,
-        score: _scoreFromStatus(AreaStatus.critical),
+        score: 5,
         reason: 'Nenhuma reserva registrada até agora.',
         source: AreaDataSource.manual,
         lastUpdatedAt: s.updatedAt,
@@ -1004,46 +1329,76 @@ class AreasStore {
       );
     }
 
-    if (expenses == null || expenses <= 0) {
-      return AreaAssessment(
-        status: AreaStatus.good,
-        score: _scoreFromStatus(AreaStatus.good),
-        reason: 'Reserva de ${_money(reserve)} registrada.',
-        source: AreaDataSource.mixed,
-        lastUpdatedAt: s.updatedAt,
-        recommendedAction: 'Registre gastos mensais para medir cobertura.',
-        details: 'Falta gasto real do mês para calcular meses de proteção.',
-      );
-    }
+    late final int score;
+    late final String reason;
+    late final String details;
 
-    final monthsCovered = reserve / expenses;
+    if (expenses != null && expenses > 0) {
+      final monthsCovered = reserve / expenses;
+      score = _scoreFromStops(monthsCovered, const [
+        _ScoreStop(0.0, 5),
+        _ScoreStop(0.5, 18),
+        _ScoreStop(1.0, 35),
+        _ScoreStop(2.0, 55),
+        _ScoreStop(3.0, 70),
+        _ScoreStop(6.0, 90),
+        _ScoreStop(12.0, 100),
+      ]);
 
-    late final AreaStatus status;
-    late final String action;
+      reason =
+          'Reserva de ${_money(reserve)}, cobrindo cerca de ${monthsCovered.toStringAsFixed(1)} meses dos gastos atuais.';
+      details =
+          'A nota sobe conforme a reserva cobre mais meses do seu custo atual.';
+    } else if (income != null && income > 0) {
+      final monthsCovered = reserve / income;
+      score = _scoreFromStops(monthsCovered, const [
+        _ScoreStop(0.0, 10),
+        _ScoreStop(0.5, 25),
+        _ScoreStop(1.0, 40),
+        _ScoreStop(2.0, 58),
+        _ScoreStop(3.0, 72),
+        _ScoreStop(6.0, 90),
+        _ScoreStop(12.0, 100),
+      ]);
 
-    if (monthsCovered >= 6) {
-      status = AreaStatus.excellent;
-      action = 'Excelente segurança financeira de curto prazo.';
-    } else if (monthsCovered >= 3) {
-      status = AreaStatus.good;
-      action = 'Boa reserva. Continue fortalecendo.';
-    } else if (monthsCovered >= 1) {
-      status = AreaStatus.medium;
-      action = 'Reserva ainda curta. Vale aumentar aos poucos.';
+      reason =
+          'Reserva de ${_money(reserve)}, equivalente a ${monthsCovered.toStringAsFixed(1)} meses de entrada atual.';
+      details =
+          'Como faltam gastos suficientes, a cobertura foi estimada sobre a renda do mês.';
     } else {
-      status = AreaStatus.critical;
-      action = 'Proteção financeira muito baixa para imprevistos.';
+      score = _scoreFromStops(reserve, const [
+        _ScoreStop(0, 5),
+        _ScoreStop(500, 18),
+        _ScoreStop(1500, 32),
+        _ScoreStop(3000, 48),
+        _ScoreStop(6000, 64),
+        _ScoreStop(12000, 82),
+        _ScoreStop(25000, 100),
+      ]);
+
+      reason = 'Reserva de ${_money(reserve)} registrada.';
+      details =
+          'Sem referência mensal suficiente, a nota usa o crescimento absoluto da reserva.';
     }
+
+    final status = _statusFromNumericScore(score);
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Excelente proteção financeira de curto prazo.',
+      good: 'Boa reserva. Continue fortalecendo.',
+      medium: 'Sua reserva já ajuda, mas ainda é curta.',
+      poor: 'Sua reserva ainda está fraca para imprevistos.',
+      critical: 'Proteção financeira muito baixa para imprevistos.',
+    );
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
-      reason:
-          'Reserva de ${_money(reserve)}, cobrindo cerca de ${monthsCovered.toStringAsFixed(1)} meses dos gastos atuais.',
+      score: score,
+      reason: reason,
       source: AreaDataSource.mixed,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: 'Combina reserva manual com gastos reais do mês.',
+      details: details,
     );
   }
 
@@ -1057,34 +1412,28 @@ class AreasStore {
       );
     }
 
-    final progress = p.clamp(0, 100).toDouble();
+    final score = p.clamp(0, 100).round();
+    final status = _statusFromNumericScore(score);
 
-    late final AreaStatus status;
-    late final String action;
-
-    if (progress >= 80) {
-      status = AreaStatus.excellent;
-      action = 'Metas financeiras andando muito bem.';
-    } else if (progress >= 55) {
-      status = AreaStatus.good;
-      action = 'Bom progresso. Continue mantendo ritmo.';
-    } else if (progress >= 25) {
-      status = AreaStatus.medium;
-      action = 'Progresso ainda lento. Vale revisar foco.';
-    } else {
-      status = AreaStatus.critical;
-      action = 'Metas quase paradas. Replaneje as próximas ações.';
-    }
+    final action = _financeActionFromStatus(
+      status: status,
+      excellent: 'Metas financeiras andando muito bem.',
+      good: 'Bom progresso. Continue mantendo ritmo.',
+      medium: 'Progresso razoável, mas ainda pede constância.',
+      poor: 'Progresso lento. Vale revisar foco e execução.',
+      critical: 'Metas quase paradas. Replaneje as próximas ações.',
+    );
 
     return AreaAssessment(
       status: status,
-      score: _scoreFromStatus(status),
+      score: score,
       reason:
-          'Progresso financeiro registrado em ${progress.toStringAsFixed(0)}%.',
+          'Progresso financeiro registrado em ${score.toStringAsFixed(0)}%.',
       source: AreaDataSource.manual,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: 'Subárea baseada no andamento manual das metas financeiras.',
+      details:
+          'Subárea baseada diretamente no avanço percentual informado para as metas financeiras.',
     );
   }
 
@@ -1593,6 +1942,13 @@ class AreasStore {
   Future<AreaAssessment?> _computedCheckups(String uid) async => null;
   Future<AreaAssessment?> _computedSleep(String uid) async => null;
   Future<AreaAssessment?> _computedWomenCycle(String uid) async => null;
+}
+
+class _ScoreStop {
+  const _ScoreStop(this.x, this.score);
+
+  final double x;
+  final int score;
 }
 
 class _DailyScaledPoint {
