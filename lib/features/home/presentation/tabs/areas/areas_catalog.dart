@@ -274,9 +274,10 @@ class AreasCatalog {
           id: 'output',
           title: 'Entrega',
           description: 'Percepção de entrega e avanço em tarefas importantes.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.estimated,
           recommendedAction:
-              'Essa subárea pode ser ligada depois a metas e timeline.',
+              'Calculada automaticamente pelos sinais recentes de foco, planejamento e rotina.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'consistency',
@@ -290,10 +291,11 @@ class AreasCatalog {
           id: 'balance',
           title: 'Equilíbrio',
           description: 'Equilíbrio entre produtividade, descanso e pressão.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Essa subárea pode ser ligada depois à agenda e rotina.',
+              'Calculada automaticamente pelos sinais recentes de rotina, estresse e recuperação.',
+          supportsAutomaticData: true,
         ),
       ],
     ),
@@ -316,32 +318,38 @@ class AreasCatalog {
           id: 'courses',
           title: 'Cursos / Progresso',
           description: 'Evolução em cursos e trilhas em andamento.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Marcar progresso nos cursos ativos.',
+          defaultSource: AreaDataSource.estimated,
+          recommendedAction:
+              'Calculada automaticamente pela constância e qualidade recente do estudo.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'reading',
           title: 'Leitura',
           description: 'Ritmo de leitura e contato com conteúdo de qualidade.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.estimated,
           recommendedAction:
-              'Ligar depois a leitura, metas ou registros próprios.',
+              'Calculada automaticamente pelos sinais recentes de foco e qualidade do estudo.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'skills',
           title: 'Habilidades',
           description: 'Desenvolvimento de competências relevantes.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.estimated,
           weight: 1.1,
-          recommendedAction: 'Registrar avanço em habilidades.',
+          recommendedAction:
+              'Calculada automaticamente pelos sinais recentes de foco, rotina e qualidade do estudo.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'review_practice',
           title: 'Revisão / Prática',
           description: 'Aplicação prática do que foi aprendido.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.estimated,
           recommendedAction:
-              'Ligar depois a metas, exercícios ou prática guiada.',
+              'Calculada automaticamente pela constância e qualidade recente do estudo.',
+          supportsAutomaticData: true,
         ),
       ],
     ),
@@ -357,15 +365,19 @@ class AreasCatalog {
           id: 'family',
           title: 'Família',
           description: 'Contato e qualidade da relação com a família.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Ligar depois a registros e check-ins sociais.',
+          defaultSource: AreaDataSource.estimated,
+          recommendedAction:
+              'Calculada automaticamente pelos sinais recentes de presença e conexão social.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'friends',
           title: 'Amigos',
           description: 'Presença de amizade, apoio e convivência.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Ligar depois a registros e check-ins sociais.',
+          defaultSource: AreaDataSource.estimated,
+          recommendedAction:
+              'Calculada automaticamente pelos sinais recentes de presença e conexão social.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'partner',
@@ -402,7 +414,7 @@ class AreasCatalog {
           defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Calculado automaticamente pela rotina recente e pelo estado da casa.',
+              'Calculada automaticamente pela base da rotina, energia e ambiente.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
@@ -413,7 +425,7 @@ class AreasCatalog {
           defaultSource: AreaDataSource.estimated,
           weight: 1.2,
           recommendedAction:
-              'Calculado automaticamente pela frequência recente do check-in.',
+              'Calculada automaticamente pela frequência recente de sinais úteis do dia a dia.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
@@ -424,7 +436,7 @@ class AreasCatalog {
           defaultSource: AreaDataSource.estimated,
           weight: 1.0,
           recommendedAction:
-              'Calculado automaticamente por sono, humor, estresse e recuperação mental.',
+              'Calculada automaticamente pelos sinais recentes de recuperação, humor, estresse e sono.',
           supportsAutomaticData: true,
         ),
       ],
@@ -460,10 +472,10 @@ class AreasCatalog {
           id: 'home_tasks',
           title: 'Pendências domésticas',
           description:
-              'Quantidade, peso e envelhecimento das pendências abertas em casa.',
+              'Quantidade e peso de pendências pequenas que continuam abertas em casa.',
           defaultSource: AreaDataSource.automatic,
           recommendedAction:
-              'Calculado automaticamente pelas tarefas domésticas pendentes.',
+              'Calculada automaticamente pelo volume de pendências domésticas e sua recência.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
@@ -472,7 +484,7 @@ class AreasCatalog {
           description: 'Reparos, consertos e cuidados maiores do ambiente.',
           defaultSource: AreaDataSource.automatic,
           recommendedAction:
-              'Calculado automaticamente pelas tarefas de manutenção.',
+              'Calculada automaticamente pelas tarefas de manutenção da casa.',
           supportsAutomaticData: true,
         ),
       ],
