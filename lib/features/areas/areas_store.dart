@@ -7,7 +7,6 @@
 // - Conecta a área "Finanças & Material" ao módulo real de Finanças
 // - Usa respostas do check-in diário para alimentar áreas do painel
 // - Liga Ambiente & Casa às tarefas reais da casa
-// - Liga Hábitos & Constância a sinais reais de rotina, constância e recuperação
 //
 // Nesta versão:
 // - income     -> vem das entradas reais do mês atual no módulo Finanças
@@ -21,8 +20,6 @@
 //   -> passam a vir do check-in diário
 // - organization e cleaning
 //   -> passam a vir automaticamente das tarefas reais da casa
-// - direction, goals_review e gratitude
-//   -> passam a vir automaticamente de rotina, constância, recuperação e base do ambiente
 //
 // Atualizações desta revisão:
 // - remove duplicações do sistema antigo de daily check-in
@@ -206,12 +203,12 @@ class AreasStore {
       return _computedWomenCycle(user.uid);
     }
 
-    if (areaId == 'purpose_values') {
-      return _computedPurposeValuesItem(user.uid, itemId);
-    }
-
     if (areaId == 'environment_home') {
       return _computedEnvironmentItem(user.uid, itemId);
+    }
+
+    if (areaId == 'purpose_values') {
+      return _computedPurposeValuesItem(user.uid, itemId);
     }
 
     if (areaId == 'finance_material') {
@@ -615,253 +612,6 @@ class AreasStore {
     }
   }
 
-  Future<AreaAssessment?> _computedPurposeValuesItem(
-    String uid,
-    String itemId,
-  ) async {
-    switch (itemId) {
-      case 'direction':
-        return _computedPurposeBaseline(uid);
-      case 'goals_review':
-        return _computedPurposeConsistency(uid);
-      case 'gratitude':
-        return _computedPurposeRecovery(uid);
-      default:
-        return getAssessment('purpose_values', itemId);
-    }
-  }
-
-  Future<AreaAssessment?> _computedPurposeBaseline(String uid) async {
-    final now = DateTime.now();
-    final history = await _readDailyScaledHistory(
-      day: now,
-      questionIds: const ['routine_ok', 'day_planning', 'energy_ok'],
-      days: DailyCheckinService.historyDays,
-    );
-
-    final organization = await _computedEnvironmentItem(uid, 'organization');
-    final cleaning = await _computedEnvironmentItem(uid, 'cleaning');
-
-    double weightedSum = 0;
-    double totalWeight = 0;
-
-    if (history.isNotEmpty) {
-      weightedSum += _weightedScaledHistoryScore(history) * 0.60;
-      totalWeight += 0.60;
-    }
-    if (organization?.score != null) {
-      weightedSum += organization!.score! * 0.25;
-      totalWeight += 0.25;
-    }
-    if (cleaning?.score != null) {
-      weightedSum += cleaning!.score! * 0.15;
-      totalWeight += 0.15;
-    }
-
-    if (totalWeight == 0) {
-      return getAssessment('purpose_values', 'direction');
-    }
-
-    final score = (weightedSum / totalWeight).round().clamp(0, 100);
-    final status = _statusFromNumericScore(score);
-    final trend = history.isEmpty ? 'stable' : _trendFromScaledHistory(history);
-    final action = _financeActionFromStatus(
-      status: status,
-      excellent:
-          'Sua base do dia a dia está firme. Continue repetindo o básico.',
-      good: 'Sua base está boa. Vale manter o ritmo do essencial.',
-      medium: 'Sua base está mediana. Reforçar o básico já ajuda bastante.',
-      poor:
-          'Sua base do dia a dia está frágil no momento. Simplifique e retome o essencial.',
-      critical:
-          'Sua base da rotina está muito instável. Recomece pelo mínimo viável.',
-    );
-
-    final latestDate = history.isNotEmpty
-        ? history.first.date
-        : _latestDate(organization?.lastUpdatedAt, cleaning?.lastUpdatedAt);
-    final trendSentence = switch (trend) {
-      'improving' => 'Tendência recente: melhorando.',
-      'worsening' => 'Tendência recente: piorando.',
-      _ => 'Tendência recente: estável.',
-    };
-
-    final reason = switch (status) {
-      AreaStatus.excellent =>
-        'Sua base recente de rotina e ambiente está muito bem sustentada.',
-      AreaStatus.good =>
-        'Sua base recente está boa, com sinais consistentes de funcionamento.',
-      AreaStatus.medium => 'Sua base recente funciona, mas ainda oscila.',
-      AreaStatus.poor => 'Sua base recente está fraca e irregular.',
-      AreaStatus.critical => 'Sua base recente está muito instável.',
-      AreaStatus.noData => 'Ainda faltam dados para essa subárea.',
-    };
-
-    await markAreaUpdated('purpose_values');
-
-    return AreaAssessment(
-      status: status,
-      score: score,
-      reason: reason,
-      source: AreaDataSource.mixed,
-      lastUpdatedAt: latestDate ?? now,
-      recommendedAction: action,
-      details:
-          'Calculado pela base da rotina recente (rotina, planejamento e energia) junto com os sinais automáticos de organização e limpeza do ambiente. $trendSentence',
-    );
-  }
-
-  Future<AreaAssessment?> _computedPurposeConsistency(String uid) async {
-    final now = DateTime.now();
-    final history = await _readDailyScaledHistory(
-      day: now,
-      questionIds: const ['routine_ok', 'move', 'study_ok'],
-      days: DailyCheckinService.historyDays,
-    );
-
-    if (history.isEmpty) {
-      return getAssessment('purpose_values', 'goals_review');
-    }
-
-    final valueScore = _weightedScaledHistoryScore(history).toDouble();
-    final activeDays14 = history.length.clamp(
-      0,
-      DailyCheckinService.historyDays,
-    );
-    final recentActiveDays7 = history
-        .where((p) => now.difference(p.date).inDays <= 6)
-        .length
-        .clamp(0, 7);
-
-    final frequency14 =
-        (activeDays14 / DailyCheckinService.historyDays) * 100.0;
-    final frequency7 = (recentActiveDays7 / 7.0) * 100.0;
-
-    var score =
-        ((valueScore * 0.45) + (frequency14 * 0.35) + (frequency7 * 0.20))
-            .round();
-
-    final lastGap = now.difference(history.first.date).inDays;
-    if (lastGap > 2) {
-      score -= ((lastGap - 2) * 4).clamp(0, 20);
-    }
-
-    final finalScore = score.clamp(0, 100);
-    final status = _statusFromNumericScore(finalScore);
-    final trend = _trendFromScaledHistory(history);
-    final trendSentence = switch (trend) {
-      'improving' => 'Tendência recente: melhorando.',
-      'worsening' => 'Tendência recente: piorando.',
-      _ => 'Tendência recente: estável.',
-    };
-
-    final action = _financeActionFromStatus(
-      status: status,
-      excellent:
-          'Sua constância recente está muito boa. Continue aparecendo todos os dias.',
-      good: 'Boa constância. Vale proteger esse ritmo para não cair.',
-      medium: 'Sua constância está razoável, mas ainda oscila bastante.',
-      poor: 'Sua constância está fraca. Retome metas menores e repetíveis.',
-      critical: 'Sua constância está muito baixa. Recomece com ações mínimas.',
-    );
-
-    await markAreaUpdated('purpose_values');
-
-    return AreaAssessment(
-      status: status,
-      score: finalScore,
-      reason:
-          'Você gerou sinais de rotina/estudo/movimento em $activeDays14 dos últimos ${DailyCheckinService.historyDays} dias; $recentActiveDays7 desses dias foram nesta última semana.',
-      source: AreaDataSource.estimated,
-      lastUpdatedAt: history.first.date,
-      recommendedAction: action,
-      details:
-          'Calculado pela qualidade recente desses sinais e, principalmente, pela frequência com que eles aparecem ao longo dos últimos ${DailyCheckinService.historyDays} dias. $trendSentence',
-    );
-  }
-
-  Future<AreaAssessment?> _computedPurposeRecovery(String uid) async {
-    final now = DateTime.now();
-    final history = await _readDailyScaledHistory(
-      day: now,
-      questionIds: const [
-        'mental_recovery',
-        'sleep_ok',
-        'mood_ok',
-        'stress_ok',
-      ],
-      days: DailyCheckinService.historyDays,
-    );
-
-    final sleepAssessment = await _computedSleep(uid);
-
-    if (history.isEmpty && sleepAssessment?.score == null) {
-      return getAssessment('purpose_values', 'gratitude');
-    }
-
-    double weightedSum = 0;
-    double totalWeight = 0;
-
-    if (history.isNotEmpty) {
-      weightedSum += _weightedScaledHistoryScore(history) * 0.75;
-      totalWeight += 0.75;
-    }
-    if (sleepAssessment?.score != null) {
-      weightedSum += sleepAssessment!.score! * 0.25;
-      totalWeight += 0.25;
-    }
-
-    final score = totalWeight == 0
-        ? 0
-        : (weightedSum / totalWeight).round().clamp(0, 100);
-    final status = _statusFromNumericScore(score);
-    final trend = history.isEmpty ? 'stable' : _trendFromScaledHistory(history);
-    final trendSentence = switch (trend) {
-      'improving' => 'Tendência recente: melhorando.',
-      'worsening' => 'Tendência recente: piorando.',
-      _ => 'Tendência recente: estável.',
-    };
-
-    final action = _financeActionFromStatus(
-      status: status,
-      excellent:
-          'Sua recuperação está muito boa. Continue protegendo pausas e descanso.',
-      good: 'Boa recuperação recente. Vale manter esses cuidados.',
-      medium: 'Sua recuperação está mediana. Reforce pausas e descanso.',
-      poor: 'Sua recuperação está baixa. Diminua pressão e recupere o básico.',
-      critical:
-          'Sua recuperação está muito fraca. Priorize descanso e redução de carga.',
-    );
-
-    final latestDate = history.isNotEmpty
-        ? history.first.date
-        : sleepAssessment?.lastUpdatedAt;
-
-    await markAreaUpdated('purpose_values');
-
-    return AreaAssessment(
-      status: status,
-      score: score,
-      reason: switch (status) {
-        AreaStatus.excellent =>
-          'Você está conseguindo recuperar energia e equilíbrio com boa consistência.',
-        AreaStatus.good => 'Sua recuperação recente está em bom nível.',
-        AreaStatus.medium =>
-          'Sua recuperação recente está razoável, mas oscila.',
-        AreaStatus.poor => 'Sua recuperação recente está abaixo do ideal.',
-        AreaStatus.critical => 'Sua recuperação recente está muito baixa.',
-        AreaStatus.noData => 'Ainda faltam dados para essa subárea.',
-      },
-      source: sleepAssessment?.score != null
-          ? AreaDataSource.mixed
-          : AreaDataSource.estimated,
-      lastUpdatedAt: latestDate ?? now,
-      recommendedAction: action,
-      details:
-          'Calculado pelos sinais recentes de recuperação mental, sono, humor e estresse. ${sleepAssessment?.score != null ? 'O sono também entra como reforço automático nessa leitura. ' : ''}$trendSentence',
-    );
-  }
-
   Future<AreaAssessment?> _computedEnvironmentItem(
     String uid,
     String itemId,
@@ -913,27 +663,7 @@ class AreasStore {
     }
 
     if (itemId == 'home_tasks') {
-      return _computedHomeTaskCategory(
-        uid: uid,
-        areaId: 'environment_home',
-        itemId: itemId,
-        category: HomeTaskCategory.cleaning,
-        emptyReason:
-            'Ainda não há tarefas domésticas registradas para medir essa subárea.',
-        reasonLabel: 'pendências domésticas',
-        details:
-            'Calculado pelas tarefas domésticas cadastradas, olhando pendências abertas, ritmo recente e itens concluídos.',
-        excellentAction:
-            'Suas pendências domésticas estão muito bem controladas.',
-        goodAction: 'Bom controle das pendências domésticas.',
-        mediumAction: 'As pendências domésticas estão medianas no momento.',
-        poorAction: 'As pendências domésticas já estão acumulando.',
-        criticalAction:
-            'As pendências domésticas estão bem acumuladas. Vale agir logo.',
-        completionWeight: 0.30,
-        recencyWeight: 0.30,
-        freshnessWeight: 0.40,
-      );
+      return _computedHomePendingTasks(uid);
     }
 
     if (itemId == 'home_maintenance') {
@@ -946,16 +676,17 @@ class AreasStore {
             'Ainda não há tarefas de manutenção registradas para medir essa subárea.',
         reasonLabel: 'manutenção da casa',
         details:
-            'Calculado automaticamente pelas tarefas de manutenção, considerando pendências acumuladas e a recência dos cuidados maiores com o ambiente.',
-        excellentAction: 'A manutenção da casa está muito bem controlada.',
-        goodAction: 'Boa situação de manutenção da casa.',
-        mediumAction: 'A manutenção da casa está mediana no momento.',
+            'Calculado automaticamente pelas tarefas de manutenção da casa, considerando conclusão, pendências antigas e quão recente foi o cuidado com reparos e consertos.',
+        excellentAction: 'Ótimo. A manutenção da casa está bem cuidada.',
+        goodAction: 'Bom nível de manutenção. Continue monitorando.',
+        mediumAction:
+            'A manutenção da casa está mediana. Vale não deixar acumular.',
         poorAction: 'A manutenção da casa está ficando para trás.',
         criticalAction:
-            'A manutenção da casa está muito atrasada. Priorize os itens mais importantes.',
-        completionWeight: 0.25,
-        recencyWeight: 0.25,
-        freshnessWeight: 0.50,
+            'A manutenção da casa está muito atrasada. Reorganize isso logo.',
+        completionWeight: 0.30,
+        recencyWeight: 0.30,
+        freshnessWeight: 0.40,
       );
     }
 
@@ -1074,6 +805,276 @@ class AreasStore {
     if (gap <= 0) return 'hoje';
     if (gap == 1) return 'ontem';
     return 'há $gap dias';
+  }
+
+  Future<AreaAssessment?> _computedHomePendingTasks(String uid) async {
+    final store = HomeTasksStore();
+    await store.load();
+
+    final items = store.items;
+    if (items.isEmpty) {
+      return _noDataAssessment(
+        source: AreaDataSource.automatic,
+        reason:
+            'Ainda não há tarefas domésticas registradas para medir essa subárea.',
+        action: 'Cadastre tarefas da casa para ativar esta subárea.',
+      );
+    }
+
+    final now = DateTime.now();
+    final pending = items.where((e) => !e.done).toList();
+    final total = items.length;
+
+    if (pending.isEmpty) {
+      await markAreaUpdated('environment_home');
+      return AreaAssessment(
+        status: AreaStatus.excellent,
+        score: 100,
+        reason: 'Você está sem pendências domésticas abertas no momento.',
+        source: AreaDataSource.automatic,
+        lastUpdatedAt: now,
+        recommendedAction: 'Ótimo. Tente manter a casa sem acúmulos.',
+        details:
+            'Calculado automaticamente pelo total de tarefas domésticas pendentes e pela idade dessas pendências.',
+      );
+    }
+
+    final majorPending = pending
+        .where((e) => e.effort == HomeTaskEffort.major)
+        .length;
+    final stalePending = pending.where((e) {
+      final updated = DateTime.fromMillisecondsSinceEpoch(e.updatedAtMs);
+      return now.difference(updated).inDays >= 14;
+    }).length;
+    final staleMajorPending = pending.where((e) {
+      final updated = DateTime.fromMillisecondsSinceEpoch(e.updatedAtMs);
+      return e.effort == HomeTaskEffort.major &&
+          now.difference(updated).inDays >= 21;
+    }).length;
+
+    final pendingRatio = pending.length / total;
+    final majorRatio = majorPending / total;
+    final staleRatio = stalePending / total;
+
+    var score = 100.0;
+    score -= pendingRatio * 45.0;
+    score -= majorRatio * 25.0;
+    score -= staleRatio * 20.0;
+    score -= staleMajorPending * 5.0;
+
+    final recentDone = items.where((e) {
+      if (!e.done) return false;
+      final updated = DateTime.fromMillisecondsSinceEpoch(e.updatedAtMs);
+      return now.difference(updated).inDays <= 7;
+    }).length;
+    score += (recentDone.clamp(0, 3)) * 2.0;
+
+    final finalScore = score.round().clamp(0, 100);
+    final status = _statusFromNumericScore(finalScore);
+
+    await markAreaUpdated('environment_home');
+
+    return AreaAssessment(
+      status: status,
+      score: finalScore,
+      reason:
+          'Há ${pending.length} pendências domésticas abertas; $majorPending são maiores e $stalePending já estão envelhecidas.',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: now,
+      recommendedAction: _financeActionFromStatus(
+        status: status,
+        excellent: 'Ótimo. Sua casa está sem acúmulo de pendências.',
+        good: 'Bom nível de controle. Só não deixe acumular.',
+        medium: 'As pendências estão em nível médio. Vale aliviar isso.',
+        poor: 'As pendências domésticas estão pesando bastante.',
+        critical:
+            'As pendências da casa se acumularam demais. Recomece pelo essencial.',
+      ),
+      details:
+          'Calculado automaticamente pelo total de pendências abertas, peso das tarefas e idade das pendências antigas.',
+    );
+  }
+
+  Future<AreaAssessment?> _computedPurposeValuesItem(
+    String uid,
+    String itemId,
+  ) async {
+    if (itemId == 'direction') {
+      return _computedRoutineBase(uid);
+    }
+
+    if (itemId == 'goals_review') {
+      return _computedConsistency(uid);
+    }
+
+    if (itemId == 'gratitude') {
+      return _computedRecovery(uid);
+    }
+
+    return getAssessment('purpose_values', itemId);
+  }
+
+  Future<AreaAssessment?> _computedRoutineBase(String uid) async {
+    final today = DateTime.now();
+
+    final routine = await _assessmentFromDailyQuestions(
+      areaId: 'purpose_values',
+      day: today,
+      questionIds: const ['routine_ok', 'day_planning'],
+      positiveReason: 'Sua base recente do dia a dia parece funcional.',
+      negativeReason: 'Sua base recente do dia a dia parece instável.',
+      positiveAction: 'Continue protegendo o básico da sua rotina.',
+      negativeAction: 'Vale reorganizar sono, rotina e prioridades do dia.',
+      details:
+          'Estimado a partir das respostas recentes sobre rotina e execução do planejamento.',
+      estimated: true,
+    );
+
+    final organization = await _computedEnvironmentItem(uid, 'organization');
+    final cleaning = await _computedEnvironmentItem(uid, 'cleaning');
+
+    final parts = <({int score, double weight, DateTime? updated})>[];
+    if (routine?.score != null && routine!.status != AreaStatus.noData) {
+      parts.add((
+        score: routine.score!,
+        weight: 0.50,
+        updated: routine.lastUpdatedAt,
+      ));
+    }
+    if (organization?.score != null &&
+        organization!.status != AreaStatus.noData) {
+      parts.add((
+        score: organization.score!,
+        weight: 0.25,
+        updated: organization.lastUpdatedAt,
+      ));
+    }
+    if (cleaning?.score != null && cleaning!.status != AreaStatus.noData) {
+      parts.add((
+        score: cleaning.score!,
+        weight: 0.25,
+        updated: cleaning.lastUpdatedAt,
+      ));
+    }
+
+    if (parts.isEmpty) return null;
+
+    double weighted = 0;
+    double totalWeight = 0;
+    DateTime? lastUpdated;
+    for (final part in parts) {
+      weighted += part.score * part.weight;
+      totalWeight += part.weight;
+      lastUpdated = _latestDate(lastUpdated, part.updated);
+    }
+
+    final score = (weighted / totalWeight).round().clamp(0, 100);
+    final status = _statusFromNumericScore(score);
+    await markAreaUpdated('purpose_values');
+
+    return AreaAssessment(
+      status: status,
+      score: score,
+      reason:
+          'Baseado na sua rotina recente e no estado atual da organização e limpeza da casa.',
+      source: AreaDataSource.estimated,
+      lastUpdatedAt: lastUpdated ?? today,
+      recommendedAction: _financeActionFromStatus(
+        status: status,
+        excellent: 'Sua base do dia a dia está muito bem sustentada.',
+        good: 'Sua base está boa. Continue cuidando do básico.',
+        medium: 'Sua base está mediana. Vale reforçar constância e ordem.',
+        poor: 'Sua base do dia a dia está fraca no momento.',
+        critical: 'Sua base está muito instável. Recomece pelo básico.',
+      ),
+      details:
+          'Combina sinais do check-in de rotina com a situação recente da organização e limpeza da casa.',
+    );
+  }
+
+  Future<AreaAssessment?> _computedConsistency(String uid) async {
+    const window = 14;
+    final now = DateTime.now();
+
+    int completedDays = 0;
+    int activeDays = 0;
+    DateTime? lastCompleted;
+
+    for (var offset = 0; offset < window; offset++) {
+      final day = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: offset));
+      final answered = await _dailyCheckinService.answeredCount(day);
+      final completed = await _dailyCheckinService.isCompleted(day);
+
+      if (answered > 0) activeDays++;
+      if (completed) {
+        completedDays++;
+        lastCompleted ??= day;
+      }
+    }
+
+    final completionRatio = completedDays / window;
+    final activeRatio = activeDays / window;
+
+    var score = ((completionRatio * 0.7) + (activeRatio * 0.3)) * 100.0;
+
+    if (lastCompleted != null) {
+      final gap = now.difference(lastCompleted).inDays;
+      if (gap > 2) {
+        score -= ((gap - 2) * 4).clamp(0, 24).toDouble();
+      }
+    } else {
+      score = 0;
+    }
+
+    final finalScore = score.round().clamp(0, 100);
+    final status = _statusFromNumericScore(finalScore);
+    await markAreaUpdated('purpose_values');
+
+    return AreaAssessment(
+      status: status,
+      score: finalScore,
+      reason:
+          'Você completou o check-in em $completedDays de $window dias e teve atividade em $activeDays dias.',
+      source: AreaDataSource.estimated,
+      lastUpdatedAt: lastCompleted,
+      recommendedAction: _financeActionFromStatus(
+        status: status,
+        excellent: 'Ótima constância. Continue aparecendo todos os dias.',
+        good: 'Boa constância. Tente proteger esse ritmo.',
+        medium: 'Sua constância está mediana. Vale reduzir os dias quebrados.',
+        poor: 'Sua constância caiu bastante nos últimos dias.',
+        critical:
+            'Sua constância está muito baixa. Recomece com passos pequenos.',
+      ),
+      details:
+          'Calculado automaticamente pela frequência de check-ins completos e pela presença recente ao longo dos últimos $window dias.',
+    );
+  }
+
+  Future<AreaAssessment?> _computedRecovery(String uid) async {
+    final today = DateTime.now();
+    return _assessmentFromDailyQuestions(
+      areaId: 'purpose_values',
+      day: today,
+      questionIds: const [
+        'sleep_ok',
+        'mood_ok',
+        'stress_ok',
+        'mental_recovery',
+      ],
+      positiveReason: 'Sua recuperação recente parece boa e mais estável.',
+      negativeReason: 'Sua recuperação recente parece abaixo do ideal.',
+      positiveAction: 'Continue protegendo sono, pausas e recuperação mental.',
+      negativeAction:
+          'Vale reduzir pressão e criar mais espaço para recuperar.',
+      details:
+          'Estimado a partir de sono, humor, estresse e recuperação mental nos últimos dias.',
+      estimated: true,
+    );
   }
 
   Future<AreaAssessment?> _computedFinanceItem(

@@ -402,7 +402,8 @@ class AreasCatalog {
           defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Esta subárea será ligada aos sinais da rotina e do check-in.',
+              'Calculado automaticamente pela rotina recente e pelo estado da casa.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'goals_review',
@@ -412,7 +413,8 @@ class AreasCatalog {
           defaultSource: AreaDataSource.estimated,
           weight: 1.2,
           recommendedAction:
-              'Esta subárea será ligada à constância do check-in e da rotina.',
+              'Calculado automaticamente pela frequência recente do check-in.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'gratitude',
@@ -422,7 +424,8 @@ class AreasCatalog {
           defaultSource: AreaDataSource.estimated,
           weight: 1.0,
           recommendedAction:
-              'Esta subárea será ligada a sinais de recuperação e equilíbrio.',
+              'Calculado automaticamente por sono, humor, estresse e recuperação mental.',
+          supportsAutomaticData: true,
         ),
       ],
     ),
@@ -457,18 +460,20 @@ class AreasCatalog {
           id: 'home_tasks',
           title: 'Pendências domésticas',
           description:
-              'Quantidade e peso de pendências pequenas que continuam abertas em casa.',
-          defaultSource: AreaDataSource.manual,
+              'Quantidade, peso e envelhecimento das pendências abertas em casa.',
+          defaultSource: AreaDataSource.automatic,
           recommendedAction:
-              'Esta subárea será ligada ao total de pendências da casa.',
+              'Calculado automaticamente pelas tarefas domésticas pendentes.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'home_maintenance',
           title: 'Manutenção da casa',
           description: 'Reparos, consertos e cuidados maiores do ambiente.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.automatic,
           recommendedAction:
-              'Esta subárea será ligada às tarefas de manutenção.',
+              'Calculado automaticamente pelas tarefas de manutenção.',
+          supportsAutomaticData: true,
         ),
       ],
     ),
