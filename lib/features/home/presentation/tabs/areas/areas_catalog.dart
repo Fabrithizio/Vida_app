@@ -92,8 +92,9 @@ class AreasCatalog {
         AreaItemDef(
           id: 'sleep',
           title: 'Sono',
-          description: 'Quantidade e qualidade do sono recente.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          description:
+              'Quantidade e qualidade do sono recente, com prioridade para dados sincronizados do celular/relógio.',
+          defaultSource: AreaDataSource.automatic,
           weight: 1.2,
           recommendedAction: 'Atualizar horas de sono.',
           supportsAutomaticData: true,
@@ -101,9 +102,11 @@ class AreasCatalog {
         AreaItemDef(
           id: 'movement',
           title: 'Movimento / Exercício',
-          description: 'Constância de atividade física e movimento.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Registrar se houve movimento ou treino.',
+          description:
+              'Constância de atividade física, treinos e movimento geral.',
+          defaultSource: AreaDataSource.mixed,
+          recommendedAction:
+              'Registrar se houve movimento ou sincronizar saúde conectada.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(

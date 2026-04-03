@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/auth/presentation/pages/login_page.dart';
+import 'package:vida_app/features/health_sync/presentation/pages/smart_health_page.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
@@ -416,6 +417,35 @@ class _ProfileTabState extends State<ProfileTab> {
                         style: TextStyle(color: Colors.white60),
                       ),
                       onTap: _signOut,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                _SectionTitle(title: 'Saúde & smartwatch'),
+                const SizedBox(height: 8),
+                _InfoCard(
+                  children: [
+                    ListTile(
+                      leading: const Icon(
+                        Icons.watch_rounded,
+                        color: Colors.white70,
+                      ),
+                      title: const Text(
+                        'Conectar saúde / smartwatch',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      subtitle: const Text(
+                        'Liga o app ao Health Connect / Apple Health para enviar dados ao Areas automaticamente',
+                        style: TextStyle(color: Colors.white60),
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SmartHealthPage(),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),

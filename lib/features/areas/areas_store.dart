@@ -177,6 +177,13 @@ class AreasStore {
       return getAssessment(areaId, itemId);
     }
 
+    if (areaId == 'body_health' && itemId == 'movement') {
+      final movementAssessment = await _computedMovementHybrid(user.uid);
+      if (movementAssessment != null) {
+        return movementAssessment;
+      }
+    }
+
     final dailyAssessment = await _computedDailyQuestionItem(areaId, itemId);
     if (dailyAssessment != null) {
       return dailyAssessment;
@@ -1235,6 +1242,116 @@ class AreasStore {
     if (gap <= 0) return 'hoje';
     if (gap == 1) return 'ontem';
     return 'há $gap dias';
+  }
+
+  Future<AreaAssessment?> _computedMovementHybrid(String uid) async {
+    final smart = await _computedMovementFromHealth(uid);
+
+    final daily = await _assessmentFromDailyQuestions(
+      areaId: 'body_health',
+      day: DateTime.now(),
+      questionIds: const ['move'],
+      positiveReason: 'Seu nível recente de movimento está bom.',
+      negativeReason: 'Seu nível recente de movimento está baixo.',
+      positiveAction: 'Ótimo. Continue com regularidade.',
+      negativeAction:
+          'Vale tentar ao menos uma caminhada, treino leve ou alongamento.',
+      details: 'Baseado nas respostas recentes sobre movimento.',
+    );
+
+    if (smart == null) return daily;
+    if (daily == null) return smart;
+
+    final combinedScore =
+        ((smart.score ?? 0) * 0.55 + (daily.score ?? 0) * 0.45).round().clamp(
+          0,
+          100,
+        );
+    final status = _statusFromNumericScore(combinedScore);
+
+    await markAreaUpdated('body_health');
+
+    return AreaAssessment(
+      status: status,
+      score: combinedScore,
+      reason:
+          'Movimento combinado por perguntas diárias e dados sincronizados de saúde.',
+      source: AreaDataSource.mixed,
+      lastUpdatedAt: _latestDate(smart.lastUpdatedAt, daily.lastUpdatedAt),
+      recommendedAction: switch (status) {
+        AreaStatus.excellent =>
+          'Ótimo ritmo. Continue mantendo movimento e treino.',
+        AreaStatus.good => 'Bom nível de movimento. Continue consistente.',
+        AreaStatus.medium =>
+          'Seu movimento está mediano. Vale reforçar a constância.',
+        AreaStatus.poor =>
+          'Seu movimento está baixo. Tente retomar treinos leves.',
+        AreaStatus.critical =>
+          'Quase não houve movimento recente. Recomece pelo básico.',
+        AreaStatus.noData => 'Atualize seus dados.',
+      },
+      details:
+          'Combina movimento percebido no check-in com dados sincronizados do celular/relógio.\n\nCheck-in: ${daily.score ?? 0}/100. Saúde conectada: ${smart.score ?? 0}/100.',
+    );
+  }
+
+  Future<AreaAssessment?> _computedMovementFromHealth(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final exerciseMinutes = prefs.getDouble(
+      '${uid}:smart_health_exercise_minutes_7d',
+    );
+    final workoutCount = prefs.getInt('${uid}:smart_health_workouts_7d');
+    final rawUpdatedAt =
+        (prefs.getString('${uid}:smart_health_last_sync_at') ?? '').trim();
+    final lastSyncAt = rawUpdatedAt.isEmpty
+        ? null
+        : DateTime.tryParse(rawUpdatedAt);
+
+    if (exerciseMinutes == null && workoutCount == null) return null;
+
+    final minutesScore =
+        _scoreFromStops((exerciseMinutes ?? 0).toDouble(), const [
+          _ScoreStop(0, 5),
+          _ScoreStop(30, 20),
+          _ScoreStop(60, 35),
+          _ScoreStop(90, 50),
+          _ScoreStop(150, 72),
+          _ScoreStop(210, 88),
+          _ScoreStop(300, 100),
+        ]);
+
+    final workoutsBonus =
+        _scoreFromStops((workoutCount ?? 0).toDouble(), const [
+          _ScoreStop(0, 0),
+          _ScoreStop(1, 4),
+          _ScoreStop(2, 8),
+          _ScoreStop(3, 12),
+          _ScoreStop(5, 16),
+          _ScoreStop(7, 20),
+        ]);
+
+    final score = (minutesScore + workoutsBonus).clamp(0, 100);
+    final status = _statusFromNumericScore(score);
+
+    return AreaAssessment(
+      status: status,
+      score: score,
+      reason:
+          'Saúde conectada registrou ${(exerciseMinutes ?? 0).toStringAsFixed(0)} min de exercício e ${workoutCount ?? 0} treinos nos últimos 7 dias.',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: lastSyncAt,
+      recommendedAction: switch (status) {
+        AreaStatus.excellent => 'Ótimo ritmo de atividade física recente.',
+        AreaStatus.good => 'Bom nível de atividade. Continue assim.',
+        AreaStatus.medium => 'Seu volume de exercício está mediano.',
+        AreaStatus.poor => 'Seu volume de exercício está baixo no momento.',
+        AreaStatus.critical =>
+          'Quase não houve exercício recente sincronizado.',
+        AreaStatus.noData => 'Atualize seus dados.',
+      },
+      details:
+          'Calculado automaticamente a partir de sono/saúde conectada, usando minutos de exercício e quantidade de treinos sincronizados nos últimos 7 dias.',
+    );
   }
 
   Future<AreaAssessment?> _computedFinanceItem(
@@ -2482,7 +2599,57 @@ class AreasStore {
   // As funções abaixo (computedCheckups/computedSleep/...) já estão no seu texto original.
   // Mantém como está no seu projeto.
   Future<AreaAssessment?> _computedCheckups(String uid) async => null;
-  Future<AreaAssessment?> _computedSleep(String uid) async => null;
+  Future<AreaAssessment?> _computedSleep(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final hours = prefs.getDouble('${uid}:smart_health_sleep_hours');
+    final rawUpdatedAt =
+        (prefs.getString('${uid}:smart_health_sleep_updated_at') ?? '').trim();
+    final updatedAt = rawUpdatedAt.isEmpty
+        ? null
+        : DateTime.tryParse(rawUpdatedAt);
+
+    if (hours == null || hours <= 0) return null;
+
+    final score = _sleepScore(hours);
+    final status = _statusFromNumericScore(score);
+
+    return AreaAssessment(
+      status: status,
+      score: score,
+      reason:
+          'Sono sincronizado: ${hours.toStringAsFixed(1)} h na última sessão.',
+      source: AreaDataSource.automatic,
+      lastUpdatedAt: updatedAt,
+      recommendedAction: switch (status) {
+        AreaStatus.excellent =>
+          'Ótimo. Seu sono recente está em um nível muito bom.',
+        AreaStatus.good => 'Bom sono recente. Continue protegendo esse hábito.',
+        AreaStatus.medium => 'Seu sono está razoável, mas ainda pode melhorar.',
+        AreaStatus.poor => 'Seu sono recente está abaixo do ideal.',
+        AreaStatus.critical =>
+          'Seu sono recente está muito baixo ou desregulado.',
+        AreaStatus.noData => 'Atualize seus dados.',
+      },
+      details:
+          'Calculado automaticamente a partir dos dados sincronizados do celular/relógio via Health Connect ou Apple Health.',
+    );
+  }
+
+  int _sleepScore(double hours) {
+    return _scoreFromStops(hours, const [
+      _ScoreStop(0, 0),
+      _ScoreStop(4, 15),
+      _ScoreStop(5, 30),
+      _ScoreStop(6, 48),
+      _ScoreStop(7, 70),
+      _ScoreStop(8, 95),
+      _ScoreStop(9, 82),
+      _ScoreStop(10, 64),
+      _ScoreStop(11, 42),
+      _ScoreStop(12, 20),
+    ]);
+  }
+
   Future<AreaAssessment?> _computedWomenCycle(String uid) async => null;
 }
 
