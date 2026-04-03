@@ -86,14 +86,16 @@ class ScoreRulesSheet extends StatelessWidget {
               const SizedBox(height: 10),
               const _RuleCard(
                 icon: Icons.calendar_today_rounded,
-                title: '2. O check-in diário usa 5 perguntas e histórico de 14 dias',
+                title:
+                    '2. O check-in diário usa 5 perguntas e histórico de 14 dias',
                 text:
                     'Quando uma subárea é ligada ao check-in, o app usa até 5 perguntas por dia e olha o histórico recente de 14 dias. As respostas ficam na escala 0 a 4, depois são convertidas para uma nota de 0 a 100.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
                 icon: Icons.update_rounded,
-                title: '3. Dias recentes valem mais e falta de registro pode derrubar a nota',
+                title:
+                    '3. Dias recentes valem mais e falta de registro pode derrubar a nota',
                 text:
                     'Nas subáreas de check-in, os dias mais novos pesam mais. Se o app ficar alguns dias sem dado recente, a nota perde força aos poucos. Isso evita score congelado.',
               ),
@@ -128,11 +130,11 @@ class ScoreRulesSheet extends StatelessWidget {
                 icon: Icons.favorite,
                 title: 'Corpo & Saúde',
                 body:
-                    'Hoje esta área mistura três tipos de leitura:\n\n'
-                    '• check-in diário: energia, movimento e nutrição usam histórico recente das respostas;\n'
-                    '• itens especiais: sono e check-ups entram por lógica própria;\n'
-                    '• item específico por perfil: ciclo menstrual aparece só quando fizer sentido para o perfil.\n\n'
-                    'Na prática, esta área reage rápido ao básico do dia a dia, mas também considera cuidados pontuais importantes.',
+                    'Hoje Corpo & Saúde está focado em sinais simples e testáveis do dia a dia.\n\n'
+                    '• energia, sono, movimento, alimentação e hidratação usam histórico recente do check-in diário;\n'
+                    '• check-ups usam a data do último check-up informada no app;\n'
+                    '• ciclo menstrual aparece só quando fizer sentido para o perfil.\n\n'
+                    'Na prática, esta área reage ao básico do dia a dia e também considera o tempo desde o último cuidado importante.',
               ),
               const SizedBox(height: 10),
               const _AreaRuleCard(
@@ -159,33 +161,42 @@ class ScoreRulesSheet extends StatelessWidget {
                 icon: Icons.work,
                 title: 'Trabalho & Vocação',
                 body:
-                    'Hoje a parte mais viva desta área é a base da rotina: rotina e consistência já usam o check-in diário.\n\n'
-                    'Entrega e equilíbrio ainda são mais fracos no sistema atual: existem no catálogo, mas ainda dependem de registro manual ou de ligação futura com timeline, metas e agenda.',
+                    'Hoje esta área já usa sinais recentes do check-in diário para as quatro subáreas.\n\n'
+                    '• rotina e consistência usam rotina e planejamento;\n'
+                    '• entrega usa foco, planejamento e ritmo recente;\n'
+                    '• equilíbrio usa rotina, estresse e recuperação.\n\n'
+                    'Ou seja: ela ainda não depende de timeline ou agenda, mas já consegue gerar nota de forma coerente.',
               ),
               const SizedBox(height: 10),
               const _AreaRuleCard(
                 icon: Icons.school_rounded,
                 title: 'Aprendizado & Intelecto',
                 body:
-                    'No momento, a subárea mais ligada ao cálculo real é “Estudo”, que usa histórico recente do check-in.\n\n'
-                    'Cursos, leitura, habilidades e revisão/prática ainda existem no painel, mas boa parte delas ainda está mais manual do que automática.',
+                    'Hoje todas as subáreas desta área já conseguem gerar nota por estimativa leve usando o histórico recente do check-in.\n\n'
+                    '• estudo usa constância e qualidade;\n'
+                    '• cursos, leitura, habilidades e revisão/prática derivam dos sinais recentes de estudo, foco e rotina.\n\n'
+                    'Ainda é uma leitura estimada, mas já não fica só no manual.',
               ),
               const SizedBox(height: 10),
               const _AreaRuleCard(
                 icon: Icons.groups,
                 title: 'Relações & Conexões',
                 body:
-                    'Hoje o app já consegue ler melhor a parte de contato social recente pelo check-in diário.\n\n'
-                    'Família, amigos e parceiro continuam mais dependentes de registro manual, então esta área ainda está parcialmente automatizada.',
+                    'Hoje esta área usa sinais recentes do check-in social para gerar nota em todas as subáreas.\n\n'
+                    '• contato social recente vem direto das perguntas sociais;\n'
+                    '• família, amigos e relacionamento usam uma estimativa leve baseada em presença social, conexão e humor recente.\n\n'
+                    'Não é leitura perfeita, mas já evita que a área fique cinza sem necessidade.',
               ),
               const SizedBox(height: 10),
               const _AreaRuleCard(
                 icon: Icons.autorenew_rounded,
                 title: 'Hábitos & Constância',
                 body:
-                    'Esta área já existe no catálogo com a nova ideia certa: base da rotina, constância e recuperação.\n\n'
-                    'Mas ela ainda está em transição no sistema. Ou seja: já está apresentada do jeito novo, porém a ligação automática principal ainda está sendo fechada.\n\n'
-                    'Então, por enquanto, ela funciona mais como direção do produto do que como área totalmente pronta.',
+                    'Hoje esta área já funciona como motor real, não só como catálogo.\n\n'
+                    '• base da rotina combina rotina, planejamento, energia e ambiente;\n'
+                    '• constância olha a repetição recente do básico;\n'
+                    '• recuperação mistura sinais de recuperação mental, humor, estresse e sono.\n\n'
+                    'Ela ainda pode evoluir, mas já gera nota de forma coerente.',
               ),
               const SizedBox(height: 10),
               const _AreaRuleCard(
@@ -201,7 +212,7 @@ class ScoreRulesSheet extends StatelessWidget {
                     '• quantas foram concluídas na última semana;\n'
                     '• há quanto tempo aconteceu a última conclusão;\n'
                     '• penalidade por tarefa pendente antiga.\n\n'
-                    'Conforto e manutenção da casa ainda não estão no mesmo nível de automação.',
+                    'Pendências domésticas e manutenção também já entram nessa leitura, com base nas tarefas reais da casa.',
               ),
               const SizedBox(height: 10),
               const _AreaRuleCard(
@@ -232,16 +243,16 @@ class ScoreRulesSheet extends StatelessWidget {
                     '• check-in com histórico recente\n'
                     '• Finanças com cálculo bem mais gradual\n'
                     '• Digital automático pelo uso do aparelho\n'
-                    '• Casa começando a usar tarefas reais',
+                    '• Casa já usando tarefas reais em várias subáreas',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
                 icon: Icons.build_circle_rounded,
                 title: 'O que ainda está em construção',
                 text:
-                    '• Hábitos & Constância ainda está mais no catálogo do que no motor final\n'
-                    '• partes de Relações, Aprendizado e Trabalho ainda dependem mais de check-in/manual do que de integração forte\n'
-                    '• algumas subáreas do catálogo ainda existem antes de estarem totalmente ligadas ao cálculo real',
+                    '• algumas leituras ainda são estimadas, não medições diretas\n'
+                    '• check-ups e ciclo dependem mais de atualização manual\n'
+                    '• o sistema ainda pode ganhar mais integrações fortes no futuro',
               ),
               const SizedBox(height: 14),
               Container(
@@ -253,7 +264,7 @@ class ScoreRulesSheet extends StatelessWidget {
                   border: Border.all(color: Colors.white12),
                 ),
                 child: const Text(
-                  'Resumo rápido: hoje o Areas já tenta refletir sua situação atual com mais verdade do que antes. O score não é mais só um rótulo: ele nasce de nota numérica, usa histórico recente quando faz sentido, mistura fontes automáticas quando elas existem e ainda mostra com honestidade o que está pronto e o que ainda está em transição.',
+                  'Resumo rápido: hoje o Areas já consegue dar nota para praticamente todas as partes centrais do app, usando histórico recente, sinais estimados e fontes automáticas quando elas existem. Ainda não é o ponto final, mas já está bem mais coerente e testável do que antes.',
                   style: TextStyle(
                     color: Colors.white70,
                     height: 1.35,
@@ -328,10 +339,7 @@ class _RuleCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   text,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    height: 1.35,
-                  ),
+                  style: const TextStyle(color: Colors.white70, height: 1.35),
                 ),
               ],
             ),
@@ -392,10 +400,7 @@ class _AreaRuleCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             body,
-            style: const TextStyle(
-              color: Colors.white70,
-              height: 1.35,
-            ),
+            style: const TextStyle(color: Colors.white70, height: 1.35),
           ),
         ],
       ),

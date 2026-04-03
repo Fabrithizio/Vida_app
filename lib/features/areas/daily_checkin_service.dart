@@ -117,7 +117,7 @@ class DailyCheckinService {
     DailyQuestion(
       id: 'hydration_ok',
       areaId: 'body_health',
-      itemIds: ['nutrition'],
+      itemIds: ['hydration', 'nutrition'],
       text: 'Como foi seu cuidado com água e hidratação hoje?',
       scaleType: DailyQuestionScaleType.quality5,
       priorityBoost: 0.18,
@@ -224,7 +224,7 @@ class DailyCheckinService {
     DailyQuestion(
       id: 'social_ok',
       areaId: 'relations_community',
-      itemIds: ['social_contact'],
+      itemIds: ['family', 'friends', 'partner', 'social_contact'],
       text: 'Como esteve sua conexão com alguém importante hoje?',
       scaleType: DailyQuestionScaleType.quality5,
       priorityBoost: 0.25,
@@ -232,7 +232,7 @@ class DailyCheckinService {
     DailyQuestion(
       id: 'social_presence',
       areaId: 'relations_community',
-      itemIds: ['social_contact'],
+      itemIds: ['family', 'friends', 'partner', 'social_contact'],
       text:
           'Você esteve presente de verdade nas suas conversas e relações hoje?',
       scaleType: DailyQuestionScaleType.agreement5,

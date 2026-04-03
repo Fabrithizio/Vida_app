@@ -92,22 +92,20 @@ class AreasCatalog {
         AreaItemDef(
           id: 'sleep',
           title: 'Sono',
-          description:
-              'Quantidade e qualidade do sono recente, com prioridade para dados sincronizados do celular/relógio.',
-          defaultSource: AreaDataSource.automatic,
+          description: 'Qualidade do sono recente percebida no dia a dia.',
+          defaultSource: AreaDataSource.dailyQuestions,
           weight: 1.2,
-          recommendedAction: 'Atualizar horas de sono.',
-          supportsAutomaticData: true,
+          recommendedAction:
+              'Responder no check-in diário como esteve seu sono.',
         ),
         AreaItemDef(
           id: 'movement',
           title: 'Movimento / Exercício',
           description:
               'Constância de atividade física, treinos e movimento geral.',
-          defaultSource: AreaDataSource.mixed,
+          defaultSource: AreaDataSource.dailyQuestions,
           recommendedAction:
-              'Registrar se houve movimento ou sincronizar saúde conectada.',
-          supportsAutomaticData: true,
+              'Responder no check-in diário como esteve seu movimento.',
         ),
         AreaItemDef(
           id: 'nutrition',
@@ -127,10 +125,12 @@ class AreasCatalog {
         AreaItemDef(
           id: 'checkups',
           title: 'Check-ups / Exames',
-          description: 'Tempo desde o último check-up ou exame relevante.',
+          description:
+              'Tempo desde o último check-up ou exame relevante, atualizado pela data informada no app.',
           defaultSource: AreaDataSource.manual,
           weight: 1.1,
-          recommendedAction: 'Atualizar a data do último check-up.',
+          recommendedAction:
+              'Abrir a subárea e atualizar a data do último check-up.',
         ),
         AreaItemDef(
           id: 'women_cycle',
@@ -387,9 +387,10 @@ class AreasCatalog {
           title: 'Relacionamento',
           description:
               'Acompanhamento do relacionamento afetivo, se aplicável.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.estimated,
           recommendedAction:
-              'Atualizar situação do relacionamento quando esse módulo estiver ativo.',
+              'Estimado de forma leve pelos sinais recentes de conexão social.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'social_contact',
