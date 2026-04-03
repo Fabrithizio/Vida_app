@@ -271,6 +271,22 @@ class AreasStore {
       );
     }
 
+    if (areaId == 'body_health' && itemId == 'hydration') {
+      return _assessmentFromDailyQuestions(
+        areaId: areaId,
+        day: today,
+        questionIds: const ['hydration_ok'],
+        positiveReason: 'Sua hidratação recente está em um bom nível.',
+        negativeReason: 'Sua hidratação recente ficou abaixo do ideal.',
+        positiveAction:
+            'Continue protegendo esse cuidado básico ao longo do dia.',
+        negativeAction:
+            'Vale aumentar a constância da hidratação ao longo do dia.',
+        details:
+            'Baseado nas respostas recentes sobre hidratação no check-in diário.',
+      );
+    }
+
     if (areaId == 'mind_emotion' && itemId == 'mood') {
       return _assessmentFromDailyQuestions(
         areaId: areaId,

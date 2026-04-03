@@ -117,9 +117,9 @@ class AreasCatalog {
           id: 'hydration',
           title: 'Hidratação',
           description: 'Percepção de hidratação e cuidado básico diário.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.dailyQuestions,
           recommendedAction:
-              'Registrar sua hidratação quando esse módulo estiver ativo.',
+              'Responder no check-in diário como esteve sua hidratação.',
         ),
         AreaItemDef(
           id: 'checkups',
@@ -502,9 +502,10 @@ class AreasCatalog {
           id: 'screen_time',
           title: 'Tempo de tela',
           description: 'Quantidade de tempo gasto em telas.',
-          defaultSource: AreaDataSource.manual,
+          defaultSource: AreaDataSource.automatic,
           weight: 1.2,
-          recommendedAction: 'Atualizar tempo médio de tela.',
+          recommendedAction:
+              'Conceder acesso de uso no Android para calcular automaticamente.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
@@ -520,16 +521,18 @@ class AreasCatalog {
           id: 'night_use',
           title: 'Uso noturno',
           description: 'Uso de tela perto da hora de dormir.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Pode ser ligado depois a dados do celular.',
+          defaultSource: AreaDataSource.automatic,
+          recommendedAction:
+              'Conceder acesso de uso no Android para calcular automaticamente.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'social_media',
           title: 'Tempo em redes sociais',
           description: 'Peso das redes sociais no seu uso digital.',
-          defaultSource: AreaDataSource.manual,
-          recommendedAction: 'Pode ser ligado depois a dados do celular.',
+          defaultSource: AreaDataSource.automatic,
+          recommendedAction:
+              'Conceder acesso de uso no Android para calcular automaticamente.',
           supportsAutomaticData: true,
         ),
       ],
