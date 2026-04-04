@@ -18,6 +18,10 @@
 // Correção (bug atual):
 // - score geral agora é média das 9 áreas (null conta como 0)
 // - cor do score geral agora fica cinza quando score == 0 ("Inicial")
+//
+// Ajuste desta revisão:
+// - hudHeight aumentado para 148 para evitar sobreposição visual do avatar
+//   após o card de idade ficar clicável e mais alto
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -34,6 +38,7 @@ import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_asset
 import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_overlay.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_sheet.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas/score_rules_sheet.dart';
+import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({super.key});
@@ -171,7 +176,6 @@ class _AreasTabState extends State<AreasTab> {
     return map;
   }
 
-  // FIX: média real das áreas (null conta como 0)
   double _averageScore(Map<String, int?> scores, {required int totalAreas}) {
     if (totalAreas <= 0) return 0;
     final sum = scores.values.fold<int>(0, (acc, value) => acc + (value ?? 0));
@@ -224,6 +228,28 @@ class _AreasTabState extends State<AreasTab> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => const ScoreRulesSheet(),
+    );
+  }
+
+  Future<void> _openLifeJourney() async {
+    final birthDate = _resolvedBirthDate ?? await _birthDateFuture;
+    final sex = _resolvedSex ?? await _sexFuture;
+    final userName = _resolvedName ?? await _nameFuture;
+
+    if (!mounted || birthDate == null) {
+      if (mounted) {
+        _showSoonMessage(
+          'Cadastre a data de nascimento para liberar a Linha da Vida.',
+        );
+      }
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            LifeJourneyPage(userName: userName, sex: sex, birthDate: birthDate),
+      ),
     );
   }
 
@@ -345,7 +371,7 @@ class _AreasTabState extends State<AreasTab> {
 
                         const double gridBottom = 4;
                         const double hudTopGap = 2;
-                        const double hudHeight = 126;
+                        const double hudHeight = 148;
 
                         final double gridHeight =
                             ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
@@ -394,6 +420,7 @@ class _AreasTabState extends State<AreasTab> {
                                   onAvatarTap: _openAvatarEditor,
                                   onAlertsTap: _openAlertsCenter,
                                   onScoreRulesTap: _openScoreRules,
+                                  onAgeTimelineTap: _openLifeJourney,
                                 ),
                               ),
                             ),
@@ -468,6 +495,7 @@ class _TopHudCompact extends StatelessWidget {
     required this.onAvatarTap,
     required this.onAlertsTap,
     required this.onScoreRulesTap,
+    required this.onAgeTimelineTap,
   });
 
   final String userName;
@@ -480,6 +508,7 @@ class _TopHudCompact extends StatelessWidget {
   final VoidCallback onAvatarTap;
   final VoidCallback onAlertsTap;
   final VoidCallback onScoreRulesTap;
+  final VoidCallback onAgeTimelineTap;
 
   Color _scoreColor() {
     if (averageScore <= 0) return const Color(0xFF94A3B8);
@@ -672,115 +701,123 @@ class _TopHudCompact extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.cake_rounded,
-                      color: Colors.white,
-                      size: 15,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Idade',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.90),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      ageInfo.ageLabel,
-                      style: const TextStyle(
+          InkWell(
+            onTap: onAgeTimelineTap,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.cake_rounded,
                         color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        height: 1,
+                        size: 15,
                       ),
-                    ),
-                    const Spacer(),
-                    if (ageInfo.hasBirthDate)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 4,
+                      const SizedBox(width: 6),
+                      Text(
+                        'Idade',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.90),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
                         ),
-                        decoration: BoxDecoration(
-                          color: ageInfo.canUnlock(18)
-                              ? const Color(0xFF16A34A).withValues(alpha: 0.18)
-                              : const Color(0xFFF59E0B).withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        ageInfo.ageLabel,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (ageInfo.hasBirthDate)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
                             color: ageInfo.canUnlock(18)
                                 ? const Color(
                                     0xFF16A34A,
-                                  ).withValues(alpha: 0.34)
+                                  ).withValues(alpha: 0.18)
                                 : const Color(
                                     0xFFF59E0B,
-                                  ).withValues(alpha: 0.34),
+                                  ).withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: ageInfo.canUnlock(18)
+                                  ? const Color(
+                                      0xFF16A34A,
+                                    ).withValues(alpha: 0.34)
+                                  : const Color(
+                                      0xFFF59E0B,
+                                    ).withValues(alpha: 0.34),
+                            ),
+                          ),
+                          child: Text(
+                            ageInfo.canUnlock(18) ? '18+' : 'menor',
+                            style: TextStyle(
+                              color: ageInfo.canUnlock(18)
+                                  ? const Color(0xFF86EFAC)
+                                  : const Color(0xFFFCD34D),
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 7,
+                      value: ageInfo.progressToNextBirthday.clamp(0.0, 1.0),
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Color(0xFF60A5FA),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
                         child: Text(
-                          ageInfo.canUnlock(18) ? '18+' : 'menor',
+                          ageInfo.progressLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: ageInfo.canUnlock(18)
-                                ? const Color(0xFF86EFAC)
-                                : const Color(0xFFFCD34D),
+                            color: Colors.white.withValues(alpha: 0.72),
                             fontSize: 9,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    minHeight: 7,
-                    value: ageInfo.progressToNextBirthday.clamp(0.0, 1.0),
-                    backgroundColor: Colors.white.withValues(alpha: 0.08),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFF60A5FA),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        ageInfo.progressLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 8),
+                      Text(
+                        '$definedStatuses/$totalAreas áreas',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.72),
+                          color: Colors.white.withValues(alpha: 0.62),
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$definedStatuses/$totalAreas áreas',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.62),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -895,7 +932,6 @@ class _AgeAccessInfo {
 
     final today = DateTime(now.year, now.month, now.day);
     final birth = DateTime(birthDate.year, birthDate.month, birthDate.day);
-
     final thisYearBirthday = _safeDate(today.year, birth.month, birth.day);
 
     int age = today.year - birth.year;
@@ -913,7 +949,6 @@ class _AgeAccessInfo {
 
     final totalDays = nextBirthday.difference(lastBirthday).inDays;
     final elapsedDays = today.difference(lastBirthday).inDays;
-
     final progress = totalDays <= 0 ? 0.0 : elapsedDays / totalDays;
     final daysUntilBirthday = nextBirthday.difference(today).inDays;
 
