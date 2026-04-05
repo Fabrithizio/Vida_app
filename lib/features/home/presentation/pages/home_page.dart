@@ -3,15 +3,11 @@
 //
 // O que este arquivo faz:
 // - Controla a navegação principal do app
-// - Alterna entre as abas principais
-// - Abre o hub de voz
-//
-// O que mudou nesta versão:
-// - Removido o botão flutuante laranja de teste de notificações
-// - Mantido o layout principal sem mudanças visuais extras
+// - Mantém Finanças na barra inferior
+// - Adiciona o botão flutuante do Sempre Ligado sobre as abas principais
 // ============================================================================
-
 import 'package:flutter/material.dart';
+import 'package:vida_app/features/always_on/presentation/widgets/always_on_floating_shell.dart';
 import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas_tab.dart';
 import 'package:vida_app/features/home/presentation/tabs/day_tab.dart';
@@ -56,7 +52,7 @@ class _HomePageState extends State<HomePage> {
   Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
   void _openVoiceHub() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -70,11 +66,24 @@ class _HomePageState extends State<HomePage> {
     setState(() => _index = index);
   }
 
+  void _openFinanceFromAlwaysOn() {
+    setState(() => _index = 2);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: _tabs[_index],
+      body: Stack(
+        children: [
+          Positioned.fill(child: _tabs[_index]),
+          Positioned.fill(
+            child: AlwaysOnFloatingShell(
+              onOpenFinanceRequested: _openFinanceFromAlwaysOn,
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: Container(
         height: 70,
         decoration: const BoxDecoration(color: Color(0xFF0F0F1A)),
