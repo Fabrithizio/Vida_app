@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
-import '../../../../services/notifications/notification_service.dart';
+import '../../../notifications/application/notification_service.dart';
 import '../../../home_tasks/home_tasks_store.dart';
 import '../../../shopping/shopping_list_store.dart';
 import '../../../timeline/timeline_store.dart';

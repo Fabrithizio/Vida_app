@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
-import 'package:vida_app/services/voice/voice_command_router.dart';
+import 'package:vida_app/features/voice/application/voice_command_router.dart';
 
 class VoiceHubSheet extends StatefulWidget {
   const VoiceHubSheet({super.key, required this.router});

@@ -16,8 +16,8 @@ import 'package:vida_app/features/home_tasks/home_tasks_store.dart';
 import 'package:vida_app/features/shopping/shopping_list_store.dart';
 import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
 import 'package:vida_app/features/timeline/timeline_store.dart';
-import 'package:vida_app/presentation/voice/voice_hub_sheet.dart';
-import 'package:vida_app/services/voice/voice_command_router.dart';
+import 'package:vida_app/features/voice/presentation/voice_hub_sheet.dart';
+import 'package:vida_app/features/voice/application/voice_command_router.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

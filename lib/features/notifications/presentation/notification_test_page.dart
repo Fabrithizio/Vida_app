@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:vida_app/services/notifications/notification_service.dart';
+import 'package:vida_app/features/notifications/application/notification_service.dart';
 
 class NotificationTestPage extends StatefulWidget {
   const NotificationTestPage({super.key});

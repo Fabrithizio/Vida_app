@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../data/models/timeline_block.dart';
-import '../../services/notifications/notification_service.dart';
+import '../notifications/application/notification_service.dart';
 import 'timeline_repository.dart';
 
 class TimelineStore extends ChangeNotifier {
