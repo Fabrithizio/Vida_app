@@ -7,7 +7,7 @@
 // - Facilita adicionar novos conteúdos sem espalhar regra pela UI
 // ============================================================================
 import 'package:flutter/material.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
+import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
 
 enum LifeJourneyMilestoneKind { major, minor }
 

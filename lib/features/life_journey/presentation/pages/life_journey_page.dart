@@ -9,7 +9,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
+import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
 import 'package:vida_app/features/life_journey/data/life_journey_catalog.dart';
 import 'package:vida_app/features/life_journey/domain/life_journey_milestone.dart';
 
