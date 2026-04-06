@@ -28,6 +28,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/local/session_storage.dart';
+import 'package:vida_app/features/areas/application/bootstrap/areas_bootstrap_service.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/device/device_usage_service.dart';
@@ -49,6 +50,7 @@ class AreasTab extends StatefulWidget {
 
 class _AreasTabState extends State<AreasTab> {
   final AreasStore _store = AreasStore();
+  final AreasBootstrapService _bootstrap = AreasBootstrapService();
   final SessionStorage _session = SessionStorage();
   final DailyCheckinService _dailyCheckinService = DailyCheckinService();
   final DeviceUsageService _deviceUsage = DeviceUsageService();
@@ -95,7 +97,7 @@ class _AreasTabState extends State<AreasTab> {
 
     _scoreFuture = _sexFuture
         .then((_) async {
-          await _store.ensureBootstrappedFromOnboarding();
+          await _bootstrap.ensureBootstrappedFromOnboarding();
           try {
             await _deviceUsage.refreshAndPersistDigitalBuckets();
           } catch (_) {}

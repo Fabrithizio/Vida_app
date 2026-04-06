@@ -20,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
+import 'package:vida_app/features/areas/application/bootstrap/areas_bootstrap_service.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/presentation/widgets/area_status_dot.dart';
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
@@ -36,13 +37,14 @@ class AreaDetailPage extends StatefulWidget {
 
 class _AreaDetailPageState extends State<AreaDetailPage> {
   final AreasStore _store = AreasStore();
+  final AreasBootstrapService _bootstrap = AreasBootstrapService();
   late Future<bool> _includeWomenCycleFuture;
 
   @override
   void initState() {
     super.initState();
     _includeWomenCycleFuture = _loadIncludeWomenCycle();
-    _store.ensureBootstrappedFromOnboarding().then((_) {
+    _bootstrap.ensureBootstrappedFromOnboarding().then((_) {
       if (mounted) {
         setState(() {});
       }
