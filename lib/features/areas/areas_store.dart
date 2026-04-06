@@ -49,7 +49,7 @@ import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
 import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
 import 'package:vida_app/features/finance/data/repositories/hive_finance_repository.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
+import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/home_tasks/home_tasks_store.dart';
 
 class AreasStore {

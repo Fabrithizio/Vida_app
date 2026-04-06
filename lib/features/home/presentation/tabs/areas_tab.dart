@@ -32,12 +32,12 @@ import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/device/device_usage_service.dart';
 import 'package:vida_app/features/device/usage_access_overlay.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/area_detail_page.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/areas_catalog.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/areas_model_assets.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_overlay.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/daily_checkin_sheet.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas/score_rules_sheet.dart';
+import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart';
+import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
+import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
+import 'package:vida_app/features/areas/presentation/pages/daily_checkin_overlay.dart';
+import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
+import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
