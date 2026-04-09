@@ -36,6 +36,7 @@ class _HomePageState extends State<HomePage> {
   late final VoiceCommandRouter _router = VoiceCommandRouter(
     shopping: _shopping,
     timeline: _timeline,
+    homeTasks: _homeTasks,
   );
 
   late final List<Widget> _tabs = [
