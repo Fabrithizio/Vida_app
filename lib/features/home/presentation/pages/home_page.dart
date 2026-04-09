@@ -76,7 +76,9 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(child: _tabs[_index]),
+          Positioned.fill(
+            child: IndexedStack(index: _index, children: _tabs),
+          ),
           Positioned.fill(
             child: AlwaysOnFloatingShell(
               onOpenFinanceRequested: _openFinanceFromAlwaysOn,

@@ -62,6 +62,7 @@ class _AreasTabState extends State<AreasTab> {
   late Future<Map<String, int?>> _scoreFuture;
   late Future<String> _nameFuture;
   late Future<DateTime?> _birthDateFuture;
+  late Future<void> _readyFuture;
 
   UserSex? _resolvedSex;
   String? _resolvedName;
@@ -107,6 +108,13 @@ class _AreasTabState extends State<AreasTab> {
           _resolvedScores = value;
           return value;
         });
+
+    _readyFuture = Future.wait<dynamic>([
+      _sexFuture,
+      _nameFuture,
+      _birthDateFuture,
+      _scoreFuture,
+    ]).then((_) {});
   }
 
   UserSex _parseSex(String raw) {
@@ -176,6 +184,47 @@ class _AreasTabState extends State<AreasTab> {
     }
 
     return map;
+  }
+
+  bool get _hasResolvedBaseContext =>
+      _resolvedSex != null && _resolvedName != null && _resolvedScores != null;
+
+  Widget _buildLoadingState() {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Image.asset(
+            'assets/images/life_dashboard_bg.png',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) {
+              return Container(color: const Color(0xFF0B1020));
+            },
+          ),
+        ),
+        Positioned.fill(child: Container(color: const Color(0x990B1020))),
+        const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 34,
+                height: 34,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              SizedBox(height: 14),
+              Text(
+                'Carregando suas áreas...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   double _averageScore(Map<String, int?> scores, {required int totalAreas}) {
@@ -332,151 +381,126 @@ class _AreasTabState extends State<AreasTab> {
   Widget build(BuildContext context) {
     final defs = AreasCatalog.all();
 
-    return FutureBuilder<UserSex>(
-      future: _sexFuture,
-      initialData: _resolvedSex,
-      builder: (context, sexSnap) {
-        final sex = sexSnap.data ?? _resolvedSex ?? UserSex.female;
+    return FutureBuilder<void>(
+      future: _readyFuture,
+      builder: (context, readySnap) {
+        if (!_hasResolvedBaseContext &&
+            readySnap.connectionState != ConnectionState.done) {
+          return _buildLoadingState();
+        }
+
+        final sex = _resolvedSex ?? UserSex.female;
         final character = AreasModelAssets.character(sex);
+        final userName = (_resolvedName ?? 'Usuário').trim();
+        final scores = _resolvedScores ?? <String, int?>{};
+        final ageInfo = _AgeAccessInfo.fromBirthDate(
+          _resolvedBirthDate,
+          DateTime.now(),
+        );
 
-        return FutureBuilder<String>(
-          future: _nameFuture,
-          initialData: _resolvedName,
-          builder: (context, nameSnap) {
-            final userName = (nameSnap.data ?? _resolvedName ?? 'Usuário')
-                .trim();
+        final avg = _averageScore(scores, totalAreas: defs.length);
+        final defined = _definedStatusesCount(scores);
+        final classification = _classificationLabel(avg);
 
-            return FutureBuilder<DateTime?>(
-              future: _birthDateFuture,
-              initialData: _resolvedBirthDate,
-              builder: (context, birthSnap) {
-                final ageInfo = _AgeAccessInfo.fromBirthDate(
-                  birthSnap.data ?? _resolvedBirthDate,
-                  DateTime.now(),
-                );
+        return LayoutBuilder(
+          builder: (context, c) {
+            final h = c.maxHeight;
+            final w = c.maxWidth;
 
-                return FutureBuilder<Map<String, int?>>(
-                  future: _scoreFuture,
-                  initialData: _resolvedScores,
-                  builder: (context, scoreSnap) {
-                    final scores =
-                        scoreSnap.data ?? _resolvedScores ?? <String, int?>{};
+            const double gridBottom = 4;
+            const double hudTopGap = 2;
+            const double hudHeight = 148;
 
-                    final avg = _averageScore(scores, totalAreas: defs.length);
-                    final defined = _definedStatusesCount(scores);
-                    final classification = _classificationLabel(avg);
+            final double gridHeight = ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
 
-                    return LayoutBuilder(
-                      builder: (context, c) {
-                        final h = c.maxHeight;
-                        final w = c.maxWidth;
+            final double gridTop = h - gridHeight - gridBottom;
+            final double characterHeight = h * 0.47;
 
-                        const double gridBottom = 4;
-                        const double hudTopGap = 2;
-                        const double hudHeight = 148;
+            final double avatarTopMin =
+                MediaQuery.of(context).padding.top + hudHeight + 18;
 
-                        final double gridHeight =
-                            ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
+            final double avatarTopMax = gridTop - characterHeight - 4;
 
-                        final double gridTop = h - gridHeight - gridBottom;
-                        final double characterHeight = h * 0.47;
+            final double avatarTop = avatarTopMax <= avatarTopMin
+                ? avatarTopMin
+                : ((avatarTopMin + avatarTopMax) / 2);
 
-                        final double avatarTopMin =
-                            MediaQuery.of(context).padding.top + hudHeight + 18;
-
-                        final double avatarTopMax =
-                            gridTop - characterHeight - 4;
-
-                        final double avatarTop = avatarTopMax <= avatarTopMin
-                            ? avatarTopMin
-                            : ((avatarTopMin + avatarTopMax) / 2);
-
-                        return Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Image.asset(
-                                'assets/images/life_dashboard_bg.png',
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) {
-                                  return Container(
-                                    color: const Color(0xFF0B1020),
-                                  );
-                                },
-                              ),
-                            ),
-                            Positioned(
-                              top: hudTopGap,
-                              left: 8,
-                              right: 8,
-                              child: SafeArea(
-                                bottom: false,
-                                minimum: EdgeInsets.zero,
-                                child: _TopHudCompact(
-                                  userName: userName,
-                                  averageScore: avg,
-                                  definedStatuses: defined,
-                                  totalAreas: defs.length,
-                                  classification: classification,
-                                  ageInfo: ageInfo,
-                                  onCheckinTap: _openCheckin,
-                                  onAvatarTap: _openAvatarEditor,
-                                  onAlertsTap: _openAlertsCenter,
-                                  onScoreRulesTap: _openScoreRules,
-                                  onAgeTimelineTap: _openLifeJourney,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: avatarTop,
-                              left: 0,
-                              right: 0,
-                              child: IgnorePointer(
-                                child: Center(
-                                  child: Image.asset(
-                                    character.path,
-                                    height: characterHeight,
-                                    fit: BoxFit.contain,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: gridBottom,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                ),
-                                child: GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: defs.length,
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 3,
-                                        mainAxisSpacing: 6,
-                                        crossAxisSpacing: 6,
-                                        childAspectRatio: 1.7,
-                                      ),
-                                  itemBuilder: (context, i) {
-                                    final def = defs[i];
-                                    return _AreaCard(
-                                      icon: def.icon,
-                                      score: scores[def.id],
-                                      onTap: () => _openArea(def.id),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: Image.asset(
+                    'assets/images/life_dashboard_bg.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) {
+                      return Container(color: const Color(0xFF0B1020));
+                    },
+                  ),
+                ),
+                Positioned(
+                  top: hudTopGap,
+                  left: 8,
+                  right: 8,
+                  child: SafeArea(
+                    bottom: false,
+                    minimum: EdgeInsets.zero,
+                    child: _TopHudCompact(
+                      userName: userName,
+                      averageScore: avg,
+                      definedStatuses: defined,
+                      totalAreas: defs.length,
+                      classification: classification,
+                      ageInfo: ageInfo,
+                      onCheckinTap: _openCheckin,
+                      onAvatarTap: _openAvatarEditor,
+                      onAlertsTap: _openAlertsCenter,
+                      onScoreRulesTap: _openScoreRules,
+                      onAgeTimelineTap: _openLifeJourney,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: avatarTop,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Image.asset(
+                        character.path,
+                        height: characterHeight,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: gridBottom,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: defs.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisSpacing: 6,
+                            crossAxisSpacing: 6,
+                            childAspectRatio: 1.7,
+                          ),
+                      itemBuilder: (context, i) {
+                        final def = defs[i];
+                        return _AreaCard(
+                          icon: def.icon,
+                          score: scores[def.id],
+                          onTap: () => _openArea(def.id),
                         );
                       },
-                    );
-                  },
-                );
-              },
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         );
