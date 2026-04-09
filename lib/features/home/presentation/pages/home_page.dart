@@ -4,11 +4,14 @@
 // O que este arquivo faz:
 // - Controla a navegação principal do app
 // - Mantém Finanças na barra inferior
+// - Passa um FinanceStore compartilhado para Finanças e Voz
 // - Adiciona o botão flutuante do Sempre Ligado sobre as abas principais
 // ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/features/always_on/presentation/widgets/always_on_floating_shell.dart';
 import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
+import 'package:vida_app/features/finance/presentation/stores/finance_store.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas_tab.dart';
 import 'package:vida_app/features/home/presentation/tabs/day_tab.dart';
 import 'package:vida_app/features/home/presentation/tabs/profile_tab.dart';
@@ -16,8 +19,8 @@ import 'package:vida_app/features/home_tasks/home_tasks_store.dart';
 import 'package:vida_app/features/shopping/shopping_list_store.dart';
 import 'package:vida_app/features/timeline/hive_timeline_repository.dart';
 import 'package:vida_app/features/timeline/timeline_store.dart';
-import 'package:vida_app/features/voice/presentation/voice_hub_sheet.dart';
 import 'package:vida_app/features/voice/application/voice_command_router.dart';
+import 'package:vida_app/features/voice/presentation/voice_hub_sheet.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,11 +35,13 @@ class _HomePageState extends State<HomePage> {
   final ShoppingListStore _shopping = ShoppingListStore();
   final TimelineStore _timeline = TimelineStore(repo: HiveTimelineRepository());
   final HomeTasksStore _homeTasks = HomeTasksStore();
+  final FinanceStore _finance = FinanceStore();
 
   late final VoiceCommandRouter _router = VoiceCommandRouter(
     shopping: _shopping,
     timeline: _timeline,
     homeTasks: _homeTasks,
+    finance: _finance,
   );
 
   late final List<Widget> _tabs = [
@@ -46,7 +51,7 @@ class _HomePageState extends State<HomePage> {
       homeTasksStore: _homeTasks,
     ),
     const AreasTab(),
-    const FinanceTab(),
+    FinanceTab(store: _finance),
     const ProfileTab(),
   ];
 
