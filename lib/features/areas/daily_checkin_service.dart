@@ -22,7 +22,7 @@ import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-enum DailyQuestionScaleType { quality5, amount5 }
+enum DailyQuestionScaleType { quality5, amount5, nutritionCare5, trainingCare5 }
 
 enum DailyQuestionCadence { daily, every3Days, weekly, biweekly }
 
@@ -49,6 +49,7 @@ class DailyQuestion {
     required this.cadence,
     this.priorityBoost = 0,
     this.reverseScore = false,
+    this.alwaysInclude = false,
   });
 
   final String id;
@@ -60,6 +61,7 @@ class DailyQuestion {
   final DailyQuestionCadence cadence;
   final double priorityBoost;
   final bool reverseScore;
+  final bool alwaysInclude;
 
   List<String> get itemIds =>
       impacts.map((impact) => impact.itemId).toSet().toList(growable: false);
@@ -85,11 +87,13 @@ class DailyAnswerOption {
     required this.value,
     required this.label,
     required this.shortLabel,
+    this.description,
   });
 
   final int value;
   final String label;
   final String shortLabel;
+  final String? description;
 }
 
 class DailyCheckinSummary {
@@ -115,6 +119,8 @@ class DailyCheckinService {
   static const String _boxPrefix = 'daily_checkin_box_';
   static const int questionsPerDay = 5;
   static const int historyDays = 21;
+  static const String foodQuestionId = 'food_quality';
+  static const String trainingQuestionId = 'movement_amount';
   static const int minAnswerValue = 0;
   static const int maxAnswerValue = 4;
 
@@ -147,7 +153,7 @@ class DailyCheckinService {
       priorityBoost: 0.42,
     ),
     DailyQuestion(
-      id: 'food_quality',
+      id: foodQuestionId,
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
       impacts: [
@@ -159,16 +165,22 @@ class DailyCheckinService {
         DailyQuestionImpact(
           areaId: 'body_health',
           itemId: 'energy',
-          weight: 0.20,
+          weight: 0.22,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'balance',
+          weight: 0.10,
         ),
       ],
-      text: 'Como foi sua alimentação ontem?',
-      scaleType: DailyQuestionScaleType.quality5,
+      text: 'Como foi sua alimentação ontem pensando no seu corpo?',
+      scaleType: DailyQuestionScaleType.nutritionCare5,
       cadence: DailyQuestionCadence.daily,
-      priorityBoost: 0.40,
+      priorityBoost: 0.48,
+      alwaysInclude: true,
     ),
     DailyQuestion(
-      id: 'movement_amount',
+      id: trainingQuestionId,
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
       impacts: [
@@ -180,18 +192,19 @@ class DailyCheckinService {
         DailyQuestionImpact(
           areaId: 'body_health',
           itemId: 'energy',
-          weight: 0.15,
+          weight: 0.20,
         ),
         DailyQuestionImpact(
-          areaId: 'purpose_values',
-          itemId: 'goals_review',
-          weight: 0.10,
+          areaId: 'work_vocation',
+          itemId: 'consistency',
+          weight: 0.12,
         ),
       ],
-      text: 'Quanto você se movimentou ontem?',
-      scaleType: DailyQuestionScaleType.amount5,
+      text: 'Como foi seu treino ou movimento ontem?',
+      scaleType: DailyQuestionScaleType.trainingCare5,
       cadence: DailyQuestionCadence.daily,
-      priorityBoost: 0.40,
+      priorityBoost: 0.48,
+      alwaysInclude: true,
     ),
     DailyQuestion(
       id: 'energy_level',
@@ -1014,6 +1027,15 @@ class DailyCheckinService {
 
   DailyQuestion? questionById(String id) => _questionById(id);
 
+  List<DailyQuestion> get alwaysIncludedQuestions =>
+      _pool.where((q) => q.alwaysInclude).toList(growable: false);
+
+  Future<int?> getFoodAnswerForSessionDay(DateTime day) =>
+      getAnswer(day: day, questionId: foodQuestionId);
+
+  Future<int?> getTrainingAnswerForSessionDay(DateTime day) =>
+      getAnswer(day: day, questionId: trainingQuestionId);
+
   List<DailyQuestion> questionsForItem(String itemId) {
     return _pool
         .where((q) => q.impacts.any((i) => i.itemId == itemId))
@@ -1053,6 +1075,72 @@ class DailyCheckinService {
           ),
           DailyAnswerOption(value: 3, label: 'Bom', shortLabel: 'Bom'),
           DailyAnswerOption(value: 4, label: 'Ótimo', shortLabel: 'Ótimo'),
+        ];
+      case DailyQuestionScaleType.nutritionCare5:
+        return const [
+          DailyAnswerOption(
+            value: 0,
+            label: 'Muito ruim',
+            shortLabel: 'Muito ruim',
+            description: 'Seu dia ficou bem longe do que ajuda seu corpo.',
+          ),
+          DailyAnswerOption(
+            value: 1,
+            label: 'Ruim',
+            shortLabel: 'Ruim',
+            description: 'Teve alguns exageros e pouco equilíbrio.',
+          ),
+          DailyAnswerOption(
+            value: 2,
+            label: 'Mais ou menos',
+            shortLabel: 'Médio',
+            description: 'Ficou no meio do caminho, sem tanta constância.',
+          ),
+          DailyAnswerOption(
+            value: 3,
+            label: 'Boa',
+            shortLabel: 'Boa',
+            description: 'Na maior parte do dia, você comeu bem.',
+          ),
+          DailyAnswerOption(
+            value: 4,
+            label: 'Muito boa',
+            shortLabel: 'Muito boa',
+            description: 'Seu dia ficou bem alinhado ao que faz bem ao corpo.',
+          ),
+        ];
+      case DailyQuestionScaleType.trainingCare5:
+        return const [
+          DailyAnswerOption(
+            value: 0,
+            label: 'Nada',
+            shortLabel: 'Nada',
+            description: 'Você não treinou e quase não se mexeu.',
+          ),
+          DailyAnswerOption(
+            value: 1,
+            label: 'Muito pouco',
+            shortLabel: 'Pouco',
+            description: 'Teve pouco movimento no dia.',
+          ),
+          DailyAnswerOption(
+            value: 2,
+            label: 'Mais ou menos',
+            shortLabel: 'Médio',
+            description: 'Você se mexeu, mas sem tanto ritmo.',
+          ),
+          DailyAnswerOption(
+            value: 3,
+            label: 'Bom',
+            shortLabel: 'Bom',
+            description: 'Seu corpo teve um bom nível de movimento.',
+          ),
+          DailyAnswerOption(
+            value: 4,
+            label: 'Ótimo',
+            shortLabel: 'Ótimo',
+            description: 'Você treinou bem ou se mexeu muito bem no dia.',
+          ),
         ];
       case DailyQuestionScaleType.amount5:
         return const [
@@ -1153,13 +1241,16 @@ class DailyCheckinService {
     dueCandidates.sort((a, b) => b.score.compareTo(a.score));
     fallbackCandidates.sort((a, b) => b.score.compareTo(a.score));
 
-    final selected = <DailyQuestion>[];
-    final usedAreas = <String>{};
+    final selected = <DailyQuestion>[
+      ..._pool.where((q) => q.alwaysInclude),
+    ].take(questionsPerDay).toList(growable: true);
+    final usedAreas = <String>{...selected.map((q) => q.areaId)};
 
     void pickFrom(List<_WeightedQuestion> source) {
       for (final item in source) {
         if (selected.length >= questionsPerDay) return;
         final q = item.question;
+        if (q.alwaysInclude) continue;
         if (selected.any((s) => s.id == q.id)) continue;
         if (!usedAreas.contains(q.areaId)) {
           selected.add(q);
@@ -1172,6 +1263,7 @@ class DailyCheckinService {
       for (final item in source) {
         if (selected.length >= questionsPerDay) return;
         final q = item.question;
+        if (q.alwaysInclude) continue;
         if (selected.any((s) => s.id == q.id)) continue;
         selected.add(q);
       }

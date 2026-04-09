@@ -1,18 +1,8 @@
-// ============================================================================
-// FILE: lib/features/home/presentation/tabs/day_tab.dart
-//
-// O que faz:
-// - Mostra a aba Meu Dia com timeline por dia/semana/mês/ano
-// - Abre compras, tarefas da casa e criação/edição de blocos
-//
-// Melhoria de desempenho:
-// - carrega stores em paralelo na abertura
-// - evita reagendamento duplicado de notificações ao criar bloco
-// ============================================================================
-
 import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
+import '../../../notifications/application/notification_service.dart';
+import '../../../areas/daily_checkin_service.dart';
 import '../../../home_tasks/home_tasks_store.dart';
 import '../../../shopping/shopping_list_store.dart';
 import '../../../timeline/timeline_store.dart';
@@ -43,7 +33,7 @@ class DayTab extends StatefulWidget {
 
 class _DayTabState extends State<DayTab> {
   late final TimelineStore _store;
-
+  final DailyCheckinService _dailyCheckinService = DailyCheckinService();
   bool _loading = true;
   TimelineRange _range = TimelineRange.day;
   DateTime _selected = DateTime.now();
@@ -53,18 +43,14 @@ class _DayTabState extends State<DayTab> {
     super.initState();
     _store = widget.timelineStore;
     _store.addListener(_onStoreChanged);
-    Future.microtask(_loadInitialData);
-  }
 
-  Future<void> _loadInitialData() async {
-    await Future.wait<void>([
-      _store.load(),
-      widget.shoppingStore.load(),
-      widget.homeTasksStore.load(),
-    ]);
-
-    if (!mounted) return;
-    setState(() => _loading = false);
+    Future.microtask(() async {
+      await _store.load();
+      await widget.shoppingStore.load();
+      await widget.homeTasksStore.load();
+      if (!mounted) return;
+      setState(() => _loading = false);
+    });
   }
 
   @override
@@ -139,6 +125,7 @@ class _DayTabState extends State<DayTab> {
       confirmText: 'OK',
       cancelText: 'Cancelar',
     );
+
     if (picked == null || !mounted) return;
     setState(() => _selected = _dayOnly(picked));
   }
@@ -214,6 +201,7 @@ class _DayTabState extends State<DayTab> {
       isScrollControlled: true,
       builder: (_) => CreateBlockSheet(initialDay: _selected),
     );
+
     if (created == null) return;
 
     if (_store.hasConflict(created)) {
@@ -227,18 +215,20 @@ class _DayTabState extends State<DayTab> {
     }
 
     await _store.add(created);
+    await NotificationService.instance.scheduleForBlock(created);
 
     if (!mounted) return;
     setState(() => _selected = _dayOnly(created.start));
   }
 
   Future<void> _openEditBlock(TimelineBlock block) async {
-    final result = await showModalBottomSheet(
+    final result = await showModalBottomSheet<EditResult>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => EditBlockSheet(block: block),
     );
+
     if (result == null) return;
 
     if (result.delete) {
@@ -296,6 +286,181 @@ class _DayTabState extends State<DayTab> {
     }
   }
 
+  DateTime _sessionDayForLifeDay(DateTime d) =>
+      _dayOnly(d).add(const Duration(days: 1));
+
+  Future<_BodyCareDaySnapshot> _bodyCareSnapshotForLifeDay(DateTime d) async {
+    final sessionDay = _sessionDayForLifeDay(d);
+    final food = await _dailyCheckinService.getFoodAnswerForSessionDay(
+      sessionDay,
+    );
+    final training = await _dailyCheckinService.getTrainingAnswerForSessionDay(
+      sessionDay,
+    );
+    return _BodyCareDaySnapshot(food: food, training: training);
+  }
+
+  Color _bodyCareColor(int? value) {
+    switch (value) {
+      case 4:
+        return const Color(0xFF22C55E);
+      case 3:
+        return const Color(0xFF84CC16);
+      case 2:
+        return const Color(0xFFF59E0B);
+      case 1:
+        return const Color(0xFFF97316);
+      case 0:
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF334155);
+    }
+  }
+
+  Widget _buildDayStatusCard({
+    required DateTime day,
+    required bool selected,
+    required _BodyCareDaySnapshot snapshot,
+  }) {
+    final foodColor = _bodyCareColor(snapshot.food);
+    final trainingColor = _bodyCareColor(snapshot.training);
+    final borderColor = selected
+        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.55)
+        : Colors.white12;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: borderColor),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.18),
+                  blurRadius: 20,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            foodColor.withValues(alpha: 0.78),
+                            foodColor.withValues(alpha: 0.26),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topRight,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            trainingColor.withValues(alpha: 0.78),
+                            trainingColor.withValues(alpha: 0.26),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: selected ? 0.24 : 0.34),
+                    Colors.black.withValues(alpha: selected ? 0.34 : 0.48),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 10,
+                child: Row(
+                  children: [
+                    Icon(Icons.restaurant_rounded, size: 10, color: foodColor),
+                    const Spacer(),
+                    Icon(
+                      Icons.fitness_center_rounded,
+                      size: 10,
+                      color: trainingColor,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _weekdayName(day.weekday),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? Colors.white : Colors.white70,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                day.day.toString().padLeft(2, '0'),
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _monthName(day.month),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 10,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _dateStrip() {
     final base = _dayOnly(_selected);
     final days = List.generate(7, (i) => base.add(Duration(days: i - 3)));
@@ -311,67 +476,21 @@ class _DayTabState extends State<DayTab> {
           final d = days[i];
           final selected = _dayOnly(d) == _dayOnly(_selected);
 
-          return InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => setState(() => _selected = d),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 70,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              decoration: BoxDecoration(
-                color: selected
-                    ? Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: 0.16)
-                    : Colors.white.withValues(alpha: 0.04),
+          return FutureBuilder<_BodyCareDaySnapshot>(
+            future: _bodyCareSnapshotForLifeDay(d),
+            builder: (context, snapshot) {
+              final data = snapshot.data ?? const _BodyCareDaySnapshot();
+
+              return InkWell(
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: selected
-                      ? Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: 0.55)
-                      : Colors.white12,
+                onTap: () => setState(() => _selected = d),
+                child: _buildDayStatusCard(
+                  day: d,
+                  selected: selected,
+                  snapshot: data,
                 ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _weekdayName(d.weekday),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: selected ? Colors.white : Colors.white70,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    d.day.toString().padLeft(2, '0'),
-                    maxLines: 1,
-                    style: TextStyle(
-                      color: selected ? Colors.white : Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 22,
-                      height: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _monthName(d.month),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                      height: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+              );
+            },
           );
         },
       ),
@@ -446,26 +565,26 @@ class _DayTabState extends State<DayTab> {
                   Expanded(
                     child: SegmentedButton<TimelineRange>(
                       segments: const [
-                        ButtonSegment<TimelineRange>(
+                        ButtonSegment(
                           value: TimelineRange.day,
                           label: Text('Dia'),
                         ),
-                        ButtonSegment<TimelineRange>(
+                        ButtonSegment(
                           value: TimelineRange.week,
                           label: Text('Semana'),
                         ),
-                        ButtonSegment<TimelineRange>(
+                        ButtonSegment(
                           value: TimelineRange.month,
                           label: Text('Mês'),
                         ),
-                        ButtonSegment<TimelineRange>(
+                        ButtonSegment(
                           value: TimelineRange.year,
                           label: Text('Ano'),
                         ),
                       ],
                       selected: {_range},
-                      onSelectionChanged: (selection) {
-                        setState(() => _range = selection.first);
+                      onSelectionChanged: (s) {
+                        setState(() => _range = s.first);
                       },
                     ),
                   ),
@@ -577,4 +696,11 @@ class _DayTabState extends State<DayTab> {
       ),
     );
   }
+}
+
+class _BodyCareDaySnapshot {
+  const _BodyCareDaySnapshot({this.food, this.training});
+
+  final int? food;
+  final int? training;
 }

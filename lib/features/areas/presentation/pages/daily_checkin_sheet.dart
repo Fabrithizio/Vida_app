@@ -387,7 +387,7 @@ class _QuestionCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Toque na opção que mais combina com ontem.',
+            'Toque na opção que mais combina com o que aconteceu ontem.',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.72),
               fontSize: 13.5,
@@ -398,6 +398,7 @@ class _QuestionCard extends StatelessWidget {
           for (final option in options) ...[
             _AnswerCard(
               text: option.label,
+              description: option.description,
               accent: accent,
               selected: selectedValue == option.value,
               disabled: saving,
@@ -439,6 +440,7 @@ class _QuestionCard extends StatelessWidget {
 class _AnswerCard extends StatelessWidget {
   const _AnswerCard({
     required this.text,
+    this.description,
     required this.accent,
     required this.selected,
     required this.disabled,
@@ -446,6 +448,7 @@ class _AnswerCard extends StatelessWidget {
   });
 
   final String text;
+  final String? description;
   final Color accent;
   final bool selected;
   final bool disabled;
@@ -513,15 +516,35 @@ class _AnswerCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: selected
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.90),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    text,
+                    style: TextStyle(
+                      color: selected
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.90),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (description != null &&
+                      description!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      description!,
+                      style: TextStyle(
+                        color: selected
+                            ? Colors.white.withValues(alpha: 0.88)
+                            : Colors.white.withValues(alpha: 0.62),
+                        fontSize: 11.8,
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             Icon(
