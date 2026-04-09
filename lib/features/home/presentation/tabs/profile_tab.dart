@@ -1,25 +1,20 @@
 // ============================================================================
-// FILE: lib/presentation/pages/home/tabs/profile_tab.dart
+// FILE: lib/features/home/presentation/tabs/profile_tab.dart
 //
-// Ajustes:
-// - Mostra dados do onboarding por UID (SharedPreferences):
-//   - $uid:dob (ISO yyyy-mm-dd)
-//   - $uid:cpf
-//   - $uid:gender
-//   - $uid:focus
-//   - $uid:goal
-// - Mostra idade calculada a partir do DOB
-// - CPF mascarado
-// - Mantém apelido (SessionStorage.nickname_<uid>)
-// - Logout redireciona para LoginPage (stack limpa)
+// O que faz:
+// - Mostra o perfil do usuário com dados da conta, apelido e onboarding.
+// - Mantém a seção atual de dados pessoais básicos.
+// - Adiciona uma área própria para editar os dados do onboarding que mudam
+//   com o tempo (contexto de vida / rotina / trabalho / finanças etc.).
+// - Salva tudo nas mesmas chaves já usadas no onboarding: "uid:id_da_pergunta".
 // ============================================================================
 
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:vida_app/core/onboarding/questions.dart';
 import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vida_app/features/health_sync/presentation/pages/smart_health_page.dart';
@@ -32,29 +27,72 @@ class ProfileTab extends StatefulWidget {
 }
 
 class _ProfileTabState extends State<ProfileTab> {
-  final _auth = FirebaseAuth.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   bool _loading = true;
-
-  static Future<PackageInfo>? _packageInfoFuture;
-
   User? _user;
   PackageInfo? _pkg;
 
   String _nickname = '-';
-  final _nicknameCtrl = TextEditingController();
+  final TextEditingController _nicknameCtrl = TextEditingController();
   bool _savingNickname = false;
 
-  // Onboarding / perfil do app (por UID)
+  // Onboarding / perfil básico
   String _gender = '-';
   String _focus = '-';
   String _goal = '-';
   String _dobLabel = '-';
   String _ageLabel = '-';
   String _cpfMasked = '-';
-
   bool _personalDone = false;
   bool _lifeDone = false;
+
+  // Resumo dos dados mutáveis
+  Map<String, String> _mutableAnswers = <String, String>{};
+
+  static const List<String> _mutableQuestionIds = <String>[
+    'living_with',
+    'children_count',
+    'family_relationship',
+    'home_routine_load',
+    'study_work',
+    'occupation_type',
+    'work_field',
+    'work_schedule_format',
+    'work_demand_type',
+    'work_satisfaction',
+    'health_self_rating',
+    'health_limitations',
+    'sleep_hours_avg',
+    'exercise_frequency',
+    'last_checkup',
+    'stress_level',
+    'emotional_state',
+    'rest_capacity',
+    'mental_load',
+    'life_demands_capacity',
+    'financial_situation',
+    'income_stability',
+    'financial_main_difficulty',
+    'expense_tracking',
+    'dependents_financial',
+    'social_life',
+    'emotional_support',
+    'romantic_relationship',
+    'friendship_connection',
+    'loneliness',
+    'personal_organization',
+    'home_organization',
+    'screen_time',
+    'phone_usage_purpose',
+    'consistency',
+    'routine_predictability',
+    'routine_main_weight',
+    'focus',
+    'goal',
+    'app_help',
+    'start_preference',
+  ];
 
   @override
   void initState() {
@@ -71,11 +109,10 @@ class _ProfileTabState extends State<ProfileTab> {
   String _maskCpf(String raw) {
     final digits = raw.replaceAll(RegExp(r'\D'), '');
     if (digits.length != 11) return '-';
-    // ***.***.***-12 (mostra só os 2 últimos)
     return '***.***.***-${digits.substring(9, 11)}';
   }
 
-  DateTime? _parseIsoDob(String iso) {
+  DateTime? _parseIsoDate(String iso) {
     if (iso.trim().isEmpty) return null;
     try {
       return DateTime.parse(iso.trim());
@@ -95,15 +132,24 @@ class _ProfileTabState extends State<ProfileTab> {
     return age;
   }
 
-  String _formatBr(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year.toString().padLeft(4, '0')}';
+  String _formatBr(DateTime d) {
+    return '${d.day.toString().padLeft(2, '0')}/'
+        '${d.month.toString().padLeft(2, '0')}/'
+        '${d.year.toString().padLeft(4, '0')}';
+  }
+
+  Question? _questionById(String id) {
+    for (final q in lifeQuestions) {
+      if (q.id == id) return q;
+    }
+    return null;
+  }
 
   Future<void> _load() async {
     setState(() => _loading = true);
 
     final user = _auth.currentUser;
-    _packageInfoFuture ??= PackageInfo.fromPlatform();
-    final pkg = await _packageInfoFuture!;
+    final pkg = await PackageInfo.fromPlatform();
 
     String nickname = '-';
     String gender = '-';
@@ -112,23 +158,20 @@ class _ProfileTabState extends State<ProfileTab> {
     String dobLabel = '-';
     String ageLabel = '-';
     String cpfMasked = '-';
-
     bool personalDone = false;
     bool lifeDone = false;
+    final mutableAnswers = <String, String>{};
 
     if (user != null) {
       final prefs = await SharedPreferences.getInstance();
       final uid = user.uid;
 
-      // flags (novo)
       personalDone = prefs.getBool('personal_done_$uid') ?? false;
       lifeDone = prefs.getBool('life_done_$uid') ?? false;
 
-      // dados por uid
       gender = (prefs.getString('$uid:gender') ?? '').trim();
       focus = (prefs.getString('$uid:focus') ?? '').trim();
       goal = (prefs.getString('$uid:goal') ?? '').trim();
-
       final dobIso = (prefs.getString('$uid:dob') ?? '').trim();
       final cpf = (prefs.getString('$uid:cpf') ?? '').trim();
 
@@ -136,41 +179,47 @@ class _ProfileTabState extends State<ProfileTab> {
       final v = (storedNick ?? '').trim();
       nickname = v.isEmpty ? '-' : v;
 
-      // DOB / idade
-      final dob = _parseIsoDob(dobIso);
+      final dob = _parseIsoDate(dobIso);
       if (dob != null) {
         dobLabel = _formatBr(dob);
         final age = _ageFromDob(dob);
         ageLabel = age == null ? '-' : '$age';
       }
 
-      // CPF
       if (cpf.isNotEmpty) cpfMasked = _maskCpf(cpf);
 
-      // defaults bonitos
       gender = gender.isEmpty ? '-' : gender;
       focus = focus.isEmpty ? '-' : focus;
       goal = goal.isEmpty ? '-' : goal;
+
+      for (final id in _mutableQuestionIds) {
+        final raw = (prefs.getString('$uid:$id') ?? '').trim();
+        if (raw.isEmpty) continue;
+        final q = _questionById(id);
+        if (q != null && q.type == QuestionType.date) {
+          final dt = _parseIsoDate(raw);
+          mutableAnswers[id] = dt == null ? raw : _formatBr(dt);
+        } else {
+          mutableAnswers[id] = raw;
+        }
+      }
     }
 
     if (!mounted) return;
     setState(() {
       _user = user;
       _pkg = pkg;
-
       _nickname = nickname;
       _nicknameCtrl.text = nickname == '-' ? '' : nickname;
-
       _gender = gender;
       _focus = focus;
       _goal = goal;
       _dobLabel = dobLabel;
       _ageLabel = ageLabel;
       _cpfMasked = cpfMasked;
-
       _personalDone = personalDone;
       _lifeDone = lifeDone;
-
+      _mutableAnswers = mutableAnswers;
       _loading = false;
     });
   }
@@ -214,17 +263,31 @@ class _ProfileTabState extends State<ProfileTab> {
     ).showSnackBar(const SnackBar(content: Text('Apelido salvo.')));
   }
 
+  Future<void> _openMutableDataEditor() async {
+    final user = _user;
+    if (user == null) return;
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            _MutableLifeDataPage(uid: user.uid, initialValues: _mutableAnswers),
+      ),
+    );
+
+    if (changed == true) {
+      await _load();
+    }
+  }
+
   Future<void> _signOut() async {
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}
-
     try {
       await _auth.signOut();
     } catch (_) {}
 
     if (!mounted) return;
-
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),
       (_) => false,
@@ -238,6 +301,9 @@ class _ProfileTabState extends State<ProfileTab> {
     if (ids.isEmpty) return 'Desconhecido';
     return ids.join(', ');
   }
+
+  int get _filledMutableCount =>
+      _mutableAnswers.values.where((e) => e.trim().isNotEmpty).length;
 
   @override
   Widget build(BuildContext context) {
@@ -258,8 +324,7 @@ class _ProfileTabState extends State<ProfileTab> {
               children: [
                 _HeaderCard(user: user, nickname: _nickname),
                 const SizedBox(height: 12),
-
-                _SectionTitle(title: 'Perfil'),
+                const _SectionTitle(title: 'Perfil'),
                 const SizedBox(height: 8),
                 _InfoCard(
                   children: [
@@ -317,8 +382,6 @@ class _ProfileTabState extends State<ProfileTab> {
                       ),
                     ),
                     const Divider(height: 1, color: Colors.white12),
-
-                    // Dados pessoais do onboarding
                     ListTile(
                       leading: const Icon(Icons.person, color: Colors.white70),
                       title: const Text(
@@ -329,7 +392,7 @@ class _ProfileTabState extends State<ProfileTab> {
                         ),
                       ),
                       subtitle: const Text(
-                        'Informações do onboarding (salvas por usuário)',
+                        'Informações mais fixas do onboarding',
                         style: TextStyle(color: Colors.white60),
                       ),
                     ),
@@ -343,9 +406,76 @@ class _ProfileTabState extends State<ProfileTab> {
                     const SizedBox(height: 8),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-                _SectionTitle(title: 'Conta'),
+                const _SectionTitle(title: 'Dados que mudam com o tempo'),
+                const SizedBox(height: 8),
+                _InfoCard(
+                  children: [
+                    ListTile(
+                      leading: const Icon(
+                        Icons.sync_alt_rounded,
+                        color: Colors.white70,
+                      ),
+                      title: const Text(
+                        'Contexto atual da sua vida',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Edite rotina, trabalho, finanças, relações, saúde e outras respostas do onboarding que podem mudar com o tempo.\n\n'
+                        'Preenchidos: $_filledMutableCount de ${_mutableQuestionIds.length}',
+                        style: const TextStyle(color: Colors.white60),
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white54,
+                      ),
+                      onTap: _openMutableDataEditor,
+                    ),
+                    const Divider(height: 1, color: Colors.white12),
+                    _MutablePreviewRow(
+                      icon: Icons.home_rounded,
+                      label: 'Casa e família',
+                      value: _mutableAnswers['living_with'] ?? '-',
+                    ),
+                    _MutablePreviewRow(
+                      icon: Icons.work_rounded,
+                      label: 'Trabalho / estudos',
+                      value: _mutableAnswers['study_work'] ?? '-',
+                    ),
+                    _MutablePreviewRow(
+                      icon: Icons.favorite_rounded,
+                      label: 'Saúde e corpo',
+                      value: _mutableAnswers['health_self_rating'] ?? '-',
+                    ),
+                    _MutablePreviewRow(
+                      icon: Icons.account_balance_wallet_rounded,
+                      label: 'Finanças',
+                      value: _mutableAnswers['financial_situation'] ?? '-',
+                    ),
+                    _MutablePreviewRow(
+                      icon: Icons.flag_rounded,
+                      label: 'Prioridade atual',
+                      value: _mutableAnswers['goal'] ?? '-',
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _openMutableDataEditor,
+                          icon: const Icon(Icons.edit_note_rounded),
+                          label: const Text('Abrir editor desses dados'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const _SectionTitle(title: 'Conta'),
                 const SizedBox(height: 8),
                 _InfoCard(
                   children: [
@@ -387,9 +517,8 @@ class _ProfileTabState extends State<ProfileTab> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-                _SectionTitle(title: 'Ações'),
+                const _SectionTitle(title: 'Ações'),
                 const SizedBox(height: 8),
                 _InfoCard(
                   children: [
@@ -400,7 +529,7 @@ class _ProfileTabState extends State<ProfileTab> {
                         style: TextStyle(color: Colors.white),
                       ),
                       subtitle: const Text(
-                        'Atualiza Firebase + dados do onboarding + apelido',
+                        'Atualiza Firebase + onboarding + apelido',
                         style: TextStyle(color: Colors.white60),
                       ),
                       onTap: _refreshUser,
@@ -423,9 +552,8 @@ class _ProfileTabState extends State<ProfileTab> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-                _SectionTitle(title: 'Saúde & smartwatch'),
+                const _SectionTitle(title: 'Saúde & smartwatch'),
                 const SizedBox(height: 8),
                 _InfoCard(
                   children: [
@@ -452,9 +580,8 @@ class _ProfileTabState extends State<ProfileTab> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-                _SectionTitle(title: 'App'),
+                const _SectionTitle(title: 'App'),
                 const SizedBox(height: 8),
                 _InfoCard(
                   children: [
@@ -539,6 +666,7 @@ class _HeaderCard extends StatelessWidget {
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({required this.title});
+
   final String title;
 
   @override
@@ -556,6 +684,7 @@ class _SectionTitle extends StatelessWidget {
 
 class _InfoCard extends StatelessWidget {
   const _InfoCard({required this.children});
+
   final List<Widget> children;
 
   @override
@@ -595,6 +724,461 @@ class _InfoRow extends StatelessWidget {
         ),
       ),
       trailing: trailing,
+    );
+  }
+}
+
+class _MutablePreviewRow extends StatelessWidget {
+  const _MutablePreviewRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, color: Colors.white54, size: 20),
+      title: Text(
+        label,
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      subtitle: Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+}
+
+class _MutableLifeDataPage extends StatefulWidget {
+  const _MutableLifeDataPage({required this.uid, required this.initialValues});
+
+  final String uid;
+  final Map<String, String> initialValues;
+
+  @override
+  State<_MutableLifeDataPage> createState() => _MutableLifeDataPageState();
+}
+
+class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
+  late final Map<String, String> _values;
+  bool _saving = false;
+
+  static const List<String> _orderedIds = <String>[
+    'living_with',
+    'children_count',
+    'family_relationship',
+    'home_routine_load',
+    'study_work',
+    'occupation_type',
+    'work_field',
+    'work_schedule_format',
+    'work_demand_type',
+    'work_satisfaction',
+    'health_self_rating',
+    'health_limitations',
+    'sleep_hours_avg',
+    'exercise_frequency',
+    'last_checkup',
+    'stress_level',
+    'emotional_state',
+    'rest_capacity',
+    'mental_load',
+    'life_demands_capacity',
+    'financial_situation',
+    'income_stability',
+    'financial_main_difficulty',
+    'expense_tracking',
+    'dependents_financial',
+    'social_life',
+    'emotional_support',
+    'romantic_relationship',
+    'friendship_connection',
+    'loneliness',
+    'personal_organization',
+    'home_organization',
+    'screen_time',
+    'phone_usage_purpose',
+    'consistency',
+    'routine_predictability',
+    'routine_main_weight',
+    'focus',
+    'goal',
+    'app_help',
+    'start_preference',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _values = Map<String, String>.from(widget.initialValues);
+  }
+
+  List<Question> get _questions {
+    final map = <String, Question>{for (final q in lifeQuestions) q.id: q};
+    return _orderedIds
+        .map((id) => map[id])
+        .whereType<Question>()
+        .toList(growable: false);
+  }
+
+  Future<void> _pickOption(Question q) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF101010),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      q.question,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if ((q.helper ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        q.helper!,
+                        style: const TextStyle(color: Colors.white60),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final option in q.options)
+                      ListTile(
+                        title: Text(
+                          option,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        trailing: (_values[q.id] ?? '') == option
+                            ? const Icon(
+                                Icons.check_circle_rounded,
+                                color: Colors.greenAccent,
+                              )
+                            : null,
+                        onTap: () => Navigator.of(context).pop(option),
+                      ),
+                    if (q.optional)
+                      ListTile(
+                        leading: const Icon(
+                          Icons.clear_rounded,
+                          color: Colors.white54,
+                        ),
+                        title: const Text(
+                          'Limpar resposta',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        onTap: () => Navigator.of(context).pop('__clear__'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result == null) return;
+    setState(() {
+      if (result == '__clear__') {
+        _values.remove(q.id);
+      } else {
+        _values[q.id] = result;
+      }
+    });
+  }
+
+  Future<void> _editDate(Question q) async {
+    final controller = TextEditingController(text: _values[q.id] ?? '');
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF111111),
+          title: Text(q.question, style: const TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.datetime,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'DD/MM/AAAA',
+              hintStyle: TextStyle(color: Colors.white38),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.green),
+              ),
+            ),
+          ),
+          actions: [
+            if (q.optional)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop('__clear__'),
+                child: const Text('Limpar'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(controller.text.trim()),
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (result == null) return;
+    if (result == '__clear__') {
+      setState(() => _values.remove(q.id));
+      return;
+    }
+
+    final iso = _brToIso(result);
+    if (iso == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Data inválida. Use DD/MM/AAAA.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _values[q.id] = _isoToBr(iso);
+    });
+  }
+
+  String? _brToIso(String raw) {
+    final parts = raw.trim().split('/');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    try {
+      final dt = DateTime(year, month, day);
+      if (dt.year != year || dt.month != month || dt.day != day) {
+        return null;
+      }
+      return '${dt.year.toString().padLeft(4, '0')}-'
+          '${dt.month.toString().padLeft(2, '0')}-'
+          '${dt.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _isoToBr(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    return '${dt.day.toString().padLeft(2, '0')}/'
+        '${dt.month.toString().padLeft(2, '0')}/'
+        '${dt.year.toString().padLeft(4, '0')}';
+  }
+
+  String _storeValue(Question q) {
+    final raw = (_values[q.id] ?? '').trim();
+    if (raw.isEmpty) return '';
+    if (q.type == QuestionType.date) {
+      final iso = _brToIso(raw);
+      return iso ?? raw;
+    }
+    return raw;
+  }
+
+  Future<void> _saveAll() async {
+    setState(() => _saving = true);
+    final prefs = await SharedPreferences.getInstance();
+
+    for (final q in _questions) {
+      final key = '${widget.uid}:${q.id}';
+      final value = _storeValue(q);
+      if (value.isEmpty) {
+        await prefs.remove(key);
+      } else {
+        await prefs.setString(key, value);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+    Navigator.of(context).pop(true);
+  }
+
+  Map<String, List<Question>> _groupedQuestions() {
+    final map = <String, List<Question>>{};
+    for (final q in _questions) {
+      final section = q.sectionTitle ?? 'Outros';
+      map.putIfAbsent(section, () => <Question>[]).add(q);
+    }
+    return map;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final grouped = _groupedQuestions();
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Dados que mudam com o tempo'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F0F1A),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: const Text(
+              'Aqui você atualiza as respostas do onboarding que podem mudar com o tempo, como rotina, trabalho, finanças, relações, saúde e prioridades atuais.',
+              style: TextStyle(color: Colors.white70, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final entry in grouped.entries) ...[
+            Text(
+              entry.key,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F0F1A),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                children: [
+                  for (int i = 0; i < entry.value.length; i++) ...[
+                    _EditableQuestionTile(
+                      question: entry.value[i],
+                      value: (_values[entry.value[i].id] ?? '').trim(),
+                      onTap: () {
+                        final q = entry.value[i];
+                        if (q.type == QuestionType.options) {
+                          _pickOption(q);
+                        } else if (q.type == QuestionType.date) {
+                          _editDate(q);
+                        }
+                      },
+                    ),
+                    if (i != entry.value.length - 1)
+                      const Divider(height: 1, color: Colors.white12),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveAll,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_rounded),
+              label: const Text('Salvar alterações'),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditableQuestionTile extends StatelessWidget {
+  const _EditableQuestionTile({
+    required this.question,
+    required this.value,
+    required this.onTap,
+  });
+
+  final Question question;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(
+        question.question,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          Text(
+            value.isEmpty ? 'Não preenchido' : value,
+            style: TextStyle(
+              color: value.isEmpty ? Colors.white38 : Colors.white70,
+            ),
+          ),
+          if ((question.helper ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              question.helper!,
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+      onTap: onTap,
     );
   }
 }
