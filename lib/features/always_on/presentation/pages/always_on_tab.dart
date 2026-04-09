@@ -3,16 +3,17 @@
 //
 // O que este arquivo faz:
 // - Exibe o Sempre Ligado em tela cheia ou dentro do painel flutuante
-// - Melhora a leitura com cards mais compactos e menos texto pesado
-// - Corrige o bug final de overflow nos cards de mercado
+// - Remove a duplicação de Finanças dentro do radar
+// - Deixa o sistema mais interessante visualmente, com cards mais vivos
+// - Mantém personalização, refresh e leitura rápida das notícias
 // ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vida_app/features/always_on/data/always_on_presets.dart';
 import 'package:vida_app/features/always_on/data/always_on_repository.dart';
 import 'package:vida_app/features/always_on/domain/always_on_models.dart';
 import 'package:vida_app/features/always_on/presentation/pages/always_on_customize_page.dart';
-import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
 
 class AlwaysOnTab extends StatefulWidget {
   const AlwaysOnTab({
@@ -24,6 +25,8 @@ class AlwaysOnTab extends StatefulWidget {
 
   final bool embedded;
   final VoidCallback? onMinimize;
+
+  // Mantido por compatibilidade com chamadas antigas.
   final VoidCallback? onOpenFinance;
 
   @override
@@ -48,12 +51,9 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
 
   Future<void> _reload() async {
     if (_reloading) return;
-
     setState(() => _reloading = true);
-
     final future = _repository.loadSnapshot();
     setState(() => _future = future);
-
     try {
       await future;
     } finally {
@@ -71,23 +71,13 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
     );
 
     if (result == null) return;
+
     await _repository.saveSettings(result);
     await _reload();
   }
 
-  Future<void> _openFinance() async {
-    if (widget.onOpenFinance != null) {
-      widget.onOpenFinance!.call();
-      return;
-    }
-
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const FinanceTab()));
-  }
-
   void _openArticle(AlwaysOnArticle article) {
-    showModalBottomSheet<void>(
+    showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
@@ -112,6 +102,11 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
           return _ErrorView(onRetry: _reload);
         }
 
+        final radarCount =
+            data.settings.activePresetIds.length +
+            data.settings.customTopics.length +
+            data.settings.trackedTickers.length;
+
         return RefreshIndicator(
           color: const Color(0xFF22C55E),
           backgroundColor: const Color(0xFF0E1527),
@@ -125,40 +120,73 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
               widget.embedded ? 18 : 28,
             ),
             children: [
-              _HeaderCard(
+              _PulseHeaderCard(
                 snapshot: data,
                 embedded: widget.embedded,
                 reloading: _reloading,
                 onRefresh: _reload,
                 onCustomize: () => _openCustomize(data.settings),
-                onOpenFinance: _openFinance,
+                onMinimize: widget.onMinimize,
               ),
               const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _MiniStatCard(
+                      icon: Icons.radar_rounded,
+                      label: 'Radar',
+                      value: '$radarCount',
+                      subtitle: radarCount == 1 ? 'tema ativo' : 'temas ativos',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _MiniStatCard(
+                      icon: Icons.auto_awesome_rounded,
+                      label: 'Destaques',
+                      value: '${data.personalHighlights.length}',
+                      subtitle: 'para você',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _MiniStatCard(
+                      icon: Icons.newspaper_rounded,
+                      label: 'Blocos',
+                      value: '${data.sections.length}',
+                      subtitle: 'seguindo agora',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
               if (data.marketQuotes.isNotEmpty) ...[
                 const _SectionTitle(
-                  icon: Icons.bolt_rounded,
-                  title: 'Mercado rápido',
+                  icon: Icons.show_chart_rounded,
+                  title: 'Pulso do mercado',
+                  subtitle: 'Movimento rápido sem sair do radar',
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
-                  height: 184,
+                  height: 176,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: data.marketQuotes.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
-                      return _MarketCard(quote: data.marketQuotes[index]);
+                      return _MarketCard(
+                        quote: data.marketQuotes[index] as AlwaysOnMarketQuote,
+                      );
                     },
                   ),
                 ),
                 const SizedBox(height: 18),
               ],
-              if (data.settings.activePresetIds.isNotEmpty ||
-                  data.settings.customTopics.isNotEmpty ||
-                  data.settings.trackedTickers.isNotEmpty) ...[
+              if (radarCount > 0) ...[
                 const _SectionTitle(
                   icon: Icons.tune_rounded,
-                  title: 'Seu radar',
+                  title: 'Seu radar agora',
+                  subtitle: 'O que está guiando o conteúdo do Sempre Ligado',
                 ),
                 const SizedBox(height: 10),
                 Wrap(
@@ -166,14 +194,24 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
                   runSpacing: 8,
                   children: [
                     ...data.settings.activePresetIds.map((item) {
-                      final preset = AlwaysOnPresets.byId(item);
-                      return _TagChip(label: preset?.title ?? item);
+                      final value = item as String;
+                      final preset = AlwaysOnPresets.byId(value);
+                      return _TagChip(
+                        icon: preset?.icon ?? Icons.radar_rounded,
+                        label: preset?.title ?? item,
+                      );
                     }),
                     ...data.settings.customTopics.map(
-                      (item) => _TagChip(label: item),
+                      (item) => _TagChip(
+                        icon: Icons.interests_rounded,
+                        label: item as String,
+                      ),
                     ),
                     ...data.settings.trackedTickers.map(
-                      (item) => _TagChip(label: item),
+                      (item) => _TagChip(
+                        icon: Icons.candlestick_chart_rounded,
+                        label: (item as String).toUpperCase(),
+                      ),
                     ),
                   ],
                 ),
@@ -182,7 +220,8 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
               if (data.personalHighlights.isNotEmpty) ...[
                 const _SectionTitle(
                   icon: Icons.auto_awesome_rounded,
-                  title: 'Para você hoje',
+                  title: 'Para você agora',
+                  subtitle: 'Entradas mais quentes do seu radar',
                 ),
                 const SizedBox(height: 10),
                 ...data.personalHighlights
@@ -196,7 +235,7 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
                         ),
                       ),
                     ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
               ],
               ...data.sections.map(
                 (section) => Padding(
@@ -207,8 +246,7 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
                   ),
                 ),
               ),
-              const SizedBox(height: 4),
-              _FinanceQuickCard(onTap: _openFinance),
+              const SizedBox(height: 6),
             ],
           ),
         );
@@ -286,22 +324,19 @@ class _ErrorView extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Tente atualizar novamente. Se a rede falhar, o radar pode voltar no modo local.',
+                'Tente atualizar novamente. O radar continua pronto para voltar assim que houver conexão.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.76),
+                  color: Colors.white.withValues(alpha: 0.78),
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  height: 1.35,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: onRetry,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
-                ),
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Tentar novamente'),
+                label: const Text('Tentar de novo'),
               ),
             ],
           ),
@@ -311,167 +346,213 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
-class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({
+class _PulseHeaderCard extends StatelessWidget {
+  const _PulseHeaderCard({
     required this.snapshot,
     required this.embedded,
     required this.reloading,
     required this.onRefresh,
     required this.onCustomize,
-    required this.onOpenFinance,
+    this.onMinimize,
   });
 
   final AlwaysOnSnapshot snapshot;
   final bool embedded;
   final bool reloading;
-  final Future<void> Function() onRefresh;
+  final VoidCallback onRefresh;
   final VoidCallback onCustomize;
-  final VoidCallback onOpenFinance;
+  final VoidCallback? onMinimize;
+
+  String _timeLabel(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final time =
-        '${_twoDigits(snapshot.loadedAt.hour)}:${_twoDigits(snapshot.loadedAt.minute)}';
-
+    final summary = snapshot.summary.replaceAll('\n', ' ');
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
         gradient: const LinearGradient(
-          colors: [Color(0xFF131C33), Color(0xFF0A1120)],
+          colors: [Color(0xFF14253B), Color(0xFF0A1222)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: const Color(0xFF22C55E).withValues(alpha: 0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!embedded) ...[
-            Text(
-              'Sempre Ligado',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.94),
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
+          Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF163425),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.radar_rounded,
+                  color: Color(0xFF8BFF7C),
+                  size: 28,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Seu radar pessoal de atualidade, contexto e interesses.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.74),
-                fontWeight: FontWeight.w600,
-                height: 1.35,
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Radar Vivo',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Conteúdo rápido, filtrado e sempre à mão',
+                      style: TextStyle(
+                        color: Color(0xC8FFFFFF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          SizedBox(
-            height: 40,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _TopBadge(
-                  icon: Icons.article_rounded,
-                  text: '${snapshot.totalItems} itens',
+              if (embedded && onMinimize != null) ...[
+                _MiniGlassButton(
+                  icon: Icons.remove_rounded,
+                  onTap: onMinimize!,
                 ),
                 const SizedBox(width: 8),
-                _TopBadge(
-                  icon: Icons.interests_rounded,
-                  text:
-                      '${snapshot.settings.activePresetIds.length + snapshot.settings.customTopics.length} interesses',
-                ),
-                const SizedBox(width: 8),
-                _TopBadge(
-                  icon: snapshot.usedFallback
-                      ? Icons.cloud_off_rounded
-                      : Icons.cloud_done_rounded,
-                  text: snapshot.usedFallback ? 'Modo local' : 'Online',
-                ),
               ],
-            ),
+              _MiniGlassButton(icon: Icons.tune_rounded, onTap: onCustomize),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Resumo do momento',
-                  style: TextStyle(
-                    color: Color(0xB3FFFFFF),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: snapshot.usedFallback
+                            ? const Color(0xFFF59E0B).withValues(alpha: 0.16)
+                            : const Color(0xFF22C55E).withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: snapshot.usedFallback
+                              ? const Color(0xFFF59E0B).withValues(alpha: 0.28)
+                              : const Color(0xFF22C55E).withValues(alpha: 0.24),
+                        ),
+                      ),
+                      child: Text(
+                        snapshot.usedFallback ? 'Modo local' : 'Atualizado',
+                        style: TextStyle(
+                          color: snapshot.usedFallback
+                              ? const Color(0xFFFCD34D)
+                              : const Color(0xFF86EFAC),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'às ${_timeLabel(snapshot.loadedAt)}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 10),
                 Text(
-                  snapshot.summary,
+                  summary,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontWeight: FontWeight.w700,
-                    height: 1.28,
+                    color: Colors.white.withValues(alpha: 0.90),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Atualizado às $time',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.64),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 40,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _ActionPill(
-                  icon: Icons.account_balance_wallet_rounded,
-                  label: 'Finanças',
-                  onTap: onOpenFinance,
-                ),
-                const SizedBox(width: 8),
-                _ActionPill(
-                  icon: reloading ? Icons.sync : Icons.refresh_rounded,
-                  label: reloading ? 'Atualizando' : 'Atualizar',
-                  onTap: reloading ? null : () async => onRefresh(),
-                  spinning: reloading,
-                ),
-                const SizedBox(width: 8),
-                _ActionPill(
-                  icon: Icons.tune_rounded,
-                  label: 'Personalizar',
-                  onTap: onCustomize,
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _ActionPill(
+                      icon: reloading
+                          ? Icons.hourglass_top_rounded
+                          : Icons.refresh_rounded,
+                      label: reloading ? 'Atualizando' : 'Atualizar',
+                      onTap: reloading ? null : onRefresh,
+                    ),
+                    const SizedBox(width: 8),
+                    _ActionPill(
+                      icon: Icons.tune_rounded,
+                      label: 'Ajustar radar',
+                      onTap: onCustomize,
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MiniGlassButton extends StatelessWidget {
+  const _MiniGlassButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
@@ -482,82 +563,107 @@ class _ActionPill extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.spinning = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final bool spinning;
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
-      child: Opacity(
-        opacity: onTap == null ? 0.6 : 1,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              spinning
-                  ? const SizedBox(
-                      width: 15,
-                      height: 15,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Icon(icon, color: Colors.white, size: 15),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: enabled
+              ? Colors.white.withValues(alpha: 0.07)
+              : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: enabled
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.55),
+              size: 16,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                color: enabled
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.55),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _TopBadge extends StatelessWidget {
-  const _TopBadge({required this.icon, required this.text});
+class _MiniStatCard extends StatelessWidget {
+  const _MiniStatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.subtitle,
+  });
 
   final IconData icon;
-  final String text;
+  final String label;
+  final String value;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        color: const Color(0xFF0E1527),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: Colors.white, size: 14),
-          const SizedBox(width: 6),
+          Icon(icon, color: const Color(0xFF8BFF7C), size: 18),
+          const SizedBox(height: 10),
           Text(
-            text,
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
+              color: Colors.white.withValues(alpha: 0.90),
+              fontSize: 11,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.66),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -567,23 +673,42 @@ class _TopBadge extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.icon, required this.title});
+  const _SectionTitle({required this.icon, required this.title, this.subtitle});
 
   final IconData icon;
   final String title;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: Colors.white, size: 18),
+        Icon(icon, color: const Color(0xFF8BFF7C), size: 18),
         const SizedBox(width: 8),
-        Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle!,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ],
@@ -592,25 +717,34 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _TagChip extends StatelessWidget {
-  const _TagChip({required this.label});
+  const _TagChip({required this.icon, required this.label});
 
+  final IconData icon;
   final String label;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF17233D),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF8BFF7C), size: 14),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -627,78 +761,138 @@ class _MarketCard extends StatelessWidget {
         ? const Color(0xFF22C55E)
         : const Color(0xFFEF4444);
 
-    return SizedBox(
-      width: 166,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF10182B),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+    return Container(
+      width: 162,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          colors: [accent.withValues(alpha: 0.12), const Color(0xFF0E1527)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              quote.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.76),
-                fontWeight: FontWeight.w700,
-              ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            quote.code,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 6),
-            Text(
-              quote.priceLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            quote.title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
             ),
-            const SizedBox(height: 4),
-            Text(
+          ),
+          const SizedBox(height: 8),
+          Text(
+            quote.priceLabel,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: accent.withValues(alpha: 0.26)),
+            ),
+            child: Text(
               quote.changeLabel,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: accent, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 32,
-              width: double.infinity,
-              child: CustomPaint(
-                painter: _SparklinePainter(
-                  values: quote.history,
-                  color: accent,
-                ),
+              style: TextStyle(
+                color: accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                quote.code,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+          ),
+          const Spacer(),
+          SizedBox(
+            height: 28,
+            child: CustomPaint(
+              painter: _MiniLinePainter(values: quote.history, color: accent),
+              size: const Size(double.infinity, 28),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
+}
+
+class _MiniLinePainter extends CustomPainter {
+  const _MiniLinePainter({required this.values, required this.color});
+
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2) return;
+
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+    final range = (maxValue - minValue).abs() < 0.0001
+        ? 1.0
+        : maxValue - minValue;
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final fill = Paint()
+      ..shader = LinearGradient(
+        colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0.01)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Offset.zero & size)
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    final fillPath = Path();
+
+    for (var i = 0; i < values.length; i++) {
+      final x = values.length == 1
+          ? 0.0
+          : (i / (values.length - 1)) * size.width;
+      final normalized = (values[i] - minValue) / range;
+      final y = size.height - (normalized * size.height);
+
+      if (i == 0) {
+        path.moveTo(x, y);
+        fillPath.moveTo(x, size.height);
+        fillPath.lineTo(x, y);
+      } else {
+        path.lineTo(x, y);
+        fillPath.lineTo(x, y);
+      }
+    }
+
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
+
+    canvas.drawPath(fillPath, fill);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniLinePainter oldDelegate) {
+    return oldDelegate.values != values || oldDelegate.color != color;
   }
 }
 
@@ -710,72 +904,66 @@ class _HighlightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasLink = article.link.trim().isNotEmpty;
-
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF10182B),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A2537), Color(0xFF10182B)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _SmallInfoChip(label: article.source),
-                _SmallInfoChip(label: article.publishLabel),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              article.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                height: 1.2,
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF22C55E).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Color(0xFF8BFF7C),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              article.summary,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.78),
-                fontWeight: FontWeight.w600,
-                height: 1.3,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: _SmallInfoChip(label: article.sectionTitle)),
-                const SizedBox(width: 10),
-                Text(
-                  hasLink ? 'Abrir' : 'Detalhes',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.74),
-                    fontWeight: FontWeight.w800,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    article.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      height: 1.3,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ],
+                  const SizedBox(height: 5),
+                  Text(
+                    '${article.source} • ${article.publishLabel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.64),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white70),
           ],
         ),
       ),
@@ -790,16 +978,16 @@ class _CompactNewsSection extends StatelessWidget {
   });
 
   final AlwaysOnSection section;
-  final void Function(AlwaysOnArticle article) onArticleTap;
+  final ValueChanged<AlwaysOnArticle> onArticleTap;
 
   @override
   Widget build(BuildContext context) {
-    final items = section.items.take(3).toList();
+    final articles = section.items.cast<AlwaysOnArticle>().take(3).toList();
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF10182B),
+        color: const Color(0xFF0E1527),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
@@ -807,33 +995,40 @@ class _CompactNewsSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(section.icon, color: Colors.white, size: 18),
+              Icon(section.icon, color: const Color(0xFF8BFF7C), size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   section.title,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
-              Text(
-                '${items.length} itens',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.58),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${section.items.length} itens',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.62),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          ...items.map(
+          const SizedBox(height: 10),
+          ...articles.map(
             (article) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _CompactArticleRow(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _ArticleTile(
                 article: article,
                 onTap: () => onArticleTap(article),
               ),
@@ -845,8 +1040,8 @@ class _CompactNewsSection extends StatelessWidget {
   }
 }
 
-class _CompactArticleRow extends StatelessWidget {
-  const _CompactArticleRow({required this.article, required this.onTap});
+class _ArticleTile extends StatelessWidget {
+  const _ArticleTile({required this.article, required this.onTap});
 
   final AlwaysOnArticle article;
   final VoidCallback onTap;
@@ -863,173 +1058,56 @@ class _CompactArticleRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
         ),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: const Color(0xFF17233D),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(
-                Icons.article_rounded,
+            Text(
+              article.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
                 color: Colors.white,
-                size: 20,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                height: 1.3,
               ),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    article.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    article.summary,
-                    maxLines: 2,
+            const SizedBox(height: 6),
+            Text(
+              article.summary,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${article.source} • ${article.publishLabel}',
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.70),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      height: 1.25,
+                      color: Colors.white.withValues(alpha: 0.56),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 7),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          article.source,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        article.publishLabel,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.open_in_new_rounded,
+                  color: Colors.white54,
+                  size: 16,
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FinanceQuickCard extends StatelessWidget {
-  const _FinanceQuickCard({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF10182B),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: const Color(0xFF17233D),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(
-                Icons.account_balance_wallet_rounded,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Abrir Finanças',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Ir direto para a área completa sem perder o radar rápido.',
-                    style: TextStyle(
-                      color: Color(0xBEFFFFFF),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SmallInfoChip extends StatelessWidget {
-  const _SmallInfoChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.80),
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -1043,16 +1121,17 @@ class _ArticleSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1221),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0A1120),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          padding: EdgeInsets.fromLTRB(18, 12, 18, 18 + safeBottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1069,70 +1148,97 @@ class _ArticleSheet extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      article.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 19,
-                        fontWeight: FontWeight.w900,
-                        height: 1.2,
+                      article.sectionTitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.64),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
                       ),
+                    ),
+                  ),
+                  Text(
+                    article.publishLabel,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.52),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+              Text(
+                article.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
                 children: [
-                  _InlineChip(label: article.source),
-                  _InlineChip(label: article.publishLabel),
-                  _InlineChip(label: article.sectionTitle),
+                  const Icon(
+                    Icons.public_rounded,
+                    color: Color(0xFF8BFF7C),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      article.source,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.04),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.06),
-                  ),
-                ),
-                child: Text(
-                  article.summary,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.90),
-                    fontWeight: FontWeight.w600,
-                    height: 1.4,
-                  ),
+              const SizedBox(height: 14),
+              Text(
+                article.summary,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.45,
                 ),
               ),
-              if (article.link.trim().isNotEmpty) ...[
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: article.link));
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Link copiado para a área de transferência.',
-                        ),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB),
-                    minimumSize: const Size.fromHeight(48),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: article.link),
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Link copiado.'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.copy_rounded),
+                      label: const Text('Copiar link'),
+                    ),
                   ),
-                  icon: const Icon(Icons.copy_rounded),
-                  label: const Text('Copiar link'),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Fechar'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -1140,76 +1246,3 @@ class _ArticleSheet extends StatelessWidget {
     );
   }
 }
-
-class _InlineChip extends StatelessWidget {
-  const _InlineChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _SparklinePainter extends CustomPainter {
-  _SparklinePainter({required this.values, required this.color});
-
-  final List<double> values;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final safeValues = values.isEmpty ? const [1.0, 1.0] : values;
-    final minValue = safeValues.reduce((a, b) => a < b ? a : b);
-    final maxValue = safeValues.reduce((a, b) => a > b ? a : b);
-    final span = (maxValue - minValue).abs() < 0.0001
-        ? 1.0
-        : (maxValue - minValue);
-
-    final path = Path();
-    for (var i = 0; i < safeValues.length; i++) {
-      final dx = safeValues.length == 1
-          ? 0.0
-          : (i / (safeValues.length - 1)) * size.width;
-      final normalized = (safeValues[i] - minValue) / span;
-      final dy = size.height - (normalized * size.height);
-
-      if (i == 0) {
-        path.moveTo(dx, dy);
-      } else {
-        path.lineTo(dx, dy);
-      }
-    }
-
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
-    return oldDelegate.values != values || oldDelegate.color != color;
-  }
-}
-
-String _twoDigits(int value) => value.toString().padLeft(2, '0');

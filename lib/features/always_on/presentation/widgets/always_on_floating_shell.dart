@@ -5,7 +5,10 @@
 // - Mantém o botão do Sempre Ligado visível na shell principal do app
 // - Permite arrastar o botão livremente para não cobrir áreas importantes
 // - Preserva o estado do radar ao minimizar, evitando recarregar toda vez
+// - Remove o atalho duplicado de Finanças do cabeçalho do painel
+// - Deixa o sistema mais chamativo, com cara de radar vivo
 // ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/features/always_on/presentation/pages/always_on_tab.dart';
 
@@ -15,6 +18,7 @@ class AlwaysOnFloatingShell extends StatefulWidget {
     required this.onOpenFinanceRequested,
   });
 
+  // Mantido para compatibilidade com a shell atual do app.
   final VoidCallback onOpenFinanceRequested;
 
   @override
@@ -22,14 +26,14 @@ class AlwaysOnFloatingShell extends StatefulWidget {
 }
 
 class _AlwaysOnFloatingShellState extends State<AlwaysOnFloatingShell> {
-  static const double _bubbleSize = 54;
+  static const double _bubbleSize = 58;
   Offset? _bubbleOffset;
   bool _isOpen = false;
   bool _hasOpenedOnce = false;
 
   Offset _initialOffset(Size screen, EdgeInsets padding) {
     final left = screen.width - _bubbleSize - 12;
-    final top = (screen.height * 0.58).clamp(
+    final top = (screen.height * 0.56).clamp(
       padding.top + 20,
       screen.height - padding.bottom - _bubbleSize - 90,
     );
@@ -68,11 +72,6 @@ class _AlwaysOnFloatingShellState extends State<AlwaysOnFloatingShell> {
     _minimize();
   }
 
-  void _openFinance() {
-    _minimize();
-    widget.onOpenFinanceRequested();
-  }
-
   void _updateBubblePosition(
     DragUpdateDetails details,
     Size screen,
@@ -91,7 +90,7 @@ class _AlwaysOnFloatingShellState extends State<AlwaysOnFloatingShell> {
     _ensureOffset(screen, padding);
 
     final panelWidth = screen.width > 500 ? 430.0 : screen.width - 20;
-    final panelMaxHeight = screen.height * 0.74;
+    final panelMaxHeight = screen.height * 0.76;
 
     return Stack(
       children: [
@@ -99,7 +98,7 @@ class _AlwaysOnFloatingShellState extends State<AlwaysOnFloatingShell> {
           Positioned.fill(
             child: GestureDetector(
               onTap: _minimize,
-              child: Container(color: Colors.black.withValues(alpha: 0.22)),
+              child: Container(color: Colors.black.withValues(alpha: 0.26)),
             ),
           ),
         Positioned(
@@ -112,7 +111,7 @@ class _AlwaysOnFloatingShellState extends State<AlwaysOnFloatingShell> {
               opacity: _isOpen ? 0 : 1,
               child: AnimatedScale(
                 duration: const Duration(milliseconds: 220),
-                scale: _isOpen ? 0.82 : 1,
+                scale: _isOpen ? 0.84 : 1,
                 child: _AlwaysOnBubble(
                   size: _bubbleSize,
                   onTap: _open,
@@ -141,7 +140,6 @@ class _AlwaysOnFloatingShellState extends State<AlwaysOnFloatingShell> {
                   child: _AlwaysOnExpandedPanel(
                     onMinimize: _minimize,
                     onClose: _close,
-                    onOpenFinance: _openFinance,
                   ),
                 ),
               ),
@@ -168,28 +166,79 @@ class _AlwaysOnBubble extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       onPanUpdate: onPanUpdate,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            colors: [Color(0xFF65E05B), Color(0xFF22C55E)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF22C55E).withValues(alpha: 0.42),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
+      child: SizedBox(
+        width: size + 12,
+        height: size + 12,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: size + 12,
+              height: size + 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF22C55E).withValues(alpha: 0.10),
+              ),
+            ),
+            Container(
+              width: size + 4,
+              height: size + 4,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF22C55E).withValues(alpha: 0.16),
+              ),
+            ),
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8BFF7C), Color(0xFF22C55E)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.20),
+                  width: 1.1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF22C55E).withValues(alpha: 0.42),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.radar_rounded,
+                color: Color(0xFF07110A),
+                size: 28,
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF07110A),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.09),
+                  ),
+                ),
+                child: const Text(
+                  'Radar',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
             ),
           ],
-        ),
-        child: const Icon(
-          Icons.bolt_rounded,
-          color: Color(0xFF07110A),
-          size: 26,
         ),
       ),
     );
@@ -200,12 +249,10 @@ class _AlwaysOnExpandedPanel extends StatelessWidget {
   const _AlwaysOnExpandedPanel({
     required this.onMinimize,
     required this.onClose,
-    required this.onOpenFinance,
   });
 
   final VoidCallback onMinimize;
   final VoidCallback onClose;
-  final VoidCallback onOpenFinance;
 
   @override
   Widget build(BuildContext context) {
@@ -231,14 +278,14 @@ class _AlwaysOnExpandedPanel extends StatelessWidget {
               child: Row(
                 children: [
                   Container(
-                    width: 38,
-                    height: 38,
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
                       color: const Color(0xFF163425),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(15),
                     ),
                     child: const Icon(
-                      Icons.bolt_rounded,
+                      Icons.radar_rounded,
                       color: Color(0xFF7CFC7A),
                     ),
                   ),
@@ -257,7 +304,7 @@ class _AlwaysOnExpandedPanel extends StatelessWidget {
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Radar rápido sem sair da tela atual',
+                          'Seu radar vivo sem sair da tela atual',
                           style: TextStyle(
                             color: Color(0xB3FFFFFF),
                             fontSize: 11,
@@ -267,11 +314,6 @@ class _AlwaysOnExpandedPanel extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _HeaderIconButton(
-                    icon: Icons.account_balance_wallet_rounded,
-                    onTap: onOpenFinance,
-                  ),
-                  const SizedBox(width: 8),
                   _HeaderIconButton(
                     icon: Icons.remove_rounded,
                     onTap: onMinimize,
@@ -286,11 +328,7 @@ class _AlwaysOnExpandedPanel extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(28),
                 ),
-                child: AlwaysOnTab(
-                  embedded: true,
-                  onMinimize: onMinimize,
-                  onOpenFinance: onOpenFinance,
-                ),
+                child: AlwaysOnTab(embedded: true, onMinimize: onMinimize),
               ),
             ),
           ],
