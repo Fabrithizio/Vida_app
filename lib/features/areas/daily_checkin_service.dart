@@ -4,15 +4,17 @@
 // O que faz:
 // - Define o pool de perguntas do check-in diário
 // - Separa perguntas por frequência de reaparição
+// - Permite que uma mesma pergunta afete 1 ou mais subáreas com pesos diferentes
 // - Escolhe perguntas com base no histórico recente
 // - Salva respostas graduais por usuário no Hive
 // - Mantém o contrato usado pelo restante do app
 //
 // Nesta revisão:
-// - troca o foco para perguntas sobre ONTEM
-// - adiciona perguntas mais curtas, leves e menos repetitivas
-// - adiciona frequência por pergunta (diária, 3 dias, semanal, quinzenal)
-// - permite perguntas com pontuação invertida (ex.: estresse, distração)
+// - mantém perguntas sobre ONTEM
+// - mantém o formato curto, leve e rápido
+// - adiciona impactos por área/subárea com pesos diferentes
+// - preserva frequência por pergunta (diária, 3 dias, semanal, quinzenal)
+// - preserva perguntas invertidas (ex.: estresse, distração)
 // ============================================================================
 
 import 'dart:math';
@@ -24,12 +26,24 @@ enum DailyQuestionScaleType { quality5, amount5 }
 
 enum DailyQuestionCadence { daily, every3Days, weekly, biweekly }
 
+class DailyQuestionImpact {
+  const DailyQuestionImpact({
+    required this.areaId,
+    required this.itemId,
+    required this.weight,
+  });
+
+  final String areaId;
+  final String itemId;
+  final double weight;
+}
+
 class DailyQuestion {
   const DailyQuestion({
     required this.id,
     required this.areaId,
     required this.areaLabel,
-    required this.itemIds,
+    required this.impacts,
     required this.text,
     required this.scaleType,
     required this.cadence,
@@ -40,12 +54,30 @@ class DailyQuestion {
   final String id;
   final String areaId;
   final String areaLabel;
-  final List<String> itemIds;
+  final List<DailyQuestionImpact> impacts;
   final String text;
   final DailyQuestionScaleType scaleType;
   final DailyQuestionCadence cadence;
   final double priorityBoost;
   final bool reverseScore;
+
+  List<String> get itemIds =>
+      impacts.map((impact) => impact.itemId).toSet().toList(growable: false);
+
+  double impactWeightFor(String areaId, String itemId) {
+    for (final impact in impacts) {
+      if (impact.areaId == areaId && impact.itemId == itemId) {
+        return impact.weight;
+      }
+    }
+    return 0;
+  }
+
+  bool affects(String areaId, String itemId) {
+    return impacts.any(
+      (impact) => impact.areaId == areaId && impact.itemId == itemId,
+    );
+  }
 }
 
 class DailyAnswerOption {
@@ -92,7 +124,23 @@ class DailyCheckinService {
       id: 'sleep_quality',
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
-      itemIds: ['sleep', 'energy'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'sleep',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'energy',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 0.18,
+        ),
+      ],
       text: 'Como foi seu sono ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -102,7 +150,18 @@ class DailyCheckinService {
       id: 'food_quality',
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
-      itemIds: ['nutrition'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'nutrition',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'energy',
+          weight: 0.20,
+        ),
+      ],
       text: 'Como foi sua alimentação ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -112,7 +171,23 @@ class DailyCheckinService {
       id: 'movement_amount',
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
-      itemIds: ['movement'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'movement',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'energy',
+          weight: 0.15,
+        ),
+        DailyQuestionImpact(
+          areaId: 'purpose_values',
+          itemId: 'goals_review',
+          weight: 0.10,
+        ),
+      ],
       text: 'Quanto você se movimentou ontem?',
       scaleType: DailyQuestionScaleType.amount5,
       cadence: DailyQuestionCadence.daily,
@@ -122,7 +197,23 @@ class DailyCheckinService {
       id: 'energy_level',
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
-      itemIds: ['energy'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'energy',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 0.25,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'balance',
+          weight: 0.25,
+        ),
+      ],
       text: 'Como esteve sua energia ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -132,7 +223,18 @@ class DailyCheckinService {
       id: 'hydration_care',
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
-      itemIds: ['hydration', 'nutrition'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'hydration',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'nutrition',
+          weight: 0.35,
+        ),
+      ],
       text: 'Como foi seu cuidado com água ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -142,7 +244,28 @@ class DailyCheckinService {
       id: 'body_wellbeing',
       areaId: 'body_health',
       areaLabel: 'Corpo & saúde',
-      itemIds: ['sleep', 'energy', 'movement'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'sleep',
+          weight: 0.35,
+        ),
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'energy',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'body_health',
+          itemId: 'movement',
+          weight: 0.20,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 0.18,
+        ),
+      ],
       text: 'Como seu corpo se sentiu ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -154,7 +277,18 @@ class DailyCheckinService {
       id: 'mood_state',
       areaId: 'mind_emotion',
       areaLabel: 'Mental & emocional',
-      itemIds: ['mood'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'social_contact',
+          weight: 0.15,
+        ),
+      ],
       text: 'Como esteve seu humor ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -164,7 +298,23 @@ class DailyCheckinService {
       id: 'stress_amount',
       areaId: 'mind_emotion',
       areaLabel: 'Mental & emocional',
-      itemIds: ['stress', 'mental_load'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'stress',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mental_load',
+          weight: 0.75,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'balance',
+          weight: 0.45,
+        ),
+      ],
       text: 'Você se estressou ontem?',
       scaleType: DailyQuestionScaleType.amount5,
       cadence: DailyQuestionCadence.daily,
@@ -175,7 +325,28 @@ class DailyCheckinService {
       id: 'focus_quality',
       areaId: 'mind_emotion',
       areaLabel: 'Mental & emocional',
-      itemIds: ['focus', 'distraction'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'focus',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'digital_tech',
+          itemId: 'distraction',
+          weight: 0.30,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'study',
+          weight: 0.25,
+        ),
+      ],
       text: 'Você conseguiu focar no que importava ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -185,7 +356,23 @@ class DailyCheckinService {
       id: 'mental_weight',
       areaId: 'mind_emotion',
       areaLabel: 'Mental & emocional',
-      itemIds: ['mental_load', 'stress'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mental_load',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'stress',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'balance',
+          weight: 0.35,
+        ),
+      ],
       text: 'Ontem foi um dia leve para sua mente?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -195,7 +382,18 @@ class DailyCheckinService {
       id: 'self_relation',
       areaId: 'mind_emotion',
       areaLabel: 'Mental & emocional',
-      itemIds: ['mood'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 0.80,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mental_load',
+          weight: 0.20,
+        ),
+      ],
       text: 'Como esteve sua relação com você ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -205,7 +403,23 @@ class DailyCheckinService {
       id: 'recovery_quality',
       areaId: 'mind_emotion',
       areaLabel: 'Mental & emocional',
-      itemIds: ['mental_load', 'mood'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mental_load',
+          weight: 0.65,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 0.35,
+        ),
+        DailyQuestionImpact(
+          areaId: 'purpose_values',
+          itemId: 'gratitude',
+          weight: 0.15,
+        ),
+      ],
       text: 'Você conseguiu se recuperar bem ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -217,7 +431,18 @@ class DailyCheckinService {
       id: 'money_care',
       areaId: 'finance_material',
       areaLabel: 'Finanças',
-      itemIds: ['budget', 'spending'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'budget',
+          weight: 0.70,
+        ),
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'spending',
+          weight: 1.00,
+        ),
+      ],
       text: 'Como foi seu cuidado com dinheiro ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -227,7 +452,18 @@ class DailyCheckinService {
       id: 'avoid_waste',
       areaId: 'finance_material',
       areaLabel: 'Finanças',
-      itemIds: ['budget', 'spending'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'budget',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'spending',
+          weight: 0.90,
+        ),
+      ],
       text: 'Você evitou gastos desnecessários ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -237,7 +473,13 @@ class DailyCheckinService {
       id: 'track_expenses',
       areaId: 'finance_material',
       areaLabel: 'Finanças',
-      itemIds: ['budget'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'budget',
+          weight: 0.95,
+        ),
+      ],
       text: 'Você acompanhou seus gastos ontem?',
       scaleType: DailyQuestionScaleType.amount5,
       cadence: DailyQuestionCadence.weekly,
@@ -247,7 +489,23 @@ class DailyCheckinService {
       id: 'money_pressure',
       areaId: 'finance_material',
       areaLabel: 'Finanças',
-      itemIds: ['spending', 'budget'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'spending',
+          weight: 0.80,
+        ),
+        DailyQuestionImpact(
+          areaId: 'finance_material',
+          itemId: 'budget',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'stress',
+          weight: 0.20,
+        ),
+      ],
       text: 'O dinheiro pesou na sua cabeça ontem?',
       scaleType: DailyQuestionScaleType.amount5,
       cadence: DailyQuestionCadence.biweekly,
@@ -255,12 +513,28 @@ class DailyCheckinService {
       reverseScore: true,
     ),
 
-    // TRABALHO / VOCAÇÃO / ROTINA
+    // TRABALHO / VOCAÇÃO
     DailyQuestion(
       id: 'routine_organization',
       areaId: 'work_vocation',
       areaLabel: 'Rotina & trabalho',
-      itemIds: ['routine', 'consistency'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'routine',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'consistency',
+          weight: 0.70,
+        ),
+        DailyQuestionImpact(
+          areaId: 'purpose_values',
+          itemId: 'direction',
+          weight: 0.20,
+        ),
+      ],
       text: 'Como foi sua organização ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -270,7 +544,28 @@ class DailyCheckinService {
       id: 'important_tasks',
       areaId: 'work_vocation',
       areaLabel: 'Rotina & trabalho',
-      itemIds: ['routine', 'consistency'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'routine',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'consistency',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'purpose_values',
+          itemId: 'goals_review',
+          weight: 0.25,
+        ),
+      ],
       text: 'Você conseguiu fazer o que precisava ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -280,7 +575,23 @@ class DailyCheckinService {
       id: 'plan_following',
       areaId: 'work_vocation',
       areaLabel: 'Rotina & trabalho',
-      itemIds: ['routine', 'consistency'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'routine',
+          weight: 0.75,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'consistency',
+          weight: 0.60,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 0.40,
+        ),
+      ],
       text: 'Você conseguiu seguir seu plano ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -290,7 +601,18 @@ class DailyCheckinService {
       id: 'day_yield',
       areaId: 'work_vocation',
       areaLabel: 'Rotina & trabalho',
-      itemIds: ['routine', 'consistency'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 0.85,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'balance',
+          weight: 0.25,
+        ),
+      ],
       text: 'Ontem seu dia rendeu bem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -300,7 +622,23 @@ class DailyCheckinService {
       id: 'procrastination',
       areaId: 'work_vocation',
       areaLabel: 'Rotina & trabalho',
-      itemIds: ['routine', 'consistency', 'focus'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'consistency',
+          weight: 0.70,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'focus',
+          weight: 0.25,
+        ),
+      ],
       text: 'Você procrastinou ontem?',
       scaleType: DailyQuestionScaleType.amount5,
       cadence: DailyQuestionCadence.weekly,
@@ -313,7 +651,23 @@ class DailyCheckinService {
       id: 'learn_something',
       areaId: 'learning_intellect',
       areaLabel: 'Aprendizado',
-      itemIds: ['study'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'study',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'courses',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'skills',
+          weight: 0.40,
+        ),
+      ],
       text: 'Você aprendeu algo útil ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -323,7 +677,23 @@ class DailyCheckinService {
       id: 'growth_attention',
       areaId: 'learning_intellect',
       areaLabel: 'Aprendizado',
-      itemIds: ['study', 'focus'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'study',
+          weight: 0.65,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'skills',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'review_practice',
+          weight: 0.45,
+        ),
+      ],
       text: 'Você deu atenção ao seu crescimento ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -333,7 +703,23 @@ class DailyCheckinService {
       id: 'mind_usefulness',
       areaId: 'learning_intellect',
       areaLabel: 'Aprendizado',
-      itemIds: ['study', 'focus'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'reading',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'skills',
+          weight: 0.60,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'study',
+          weight: 0.35,
+        ),
+      ],
       text: 'Você usou bem sua mente ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -343,7 +729,23 @@ class DailyCheckinService {
       id: 'small_progress',
       areaId: 'learning_intellect',
       areaLabel: 'Aprendizado',
-      itemIds: ['study'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'courses',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'skills',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'learning_intellect',
+          itemId: 'review_practice',
+          weight: 0.35,
+        ),
+      ],
       text: 'Você avançou um pouco em algo que quer desenvolver?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -355,7 +757,28 @@ class DailyCheckinService {
       id: 'social_connection',
       areaId: 'relations_community',
       areaLabel: 'Relações',
-      itemIds: ['family', 'friends', 'partner', 'social_contact'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'social_contact',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'family',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'friends',
+          weight: 0.55,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'partner',
+          weight: 0.55,
+        ),
+      ],
       text: 'Como esteve sua conexão com pessoas importantes ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.every3Days,
@@ -365,27 +788,95 @@ class DailyCheckinService {
       id: 'social_presence',
       areaId: 'relations_community',
       areaLabel: 'Relações',
-      itemIds: ['family', 'friends', 'partner', 'social_contact'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'social_contact',
+          weight: 0.80,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'family',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'friends',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'partner',
+          weight: 0.45,
+        ),
+      ],
       text: 'Você deu atenção de verdade a alguém ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
       priorityBoost: 0.20,
     ),
     DailyQuestion(
-      id: 'social_support',
+      id: 'support_feeling',
       areaId: 'relations_community',
       areaLabel: 'Relações',
-      itemIds: ['family', 'friends', 'partner', 'social_contact'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'social_contact',
+          weight: 0.80,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'family',
+          weight: 0.40,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'friends',
+          weight: 0.40,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'partner',
+          weight: 0.40,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'mood',
+          weight: 0.20,
+        ),
+      ],
       text: 'Você se sentiu apoiado(a) ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
       priorityBoost: 0.18,
     ),
     DailyQuestion(
-      id: 'social_living',
+      id: 'social_coexistence',
       areaId: 'relations_community',
       areaLabel: 'Relações',
-      itemIds: ['family', 'friends', 'partner', 'social_contact'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'family',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'friends',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'partner',
+          weight: 0.45,
+        ),
+        DailyQuestionImpact(
+          areaId: 'relations_community',
+          itemId: 'social_contact',
+          weight: 0.60,
+        ),
+      ],
       text: 'Como foi sua convivência com outras pessoas ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.biweekly,
@@ -397,7 +888,18 @@ class DailyCheckinService {
       id: 'phone_control',
       areaId: 'digital_tech',
       areaLabel: 'Digital',
-      itemIds: ['distraction'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'digital_tech',
+          itemId: 'distraction',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'balance',
+          weight: 0.10,
+        ),
+      ],
       text: 'Como foi seu controle com o celular ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -407,7 +909,23 @@ class DailyCheckinService {
       id: 'digital_distraction',
       areaId: 'digital_tech',
       areaLabel: 'Digital',
-      itemIds: ['distraction'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'digital_tech',
+          itemId: 'distraction',
+          weight: 1.00,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'focus',
+          weight: 0.20,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 0.20,
+        ),
+      ],
       text: 'Você conseguiu evitar distrações digitais ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
@@ -417,7 +935,23 @@ class DailyCheckinService {
       id: 'phone_harm_focus',
       areaId: 'digital_tech',
       areaLabel: 'Digital',
-      itemIds: ['distraction', 'screen_time'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'digital_tech',
+          itemId: 'distraction',
+          weight: 0.90,
+        ),
+        DailyQuestionImpact(
+          areaId: 'mind_emotion',
+          itemId: 'focus',
+          weight: 0.35,
+        ),
+        DailyQuestionImpact(
+          areaId: 'work_vocation',
+          itemId: 'output',
+          weight: 0.25,
+        ),
+      ],
       text: 'O celular atrapalhou seu foco ontem?',
       scaleType: DailyQuestionScaleType.amount5,
       cadence: DailyQuestionCadence.every3Days,
@@ -428,7 +962,18 @@ class DailyCheckinService {
       id: 'phone_intention',
       areaId: 'digital_tech',
       areaLabel: 'Digital',
-      itemIds: ['distraction', 'screen_time'],
+      impacts: [
+        DailyQuestionImpact(
+          areaId: 'digital_tech',
+          itemId: 'distraction',
+          weight: 0.85,
+        ),
+        DailyQuestionImpact(
+          areaId: 'digital_tech',
+          itemId: 'screen_time',
+          weight: 0.35,
+        ),
+      ],
       text: 'Você usou o celular com intenção ontem?',
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.weekly,
@@ -471,8 +1016,24 @@ class DailyCheckinService {
 
   List<DailyQuestion> questionsForItem(String itemId) {
     return _pool
-        .where((q) => q.itemIds.contains(itemId))
+        .where((q) => q.impacts.any((i) => i.itemId == itemId))
         .toList(growable: false);
+  }
+
+  List<DailyQuestion> questionsForTarget(String areaId, String itemId) {
+    return _pool
+        .where((q) => q.affects(areaId, itemId))
+        .toList(growable: false);
+  }
+
+  double impactWeightFor({
+    required String questionId,
+    required String areaId,
+    required String itemId,
+  }) {
+    final question = _questionById(questionId);
+    if (question == null) return 0;
+    return question.impactWeightFor(areaId, itemId);
   }
 
   List<DailyAnswerOption> optionsFor(DailyQuestion question) {

@@ -438,9 +438,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             Text(
                               q.helper!,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                height: 1.4,
+                              style: TextStyle(
+                                color: isInfo ? Colors.white : Colors.white70,
+                                height: isInfo ? 1.45 : 1.4,
+                                fontSize: isInfo ? 18 : 14,
+                                fontWeight: isInfo
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
                               ),
                             ),
                           ],

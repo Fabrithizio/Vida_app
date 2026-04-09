@@ -60,9 +60,14 @@ class AreasFinanceEngine {
     return _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'finance_material',
       day: today,
-      questionIds: const ['fin_control', 'fin_tx'],
+      questionIds: const [
+        'money_care',
+        'avoid_waste',
+        'track_expenses',
+        'money_pressure',
+      ],
       positiveReason: 'Seu controle recente de gastos parece bom.',
-      negativeReason: 'Seu controle recente de gastos parece fraco.',
+      negativeReason: 'Seu cuidado recente com gastos parece fraco.',
       positiveAction: 'Continue registrando e mantendo esse controle.',
       negativeAction: 'Tente registrar gastos e reduzir despesas impulsivas.',
       details:

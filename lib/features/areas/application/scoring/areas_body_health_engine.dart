@@ -86,7 +86,7 @@ class AreasBodyHealthEngine {
     return _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'body_health',
       day: DateTime.now(),
-      questionIds: const ['sleep_ok'],
+      questionIds: const ['sleep_quality'],
       positiveReason: 'Seu sono recente parece bom.',
       negativeReason: 'Seu sono recente ficou abaixo do ideal.',
       positiveAction: 'Continue protegendo seu horário de descanso.',
@@ -103,13 +103,14 @@ class AreasBodyHealthEngine {
     return _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'body_health',
       day: DateTime.now(),
-      questionIds: const ['move'],
+      questionIds: const ['movement_amount', 'body_wellbeing'],
       positiveReason: 'Seu nível recente de movimento está bom.',
       negativeReason: 'Seu nível recente de movimento está baixo.',
       positiveAction: 'Ótimo. Continue com regularidade.',
       negativeAction:
           'Vale tentar ao menos uma caminhada, treino leve ou alongamento.',
-      details: 'Baseado nas respostas recentes sobre movimento.',
+      details:
+          'Baseado nas respostas recentes sobre movimento e sensação corporal.',
       onAreaUpdated: onAreaUpdated,
     );
   }

@@ -9,46 +9,8 @@ class AreasAggregationEngine {
 
   final AreasDailyQuestionsEngine _dailyQuestions;
 
-  static const Map<String, List<String>> _trendQuestions = {
-    'body_health.energy': ['energy_ok', 'sleep_ok'],
-    'body_health.movement': ['move'],
-    'body_health.nutrition': ['nutrition_ok', 'hydration_ok'],
-    'mind_emotion.mood': ['mood_ok', 'mental_recovery'],
-    'mind_emotion.stress': ['stress_ok', 'mental_recovery'],
-    'mind_emotion.focus': ['focus', 'study_quality'],
-    'mind_emotion.mental_load': ['stress_ok', 'mental_recovery'],
-    'work_vocation.routine': ['routine_ok', 'day_planning'],
-    'work_vocation.consistency': ['routine_ok', 'day_planning'],
-    'work_vocation.output': ['day_planning', 'focus', 'routine_ok'],
-    'work_vocation.balance': ['routine_ok', 'stress_ok', 'mental_recovery'],
-    'learning_intellect.study': ['study_ok', 'study_quality'],
-    'learning_intellect.courses': ['study_ok', 'study_quality', 'routine_ok'],
-    'learning_intellect.reading': ['study_quality', 'focus'],
-    'learning_intellect.skills': ['study_quality', 'focus', 'routine_ok'],
-    'learning_intellect.review_practice': [
-      'study_ok',
-      'study_quality',
-      'focus',
-    ],
-    'relations_community.family': ['social_ok', 'social_presence', 'mood_ok'],
-    'relations_community.friends': ['social_ok', 'social_presence', 'mood_ok'],
-    'relations_community.partner': ['social_ok', 'social_presence', 'mood_ok'],
-    'relations_community.social_contact': ['social_ok', 'social_presence'],
-    'purpose_values.direction': ['routine_ok', 'day_planning', 'energy_ok'],
-    'purpose_values.goals_review': ['routine_ok', 'move', 'study_ok'],
-    'purpose_values.gratitude': [
-      'mental_recovery',
-      'sleep_ok',
-      'mood_ok',
-      'stress_ok',
-    ],
-    'digital_tech.distraction': ['focus', 'digital_balance'],
-  };
-
   Future<String?> trendLabel(String areaId, String itemId) {
-    final questionIds = _trendQuestions['$areaId.$itemId'];
-    if (questionIds == null) return Future.value(null);
-    return _dailyQuestions.trendLabelForQuestions(questionIds);
+    return _dailyQuestions.trendLabelForItem(areaId, itemId);
   }
 
   Future<AreaStatus?> overallStatus(
@@ -68,13 +30,11 @@ class AreasAggregationEngine {
     }
 
     if (statuses.isEmpty) return null;
-
     if (statuses.contains(AreaStatus.critical)) return AreaStatus.critical;
     if (statuses.contains(AreaStatus.poor)) return AreaStatus.poor;
     if (statuses.contains(AreaStatus.medium)) return AreaStatus.medium;
     if (statuses.contains(AreaStatus.good)) return AreaStatus.good;
     if (statuses.contains(AreaStatus.excellent)) return AreaStatus.excellent;
-
     return AreaStatus.noData;
   }
 

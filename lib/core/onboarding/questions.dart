@@ -9,17 +9,9 @@
 //   focus e goal
 // ============================================================================
 
-enum QuestionType {
-  info,
-  options,
-  text,
-  date,
-}
+enum QuestionType { info, options, text, date }
 
-enum OnboardingStage {
-  personal,
-  life,
-}
+enum OnboardingStage { personal, life }
 
 class Question {
   final String id;
@@ -119,12 +111,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Família e lar',
     question: 'Você tem filhos?',
     type: QuestionType.options,
-    options: [
-      'Não',
-      'Sim, 1',
-      'Sim, 2',
-      'Sim, 3 ou mais',
-    ],
+    options: ['Não', 'Sim, 1', 'Sim, 2', 'Sim, 3 ou mais'],
   ),
   const Question(
     id: 'family_relationship',
@@ -132,13 +119,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Família e lar',
     question: 'Como está sua relação com sua família hoje?',
     type: QuestionType.options,
-    options: [
-      'Muito boa',
-      'Boa',
-      'Mais ou menos',
-      'Difícil',
-      'Muito difícil',
-    ],
+    options: ['Muito boa', 'Boa', 'Mais ou menos', 'Difícil', 'Muito difícil'],
   ),
   const Question(
     id: 'home_routine_load',
@@ -146,13 +127,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Família e lar',
     question: 'A rotina da sua casa costuma ser:',
     type: QuestionType.options,
-    options: [
-      'Leve',
-      'Moderada',
-      'Corrida',
-      'Muito puxada',
-      'Instável',
-    ],
+    options: ['Leve', 'Moderada', 'Corrida', 'Muito puxada', 'Instável'],
   ),
   const Question(
     id: 'study_work',
@@ -257,13 +232,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Corpo e saúde',
     question: 'Como você descreveria sua saúde hoje?',
     type: QuestionType.options,
-    options: [
-      'Muito boa',
-      'Boa',
-      'Média',
-      'Ruim',
-      'Muito ruim',
-    ],
+    options: ['Muito boa', 'Boa', 'Média', 'Ruim', 'Muito ruim'],
   ),
   const Question(
     id: 'health_limitations',
@@ -289,14 +258,7 @@ final List<Question> lifeQuestions = [
     type: QuestionType.options,
     helper:
         'Depois isso poderá ser complementado por dados automáticos, como de smartwatch.',
-    options: [
-      'Menos de 5h',
-      '5–6h',
-      '6–7h',
-      '7–8h',
-      '8h+',
-      'Varia muito',
-    ],
+    options: ['Menos de 5h', '5–6h', '6–7h', '7–8h', '8h+', 'Varia muito'],
   ),
   const Question(
     id: 'exercise_frequency',
@@ -329,13 +291,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Mental e emocional',
     question: 'Como você descreveria seu nível de estresse atual?',
     type: QuestionType.options,
-    options: [
-      'Muito baixo',
-      'Baixo',
-      'Médio',
-      'Alto',
-      'Muito alto',
-    ],
+    options: ['Muito baixo', 'Baixo', 'Médio', 'Alto', 'Muito alto'],
   ),
   const Question(
     id: 'emotional_state',
@@ -358,12 +314,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Mental e emocional',
     question: 'Você sente que tem tempo real para descansar ou se recuperar?',
     type: QuestionType.options,
-    options: [
-      'Sim, com frequência',
-      'Às vezes',
-      'Quase nunca',
-      'Nunca',
-    ],
+    options: ['Sim, com frequência', 'Às vezes', 'Quase nunca', 'Nunca'],
   ),
   const Question(
     id: 'mental_load',
@@ -470,13 +421,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Relações e conexões',
     question: 'Como está sua vida social hoje?',
     type: QuestionType.options,
-    options: [
-      'Muito boa',
-      'Boa',
-      'Média',
-      'Fraca',
-      'Muito fraca',
-    ],
+    options: ['Muito boa', 'Boa', 'Média', 'Fraca', 'Muito fraca'],
   ),
   const Question(
     id: 'emotional_support',
@@ -484,12 +429,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Relações e conexões',
     question: 'Você sente que tem apoio emocional quando precisa?',
     type: QuestionType.options,
-    options: [
-      'Sim, bastante',
-      'Sim, um pouco',
-      'Quase não',
-      'Não',
-    ],
+    options: ['Sim, bastante', 'Sim, um pouco', 'Quase não', 'Não'],
   ),
   const Question(
     id: 'romantic_relationship',
@@ -511,13 +451,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Relações e conexões',
     question: 'Como está sua conexão com amigos hoje?',
     type: QuestionType.options,
-    options: [
-      'Muito boa',
-      'Boa',
-      'Média',
-      'Fraca',
-      'Quase inexistente',
-    ],
+    options: ['Muito boa', 'Boa', 'Média', 'Fraca', 'Quase inexistente'],
   ),
   const Question(
     id: 'loneliness',
@@ -539,13 +473,7 @@ final List<Question> lifeQuestions = [
     sectionDescription: 'Hábitos, constância e ambiente',
     question: 'No seu dia a dia, como costuma estar sua organização pessoal?',
     type: QuestionType.options,
-    options: [
-      'Muito boa',
-      'Boa',
-      'Média',
-      'Ruim',
-      'Muito ruim',
-    ],
+    options: ['Muito boa', 'Boa', 'Média', 'Ruim', 'Muito ruim'],
   ),
   const Question(
     id: 'home_organization',
@@ -571,19 +499,14 @@ final List<Question> lifeQuestions = [
     type: QuestionType.options,
     helper:
         'Depois isso poderá ser comparado com os dados automáticos do celular.',
-    options: [
-      'Menos de 2h',
-      '2–4h',
-      '4–6h',
-      '6–8h',
-      '8h+',
-    ],
+    options: ['Menos de 2h', '2–4h', '4–6h', '6–8h', '8h+'],
   ),
   const Question(
     id: 'phone_usage_purpose',
     sectionTitle: 'Rotina, casa e organização',
     sectionDescription: 'Hábitos, constância e ambiente',
-    question: 'O celular que você mais usa no dia a dia é usado principalmente para:',
+    question:
+        'O celular que você mais usa no dia a dia é usado principalmente para:',
     type: QuestionType.options,
     options: [
       'Uso pessoal',

@@ -50,7 +50,11 @@ class AreasPurposeEngine {
     final now = DateTime.now();
     final history = await _dailyQuestions.readDailyScaledHistory(
       day: now,
-      questionIds: const ['routine_ok', 'day_planning', 'energy_ok'],
+      questionIds: const [
+        'routine_organization',
+        'important_tasks',
+        'energy_level',
+      ],
       days: DailyCheckinService.historyDays,
     );
 
@@ -134,7 +138,7 @@ class AreasPurposeEngine {
       lastUpdatedAt: latestDate ?? now,
       recommendedAction: action,
       details:
-          'Calculado pela base da rotina recente (rotina, planejamento e energia) junto com os sinais automáticos de organização e limpeza do ambiente. $trendSentence',
+          'Calculado pela base da rotina recente (organização, execução do importante e energia) junto com os sinais automáticos de organização e limpeza do ambiente. $trendSentence',
     );
   }
 
@@ -146,7 +150,12 @@ class AreasPurposeEngine {
     final now = DateTime.now();
     final history = await _dailyQuestions.readDailyScaledHistory(
       day: now,
-      questionIds: const ['routine_ok', 'move', 'study_ok'],
+      questionIds: const [
+        'important_tasks',
+        'movement_amount',
+        'learn_something',
+        'small_progress',
+      ],
       days: DailyCheckinService.historyDays,
     );
 
@@ -204,7 +213,7 @@ class AreasPurposeEngine {
       status: status,
       score: finalScore,
       reason:
-          'Você gerou sinais de rotina/estudo/movimento em $activeDays14 dos últimos ${DailyCheckinService.historyDays} dias; $recentActiveDays7 desses dias foram nesta última semana.',
+          'Você gerou sinais de execução, movimento e aprendizado em $activeDays14 dos últimos ${DailyCheckinService.historyDays} dias; $recentActiveDays7 desses dias foram nesta última semana.',
       source: AreaDataSource.estimated,
       lastUpdatedAt: history.first.date,
       recommendedAction: action,
@@ -222,10 +231,10 @@ class AreasPurposeEngine {
     final history = await _dailyQuestions.readDailyScaledHistory(
       day: now,
       questionIds: const [
-        'mental_recovery',
-        'sleep_ok',
-        'mood_ok',
-        'stress_ok',
+        'recovery_quality',
+        'sleep_quality',
+        'mood_state',
+        'stress_amount',
       ],
       days: DailyCheckinService.historyDays,
     );
@@ -233,7 +242,7 @@ class AreasPurposeEngine {
     final sleepAssessment = await _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'body_health',
       day: now,
-      questionIds: const ['sleep_ok'],
+      questionIds: const ['sleep_quality'],
       positiveReason: 'Seu sono recente parece bom.',
       negativeReason: 'Seu sono recente ficou abaixo do ideal.',
       positiveAction: 'Continue protegendo seu horário de descanso.',
