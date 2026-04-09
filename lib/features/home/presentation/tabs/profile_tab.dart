@@ -36,6 +36,8 @@ class _ProfileTabState extends State<ProfileTab> {
 
   bool _loading = true;
 
+  static Future<PackageInfo>? _packageInfoFuture;
+
   User? _user;
   PackageInfo? _pkg;
 
@@ -100,7 +102,8 @@ class _ProfileTabState extends State<ProfileTab> {
     setState(() => _loading = true);
 
     final user = _auth.currentUser;
-    final pkg = await PackageInfo.fromPlatform();
+    _packageInfoFuture ??= PackageInfo.fromPlatform();
+    final pkg = await _packageInfoFuture!;
 
     String nickname = '-';
     String gender = '-';

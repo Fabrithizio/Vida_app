@@ -1,6 +1,18 @@
-// lib/features/shopping/shopping_list_store.dart
-import 'package:flutter/foundation.dart';
+// ============================================================================
+// FILE: lib/features/shopping/shopping_list_store.dart
+//
+// O que faz:
+// - gerencia a lista de compras por usuário
+// - migra dados do box antigo global
+// - salva e lê itens do Hive
+//
+// Melhoria de desempenho:
+// - cacheia o box aberto do Hive
+// - evita reler a lista quando já está carregada para o mesmo usuário
+// ============================================================================
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 enum ShoppingCategory {
@@ -70,13 +82,15 @@ class ShoppingItem {
     String? text,
     bool? done,
     ShoppingCategory? category,
-  }) => ShoppingItem(
-    id: id,
-    text: text ?? this.text,
-    done: done ?? this.done,
-    createdAtMs: createdAtMs,
-    category: category ?? this.category,
-  );
+  }) {
+    return ShoppingItem(
+      id: id,
+      text: text ?? this.text,
+      done: done ?? this.done,
+      createdAtMs: createdAtMs,
+      category: category ?? this.category,
+    );
+  }
 
   Map<String, dynamic> toMap() => {
     'id': id,
@@ -88,10 +102,10 @@ class ShoppingItem {
 
   static ShoppingItem fromMap(Map map) {
     final raw = (map['category'] as String?) ?? ShoppingCategory.other.name;
-    final cat = ShoppingCategory.values.cast<ShoppingCategory?>().firstWhere(
-      (c) => c?.name == raw,
+    final cat = ShoppingCategory.values.firstWhere(
+      (c) => c.name == raw,
       orElse: () => ShoppingCategory.other,
-    )!;
+    );
 
     return ShoppingItem(
       id: (map['id'] as String?) ?? '',
@@ -116,33 +130,64 @@ class ShoppingListStore extends ChangeNotifier {
   bool _loaded = false;
   List<ShoppingItem> _items = const [];
 
+  String? _loadedForBoxName;
+  Box<dynamic>? _boxCache;
+  Future<Box<dynamic>>? _boxFuture;
+
   bool get loaded => _loaded;
   List<ShoppingItem> get items => List.unmodifiable(_items);
   int get pendingCount => _items.where((e) => !e.done).length;
 
   String _uidOrAnon() {
-    final u = FirebaseAuth.instance.currentUser;
-    final uid = (u?.uid ?? 'anon').trim();
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = (user?.uid ?? 'anon').trim();
     return uid.isEmpty ? 'anon' : uid;
   }
 
-  /// Box por usuário. Mantém o legacy apenas como fallback de migração (não usado no write).
+  /// Box por usuário.
+  /// Mantém o legacy apenas como fallback de migração.
   String get _boxName => '$_boxPrefix${_uidOrAnon()}';
 
-  Future<Box<dynamic>> _open() => Hive.openBox<dynamic>(_boxName);
+  Future<Box<dynamic>> _open() async {
+    final targetBoxName = _boxName;
+    final cached = _boxCache;
+    if (cached != null && cached.isOpen && cached.name == targetBoxName) {
+      return cached;
+    }
 
-  /// Migra itens do box antigo global ('shopping_list') para o box do usuário atual,
-  /// e apaga o legado para parar de vazar entre contas.
+    final pending = _boxFuture;
+    if (pending != null) {
+      final box = await pending;
+      if (box.name == targetBoxName) return box;
+    }
+
+    final future = Hive.openBox<dynamic>(targetBoxName).then((box) {
+      _boxCache = box;
+      return box;
+    });
+    _boxFuture = future;
+
+    try {
+      return await future;
+    } finally {
+      if (identical(_boxFuture, future)) {
+        _boxFuture = null;
+      }
+    }
+  }
+
+  /// Migra itens do box antigo global ('shopping_list') para o box do usuário
+  /// atual e apaga o legado para parar de vazar entre contas.
   Future<void> _migrateLegacyIfAny() async {
     if (_legacyBoxName != _kLegacyBoxName) return;
 
     final legacy = await Hive.openBox<dynamic>(_kLegacyBoxName);
     final raw = legacy.get(_itemsKey);
-
     if (raw is! List || raw.isEmpty) return;
 
     final target = await _open();
     final already = target.get(_itemsKey);
+
     if (already is List && already.isNotEmpty) {
       await legacy.delete(_itemsKey);
       return;
@@ -152,21 +197,28 @@ class ShoppingListStore extends ChangeNotifier {
     await legacy.delete(_itemsKey);
   }
 
-  Future<void> load() async {
-    await _migrateLegacyIfAny();
+  Future<void> load({bool force = false}) async {
+    final targetBoxName = _boxName;
+    if (!force && _loaded && _loadedForBoxName == targetBoxName) {
+      return;
+    }
 
+    await _migrateLegacyIfAny();
     final box = await _open();
     final raw = box.get(_itemsKey);
 
     final list = <ShoppingItem>[];
     if (raw is List) {
-      for (final it in raw) {
-        if (it is Map) list.add(ShoppingItem.fromMap(it));
+      for (final item in raw) {
+        if (item is Map) {
+          list.add(ShoppingItem.fromMap(item));
+        }
       }
     }
 
     _items = _sort(list);
     _loaded = true;
+    _loadedForBoxName = targetBoxName;
     notifyListeners();
   }
 
@@ -179,17 +231,16 @@ class ShoppingListStore extends ChangeNotifier {
   }
 
   Future<void> add(String text) async {
-    final t = text.trim();
-    if (t.isEmpty) return;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
 
-    final cat = ShoppingCategorizer.guessCategory(t);
-
+    final category = ShoppingCategorizer.guessCategory(trimmed);
     final item = ShoppingItem(
       id: 's_${DateTime.now().microsecondsSinceEpoch}',
-      text: t,
+      text: trimmed,
       done: false,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      category: cat,
+      category: category,
     );
 
     _items = _sort([item, ..._items]);
@@ -199,19 +250,19 @@ class ShoppingListStore extends ChangeNotifier {
 
   Future<void> addMany(Iterable<String> texts) async {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-
     final newItems = <ShoppingItem>[];
+
     for (final raw in texts) {
-      final t = raw.trim();
-      if (t.isEmpty) continue;
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) continue;
 
       newItems.add(
         ShoppingItem(
           id: 's_${DateTime.now().microsecondsSinceEpoch}',
-          text: t,
+          text: trimmed,
           done: false,
           createdAtMs: nowMs,
-          category: ShoppingCategorizer.guessCategory(t),
+          category: ShoppingCategorizer.guessCategory(trimmed),
         ),
       );
     }
@@ -277,9 +328,11 @@ class ShoppingListStore extends ChangeNotifier {
 
     list.sort((a, b) {
       if (a.done != b.done) return a.done ? 1 : -1;
+
       final ca = categoryOrder(a.category);
       final cb = categoryOrder(b.category);
       if (ca != cb) return ca.compareTo(cb);
+
       return b.createdAtMs.compareTo(a.createdAtMs);
     });
 
@@ -287,8 +340,6 @@ class ShoppingListStore extends ChangeNotifier {
   }
 }
 
-/// Mantive como estava no seu arquivo (você já tinha esse util em algum lugar).
-/// Se der erro "ShoppingCategorizer not found", me manda esse arquivo que eu ajusto.
 class ShoppingCategorizer {
   static ShoppingCategory guessCategory(String text) {
     final t = text.toLowerCase();

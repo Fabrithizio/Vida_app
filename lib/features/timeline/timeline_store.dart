@@ -1,3 +1,16 @@
+// ============================================================================
+// FILE: lib/features/timeline/timeline_store.dart
+//
+// O que faz:
+// - mantém os blocos da timeline em memória
+// - salva no repositório
+// - agenda/cancela notificações dos blocos
+//
+// Melhoria de desempenho:
+// - load() não reagenda todas as notificações de novo
+// - agendamento fica só nas operações que realmente mudam os blocos
+// ============================================================================
+
 import 'package:flutter/foundation.dart';
 
 import '../../data/models/timeline_block.dart';
@@ -13,14 +26,11 @@ class TimelineStore extends ChangeNotifier {
   List<TimelineBlock> get all => List.unmodifiable(_items);
 
   Future<void> load() async {
+    final loaded = await _repo.loadAll();
+
     _items
       ..clear()
-      ..addAll(await _repo.loadAll());
-
-    for (final block in _items) {
-      await NotificationService.instance.cancelForBlock(block.id);
-      await NotificationService.instance.scheduleForBlock(block);
-    }
+      ..addAll(loaded);
 
     notifyListeners();
   }
@@ -29,13 +39,15 @@ class TimelineStore extends ChangeNotifier {
     await _repo.saveAll(_items);
   }
 
+  Future<void> _rescheduleBlock(TimelineBlock block) async {
+    await NotificationService.instance.cancelForBlock(block.id);
+    await NotificationService.instance.scheduleForBlock(block);
+  }
+
   Future<void> add(TimelineBlock block) async {
     _items.add(block);
     await _persist();
-
-    await NotificationService.instance.cancelForBlock(block.id);
-    await NotificationService.instance.scheduleForBlock(block);
-
+    await _rescheduleBlock(block);
     notifyListeners();
   }
 
@@ -45,10 +57,7 @@ class TimelineStore extends ChangeNotifier {
 
     _items[index] = updated;
     await _persist();
-
-    await NotificationService.instance.cancelForBlock(updated.id);
-    await NotificationService.instance.scheduleForBlock(updated);
-
+    await _rescheduleBlock(updated);
     notifyListeners();
   }
 
@@ -58,7 +67,6 @@ class TimelineStore extends ChangeNotifier {
 
     final item = _items[index];
     _items[index] = item.copyWith(isDone: !item.isDone);
-
     await _persist();
     notifyListeners();
   }
@@ -80,7 +88,6 @@ class TimelineStore extends ChangeNotifier {
 
   List<TimelineBlock> itemsForDay(DateTime day) {
     final target = _d(day);
-
     final list = _items
         .where((e) => e.occursOn(target))
         .map((e) => _occurrenceForDay(e, target))
@@ -92,8 +99,7 @@ class TimelineStore extends ChangeNotifier {
 
   List<TimelineBlock> itemsBetween(DateTime start, DateTime endExclusive) {
     final out = <TimelineBlock>[];
-
-    DateTime cursor = _d(start);
+    var cursor = _d(start);
     final endDay = _d(endExclusive);
 
     while (cursor.isBefore(endDay)) {
@@ -113,16 +119,18 @@ class TimelineStore extends ChangeNotifier {
     final aEnd = _endOrDefault(a);
     final bStart = b.start;
     final bEnd = _endOrDefault(b);
+
     return aStart.isBefore(bEnd) && bStart.isBefore(aEnd);
   }
 
   bool hasConflict(TimelineBlock candidate, {String? excludeId}) {
     final dayItems = itemsForDay(candidate.start);
 
-    for (final e in dayItems) {
-      if (excludeId != null && e.id == excludeId) continue;
-      if (_overlaps(e, candidate)) return true;
+    for (final entry in dayItems) {
+      if (excludeId != null && entry.id == excludeId) continue;
+      if (_overlaps(entry, candidate)) return true;
     }
+
     return false;
   }
 }

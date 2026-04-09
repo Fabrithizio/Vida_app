@@ -1,7 +1,18 @@
+// ============================================================================
+// FILE: lib/features/home/presentation/tabs/day_tab.dart
+//
+// O que faz:
+// - Mostra a aba Meu Dia com timeline por dia/semana/mês/ano
+// - Abre compras, tarefas da casa e criação/edição de blocos
+//
+// Melhoria de desempenho:
+// - carrega stores em paralelo na abertura
+// - evita reagendamento duplicado de notificações ao criar bloco
+// ============================================================================
+
 import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
-import '../../../notifications/application/notification_service.dart';
 import '../../../home_tasks/home_tasks_store.dart';
 import '../../../shopping/shopping_list_store.dart';
 import '../../../timeline/timeline_store.dart';
@@ -32,6 +43,7 @@ class DayTab extends StatefulWidget {
 
 class _DayTabState extends State<DayTab> {
   late final TimelineStore _store;
+
   bool _loading = true;
   TimelineRange _range = TimelineRange.day;
   DateTime _selected = DateTime.now();
@@ -41,14 +53,18 @@ class _DayTabState extends State<DayTab> {
     super.initState();
     _store = widget.timelineStore;
     _store.addListener(_onStoreChanged);
+    Future.microtask(_loadInitialData);
+  }
 
-    Future.microtask(() async {
-      await _store.load();
-      await widget.shoppingStore.load();
-      await widget.homeTasksStore.load();
-      if (!mounted) return;
-      setState(() => _loading = false);
-    });
+  Future<void> _loadInitialData() async {
+    await Future.wait<void>([
+      _store.load(),
+      widget.shoppingStore.load(),
+      widget.homeTasksStore.load(),
+    ]);
+
+    if (!mounted) return;
+    setState(() => _loading = false);
   }
 
   @override
@@ -123,7 +139,6 @@ class _DayTabState extends State<DayTab> {
       confirmText: 'OK',
       cancelText: 'Cancelar',
     );
-
     if (picked == null || !mounted) return;
     setState(() => _selected = _dayOnly(picked));
   }
@@ -199,7 +214,6 @@ class _DayTabState extends State<DayTab> {
       isScrollControlled: true,
       builder: (_) => CreateBlockSheet(initialDay: _selected),
     );
-
     if (created == null) return;
 
     if (_store.hasConflict(created)) {
@@ -213,20 +227,18 @@ class _DayTabState extends State<DayTab> {
     }
 
     await _store.add(created);
-    await NotificationService.instance.scheduleForBlock(created);
 
     if (!mounted) return;
     setState(() => _selected = _dayOnly(created.start));
   }
 
   Future<void> _openEditBlock(TimelineBlock block) async {
-    final result = await showModalBottomSheet<EditResult>(
+    final result = await showModalBottomSheet(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (_) => EditBlockSheet(block: block),
     );
-
     if (result == null) return;
 
     if (result.delete) {
@@ -434,26 +446,26 @@ class _DayTabState extends State<DayTab> {
                   Expanded(
                     child: SegmentedButton<TimelineRange>(
                       segments: const [
-                        ButtonSegment(
+                        ButtonSegment<TimelineRange>(
                           value: TimelineRange.day,
                           label: Text('Dia'),
                         ),
-                        ButtonSegment(
+                        ButtonSegment<TimelineRange>(
                           value: TimelineRange.week,
                           label: Text('Semana'),
                         ),
-                        ButtonSegment(
+                        ButtonSegment<TimelineRange>(
                           value: TimelineRange.month,
                           label: Text('Mês'),
                         ),
-                        ButtonSegment(
+                        ButtonSegment<TimelineRange>(
                           value: TimelineRange.year,
                           label: Text('Ano'),
                         ),
                       ],
                       selected: {_range},
-                      onSelectionChanged: (s) {
-                        setState(() => _range = s.first);
+                      onSelectionChanged: (selection) {
+                        setState(() => _range = selection.first);
                       },
                     ),
                   ),
