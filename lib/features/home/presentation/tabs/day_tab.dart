@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
 import '../../../notifications/application/notification_service.dart';
-import '../../../areas/daily_checkin_service.dart';
+import 'package:vida_app/features/body_care/body_care_service.dart';
+import 'package:vida_app/features/body_care/presentation/pages/body_care_page.dart';
 import '../../../home_tasks/home_tasks_store.dart';
 import '../../../shopping/shopping_list_store.dart';
 import '../../../timeline/timeline_store.dart';
@@ -33,7 +34,7 @@ class DayTab extends StatefulWidget {
 
 class _DayTabState extends State<DayTab> {
   late final TimelineStore _store;
-  final DailyCheckinService _dailyCheckinService = DailyCheckinService();
+  final BodyCareService _bodyCareService = BodyCareService();
   bool _loading = true;
   TimelineRange _range = TimelineRange.day;
   DateTime _selected = DateTime.now();
@@ -194,6 +195,14 @@ class _DayTabState extends State<DayTab> {
     setState(() {});
   }
 
+  Future<void> _openBodyCare() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const BodyCarePage()));
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<void> _addBlock() async {
     final created = await showModalBottomSheet<TimelineBlock>(
       context: context,
@@ -286,18 +295,9 @@ class _DayTabState extends State<DayTab> {
     }
   }
 
-  DateTime _sessionDayForLifeDay(DateTime d) =>
-      _dayOnly(d).add(const Duration(days: 1));
-
   Future<_BodyCareDaySnapshot> _bodyCareSnapshotForLifeDay(DateTime d) async {
-    final sessionDay = _sessionDayForLifeDay(d);
-    final food = await _dailyCheckinService.getFoodAnswerForSessionDay(
-      sessionDay,
-    );
-    final training = await _dailyCheckinService.getTrainingAnswerForSessionDay(
-      sessionDay,
-    );
-    return _BodyCareDaySnapshot(food: food, training: training);
+    final record = await _bodyCareService.loadDay(_dayOnly(d));
+    return _BodyCareDaySnapshot(food: record.food, training: record.training);
   }
 
   Color _bodyCareColor(int? value) {

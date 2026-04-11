@@ -119,8 +119,6 @@ class DailyCheckinService {
   static const String _boxPrefix = 'daily_checkin_box_';
   static const int questionsPerDay = 5;
   static const int historyDays = 21;
-  static const String foodQuestionId = 'food_quality';
-  static const String trainingQuestionId = 'movement_amount';
   static const int minAnswerValue = 0;
   static const int maxAnswerValue = 4;
 
@@ -151,60 +149,6 @@ class DailyCheckinService {
       scaleType: DailyQuestionScaleType.quality5,
       cadence: DailyQuestionCadence.daily,
       priorityBoost: 0.42,
-    ),
-    DailyQuestion(
-      id: foodQuestionId,
-      areaId: 'body_health',
-      areaLabel: 'Corpo & saúde',
-      impacts: [
-        DailyQuestionImpact(
-          areaId: 'body_health',
-          itemId: 'nutrition',
-          weight: 1.00,
-        ),
-        DailyQuestionImpact(
-          areaId: 'body_health',
-          itemId: 'energy',
-          weight: 0.22,
-        ),
-        DailyQuestionImpact(
-          areaId: 'work_vocation',
-          itemId: 'balance',
-          weight: 0.10,
-        ),
-      ],
-      text: 'Como foi sua alimentação ontem pensando no seu corpo?',
-      scaleType: DailyQuestionScaleType.nutritionCare5,
-      cadence: DailyQuestionCadence.daily,
-      priorityBoost: 0.48,
-      alwaysInclude: true,
-    ),
-    DailyQuestion(
-      id: trainingQuestionId,
-      areaId: 'body_health',
-      areaLabel: 'Corpo & saúde',
-      impacts: [
-        DailyQuestionImpact(
-          areaId: 'body_health',
-          itemId: 'movement',
-          weight: 1.00,
-        ),
-        DailyQuestionImpact(
-          areaId: 'body_health',
-          itemId: 'energy',
-          weight: 0.20,
-        ),
-        DailyQuestionImpact(
-          areaId: 'work_vocation',
-          itemId: 'consistency',
-          weight: 0.12,
-        ),
-      ],
-      text: 'Como foi seu treino ou movimento ontem?',
-      scaleType: DailyQuestionScaleType.trainingCare5,
-      cadence: DailyQuestionCadence.daily,
-      priorityBoost: 0.48,
-      alwaysInclude: true,
     ),
     DailyQuestion(
       id: 'energy_level',
@@ -1029,12 +973,6 @@ class DailyCheckinService {
 
   List<DailyQuestion> get alwaysIncludedQuestions =>
       _pool.where((q) => q.alwaysInclude).toList(growable: false);
-
-  Future<int?> getFoodAnswerForSessionDay(DateTime day) =>
-      getAnswer(day: day, questionId: foodQuestionId);
-
-  Future<int?> getTrainingAnswerForSessionDay(DateTime day) =>
-      getAnswer(day: day, questionId: trainingQuestionId);
 
   List<DailyQuestion> questionsForItem(String itemId) {
     return _pool

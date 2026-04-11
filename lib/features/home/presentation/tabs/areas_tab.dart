@@ -42,7 +42,9 @@ import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dar
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
-  const AreasTab({super.key});
+  const AreasTab({super.key, this.isActive = false});
+
+  final bool isActive;
 
   @override
   State<AreasTab> createState() => _AreasTabState();
@@ -55,7 +57,7 @@ class _AreasTabState extends State<AreasTab> {
   final DailyCheckinService _dailyCheckinService = DailyCheckinService();
   final DeviceUsageService _deviceUsage = DeviceUsageService();
 
-  bool _dailyGateAlreadyChecked = false;
+  bool _dailyGateBusy = false;
   bool _usageOverlayOpen = false;
 
   late Future<UserSex> _sexFuture;
@@ -74,10 +76,26 @@ class _AreasTabState extends State<AreasTab> {
     super.initState();
     _refreshState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _checkDailyGate();
-      await _checkUsageAccessGate();
-    });
+    if (widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _handleTabActivated();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AreasTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _handleTabActivated();
+      });
+    }
+  }
+
+  Future<void> _handleTabActivated() async {
+    await _checkDailyGate();
+    await _checkUsageAccessGate();
   }
 
   void _refreshState() {
@@ -318,31 +336,33 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   Future<void> _checkDailyGate() async {
-    if (_dailyGateAlreadyChecked) return;
+    if (_dailyGateBusy || !widget.isActive) return;
 
-    final today = DateTime.now();
-    final canUse = await _dailyCheckinService.canUseAreas(today);
+    _dailyGateBusy = true;
+    try {
+      final today = DateTime.now();
+      final canUse = await _dailyCheckinService.canUseAreas(today);
 
-    if (!mounted) return;
-    _dailyGateAlreadyChecked = true;
+      if (!mounted) return;
+      if (canUse) return;
 
-    if (canUse) return;
+      final unlocked = await Navigator.of(context).push<bool>(
+        PageRouteBuilder<bool>(
+          opaque: false,
+          barrierDismissible: false,
+          pageBuilder: (_, __, ___) => const DailyCheckinOverlay(),
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
 
-    final unlocked = await Navigator.of(context).push<bool>(
-      PageRouteBuilder<bool>(
-        opaque: false,
-        barrierDismissible: false,
-        pageBuilder: (_, __, ___) => const DailyCheckinOverlay(),
-        transitionsBuilder: (_, animation, __, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-      ),
-    );
-
-    if (!mounted) return;
-
-    if (unlocked == true) {
-      setState(() {});
+      if (!mounted) return;
+      if (unlocked == true) {
+        setState(() {});
+      }
+    } finally {
+      _dailyGateBusy = false;
     }
   }
 

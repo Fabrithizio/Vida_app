@@ -44,17 +44,6 @@ class _HomePageState extends State<HomePage> {
     finance: _finance,
   );
 
-  late final List<Widget> _tabs = [
-    DayTab(
-      shoppingStore: _shopping,
-      timelineStore: _timeline,
-      homeTasksStore: _homeTasks,
-    ),
-    const AreasTab(),
-    FinanceTab(store: _finance),
-    const ProfileTab(),
-  ];
-
   Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
   void _openVoiceHub() {
@@ -83,7 +72,19 @@ class _HomePageState extends State<HomePage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: IndexedStack(index: _index, children: _tabs),
+            child: IndexedStack(
+              index: _index,
+              children: [
+                DayTab(
+                  shoppingStore: _shopping,
+                  timelineStore: _timeline,
+                  homeTasksStore: _homeTasks,
+                ),
+                AreasTab(isActive: _index == 1),
+                FinanceTab(store: _finance),
+                const ProfileTab(),
+              ],
+            ),
           ),
           Positioned.fill(
             child: AlwaysOnFloatingShell(

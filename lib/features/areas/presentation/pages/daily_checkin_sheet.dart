@@ -102,6 +102,161 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
     setState(() => _currentIndex += 1);
   }
 
+  Widget _buildReviewSheet(BuildContext context) {
+    return Container(
+      height: 560,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF080B16),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white10),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF13182A), Color(0xFF090B16)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const _TopBadge(
+                icon: Icons.history_rounded,
+                text: 'Suas respostas',
+                color: Color(0xFF48A7FF),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                icon: const Icon(Icons.close_rounded, color: Colors.white70),
+              ),
+            ],
+          ),
+          Text(
+            'Confira o que você respondeu para ontem e toque em uma pergunta se quiser ajustar.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.80),
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: ListView.separated(
+              itemCount: _questions.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final question = _questions[index];
+                final accent = _accentForArea(question.areaId);
+                final value = _answers[question.id];
+                final label = value == null
+                    ? 'Sem resposta'
+                    : _service.answerLabel(value, question: question);
+                String? description;
+                if (value != null) {
+                  for (final option in _service.optionsFor(question)) {
+                    if (option.value == value) {
+                      description = option.description;
+                      break;
+                    }
+                  }
+                }
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _completed = false;
+                      _currentIndex = index;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: accent.withValues(alpha: 0.25)),
+                      color: Colors.white.withValues(alpha: 0.04),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: accent.withValues(alpha: 0.16),
+                          ),
+                          child: Icon(
+                            _iconForArea(question.areaId),
+                            color: accent,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                question.text,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14.2,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                label,
+                                style: TextStyle(
+                                  color: accent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              if (description != null &&
+                                  description.trim().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  description,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.65),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.edit_rounded,
+                          color: Colors.white.withValues(alpha: 0.45),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.done_all_rounded),
+              label: const Text('Fechar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -116,7 +271,7 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
     }
 
     if (_completed && _questions.isNotEmpty) {
-      return _DoneSheet(total: _questions.length);
+      return _buildReviewSheet(context);
     }
 
     final question = _questions[_currentIndex];
