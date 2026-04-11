@@ -1,14 +1,16 @@
 // ============================================================================
 // FILE: lib/features/body_care/presentation/pages/body_care_page.dart
 //
-// O que faz:
-// - Abre o módulo corporal do app
-// - Permite registrar alimentação, treino, água e sono por dia
-// - Mostra status do dia e visão curta da semana
+// O que este arquivo faz:
+// - Mostra o módulo "Corpo em dia" com cara mais de app fitness
+// - Mantém o foco principal no registro do dia e na evolução
+// - Traz IMC, referência corporal, meta, sequência e resumo semanal
+// - Usa tema roxo em toda a área, sem perder os dados usados no Meu Dia
 // ============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:vida_app/features/body_care/body_care_service.dart';
+
+import '../../body_care_service.dart';
 
 class BodyCarePage extends StatefulWidget {
   const BodyCarePage({super.key});
@@ -19,85 +21,165 @@ class BodyCarePage extends StatefulWidget {
 
 class _BodyCarePageState extends State<BodyCarePage> {
   final BodyCareService _service = BodyCareService();
-  DateTime _day = DateTime.now().subtract(const Duration(days: 1));
-  BodyCareDayRecord? _record;
-  List<BodyCareWeekPoint> _week = const [];
-  int _streak = 0;
-  bool _loading = true;
+
+  final TextEditingController _heightCtrl = TextEditingController();
+  final TextEditingController _targetWeightCtrl = TextEditingController();
   final TextEditingController _weightCtrl = TextEditingController();
+  final TextEditingController _waistCtrl = TextEditingController();
+  final TextEditingController _stepsCtrl = TextEditingController();
+  final TextEditingController _minutesCtrl = TextEditingController();
   final TextEditingController _noteCtrl = TextEditingController();
+
+  DateTime _day = DateTime.now();
+  BodyCareEntry _entry = const BodyCareEntry();
+  BodyCareProfile _profile = const BodyCareProfile();
+  BodyCareOverview _overview = BodyCareOverview.empty();
+  List<BodyCareWeekPoint> _week = const [];
+  List<MapEntry<DateTime, BodyCareEntry>> _recent = const [];
+  String _goal = BodyCareService.goalOptions.first;
+  bool _loading = true;
+  bool _saving = false;
+
+  static const Color _purple = Color(0xFFA855F7);
+  static const Color _purple2 = Color(0xFF9333EA);
+  static const Color _purple3 = Color(0xFF7E22CE);
+  static const Color _purpleSoft = Color(0xFFC084FC);
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadAll();
   }
 
   @override
   void dispose() {
+    _heightCtrl.dispose();
+    _targetWeightCtrl.dispose();
     _weightCtrl.dispose();
+    _waistCtrl.dispose();
+    _stepsCtrl.dispose();
+    _minutesCtrl.dispose();
     _noteCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    final record = await _service.loadDay(_day);
+  Future<void> _loadAll() async {
+    final profile = await _service.loadProfile();
+    final entry = await _service.loadDay(_day);
+    final overview = await _service.loadOverview();
     final week = await _service.last7Days(_day);
-    final streak = await _service.dedicatedStreak(_day);
+    final recent = await _service.loadRecentEntries(days: 14);
+
     if (!mounted) return;
-    _weightCtrl.text = record.weightKg?.toStringAsFixed(1) ?? '';
-    _noteCtrl.text = record.note ?? '';
     setState(() {
-      _record = record;
+      _profile = profile;
+      _entry = entry;
+      _overview = overview;
       _week = week;
-      _streak = streak;
+      _recent = recent;
+      _goal = profile.goal ?? BodyCareService.goalOptions.first;
+      _heightCtrl.text = _fmt(profile.heightCm);
+      _targetWeightCtrl.text = _fmt(profile.targetWeightKg);
+      _weightCtrl.text = _fmt(entry.weightKg);
+      _waistCtrl.text = _fmt(entry.waistCm);
+      _stepsCtrl.text = entry.steps?.toString() ?? '';
+      _minutesCtrl.text = entry.activeMinutes?.toString() ?? '';
+      _noteCtrl.text = entry.note ?? '';
       _loading = false;
     });
   }
 
-  Future<void> _saveFood(int value) async {
-    await _service.saveFood(_day, value);
-    await _load();
+  String _fmt(double? value) {
+    if (value == null) return '';
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    return value.toStringAsFixed(1);
   }
 
-  Future<void> _saveTraining(int value) async {
-    await _service.saveTraining(_day, value);
-    await _load();
+  double? _parseDouble(TextEditingController c) {
+    final text = c.text.trim().replaceAll(',', '.');
+    if (text.isEmpty) return null;
+    return double.tryParse(text);
   }
 
-  Future<void> _saveWater(int value) async {
-    await _service.saveWater(_day, value);
-    await _load();
+  int? _parseInt(TextEditingController c) {
+    final text = c.text.trim();
+    if (text.isEmpty) return null;
+    return int.tryParse(text);
   }
 
-  Future<void> _saveSleep(int value) async {
-    await _service.saveSleep(_day, value);
-    await _load();
-  }
+  Future<void> _saveAll() async {
+    setState(() => _saving = true);
 
-  Future<void> _saveWeight() async {
-    final raw = _weightCtrl.text.trim().replaceAll(',', '.');
-    final value = double.tryParse(raw);
-    await _service.saveWeight(_day, value);
-    await _load();
-  }
+    final profile = BodyCareProfile(
+      heightCm: _parseDouble(_heightCtrl),
+      targetWeightKg: _parseDouble(_targetWeightCtrl),
+      goal: _goal,
+    );
 
-  Future<void> _saveNote() async {
-    await _service.saveNote(_day, _noteCtrl.text);
-    await _load();
-  }
+    final entry = BodyCareEntry(
+      food: _entry.food,
+      training: _entry.training,
+      water: _entry.water,
+      sleep: _entry.sleep,
+      steps: _parseInt(_stepsCtrl),
+      activeMinutes: _parseInt(_minutesCtrl),
+      weightKg: _parseDouble(_weightCtrl),
+      waistCm: _parseDouble(_waistCtrl),
+      note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+    );
 
-  Future<void> _setDay(DateTime day) async {
+    await _service.saveProfile(profile);
+    await _service.saveDay(_day, entry);
+
+    if (!mounted) return;
     setState(() {
-      _day = DateTime(day.year, day.month, day.day);
+      _profile = profile;
+      _entry = entry;
+      _saving = false;
+    });
+
+    await _loadAll();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Corpo em dia atualizado.')));
+  }
+
+  Future<void> _pickDay() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _day,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null) return;
+    setState(() {
+      _day = DateTime(picked.year, picked.month, picked.day);
       _loading = true;
     });
-    await _load();
+    await _loadAll();
   }
 
-  String _dateLabel() {
+  void _setFood(int value) {
+    setState(() => _entry = _entry.copyWith(food: value));
+  }
+
+  void _setTraining(int value) {
+    setState(() => _entry = _entry.copyWith(training: value));
+  }
+
+  void _setWater(int value) {
+    setState(() => _entry = _entry.copyWith(water: value));
+  }
+
+  void _setSleep(int value) {
+    setState(() => _entry = _entry.copyWith(sleep: value));
+  }
+
+  String _dayLabel(DateTime d) {
+    const week = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
     const months = [
-      '',
       'jan',
       'fev',
       'mar',
@@ -111,301 +193,247 @@ class _BodyCarePageState extends State<BodyCarePage> {
       'nov',
       'dez',
     ];
-    return '${_day.day.toString().padLeft(2, '0')} de ${months[_day.month]}';
+    return '${week[d.weekday - 1]}, ${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]}';
   }
 
   Color _scoreColor(double? score) {
-    if (score == null) return const Color(0xFF94A3B8);
-    if (score >= 3.6) return const Color(0xFF22C55E);
-    if (score >= 2.6) return const Color(0xFFF59E0B);
-    if (score >= 1.6) return const Color(0xFFFB923C);
-    if (score >= 0.6) return const Color(0xFFEF4444);
-    return const Color(0xFFB91C1C);
+    if (score == null) return Colors.white24;
+    if (score >= 3.6) return const Color(0xFFC084FC);
+    if (score >= 2.6) return const Color(0xFFA855F7);
+    if (score >= 1.6) return const Color(0xFF9333EA);
+    if (score >= 0.6) return const Color(0xFF7E22CE);
+    return const Color(0xFF581C87);
   }
 
   @override
   Widget build(BuildContext context) {
-    final record = _record;
-    final score = record?.average;
-    final accent = _scoreColor(score);
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
-        title: const Text('Botar o shape'),
+        title: const Text('Corpo em dia'),
+        actions: [
+          IconButton(
+            tooltip: 'Escolher dia',
+            onPressed: _pickDay,
+            icon: const Icon(Icons.calendar_month_rounded),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 22),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: LinearGradient(
-                      colors: [
-                        accent.withValues(alpha: 0.28),
-                        const Color(0xFF0F1324),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    border: Border.all(color: accent.withValues(alpha: 0.32)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          _TopPill(
-                            icon: Icons.fitness_center_rounded,
-                            text: 'Corpo em foco',
-                            color: accent,
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () =>
-                                _setDay(_day.subtract(const Duration(days: 1))),
-                            icon: const Icon(
-                              Icons.chevron_left_rounded,
-                              color: Colors.white70,
-                            ),
-                          ),
-                          Text(
-                            _dateLabel(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: _day.isBefore(DateTime.now())
-                                ? () =>
-                                      _setDay(_day.add(const Duration(days: 1)))
-                                : null,
-                            icon: Icon(
-                              Icons.chevron_right_rounded,
-                              color: _day.isBefore(DateTime.now())
-                                  ? Colors.white70
-                                  : Colors.white24,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        record?.statusLabel ?? 'Sem registro',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Registre como foi seu cuidado corporal nesse dia. Aqui fica sua linha de consistência real.',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SummaryMiniCard(
-                              title: 'Score do dia',
-                              value: score == null
-                                  ? '--'
-                                  : score.toStringAsFixed(1),
-                              accent: accent,
-                              icon: Icons.insights_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _SummaryMiniCard(
-                              title: 'Sequência',
-                              value: '$_streak',
-                              accent: const Color(0xFF48A7FF),
-                              icon: Icons.local_fire_department_rounded,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                _heroCard(),
+                const SizedBox(height: 16),
+                _metricsGrid(),
+                const SizedBox(height: 16),
+                _weekCard(),
+                const SizedBox(height: 16),
+                _sectionTitle(
+                  'Foco do dia',
+                  'Registre o que mais move seu resultado.',
                 ),
-                const SizedBox(height: 16),
-                _WeekStrip(points: _week, scoreColor: _scoreColor),
-                const SizedBox(height: 16),
-                _QuestionCard(
+                const SizedBox(height: 10),
+                _questionCard(
                   title: 'Comida',
-                  subtitle: 'Você ficou na linha ou chutou o balde?',
+                  subtitle: 'Como você alimentou seu corpo nesse dia?',
                   icon: Icons.restaurant_rounded,
-                  accent: const Color(0xFFFFC145),
-                  selected: record?.food,
+                  selected: _entry.food,
                   options: BodyCareService.foodOptions,
-                  onSelect: _saveFood,
+                  onSelect: _setFood,
                 ),
                 const SizedBox(height: 14),
-                _QuestionCard(
+                _questionCard(
                   title: 'Treino & movimento',
                   subtitle: 'Seu corpo trabalhou ou ficou parado?',
-                  icon: Icons.directions_run_rounded,
-                  accent: const Color(0xFF00D68F),
-                  selected: record?.training,
+                  icon: Icons.fitness_center_rounded,
+                  selected: _entry.training,
                   options: BodyCareService.trainingOptions,
-                  onSelect: _saveTraining,
+                  onSelect: _setTraining,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
+                _sectionTitle(
+                  'Base corporal',
+                  'O básico bem feito costuma ser o que mais muda o jogo.',
+                ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
-                      child: _QuickChoiceCard(
+                      child: _choiceCard(
                         title: 'Água',
-                        icon: Icons.water_drop_rounded,
-                        accent: const Color(0xFF48A7FF),
-                        selected: record?.water,
+                        selected: _entry.water,
                         options: BodyCareService.waterOptions,
-                        onSelect: _saveWater,
+                        onSelect: _setWater,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _QuickChoiceCard(
+                      child: _choiceCard(
                         title: 'Sono',
-                        icon: Icons.hotel_rounded,
-                        accent: const Color(0xFF8B7CFF),
-                        selected: record?.sleep,
+                        selected: _entry.sleep,
                         options: BodyCareService.sleepOptions,
-                        onSelect: _saveSleep,
+                        onSelect: _setSleep,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.04),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Peso e observação',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _weightCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          labelText: 'Peso do dia (opcional)',
-                          suffixText: 'kg',
-                        ),
-                        onSubmitted: (_) => _saveWeight(),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _noteCtrl,
-                        maxLines: 3,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: const InputDecoration(
-                          labelText: 'Observação rápida',
-                        ),
-                        onSubmitted: (_) => _saveNote(),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _saveWeight,
-                              icon: const Icon(Icons.monitor_weight_rounded),
-                              label: const Text('Salvar peso'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _saveNote,
-                              icon: const Icon(Icons.save_rounded),
-                              label: const Text('Salvar nota'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                const SizedBox(height: 16),
+                _sectionTitle(
+                  'Medições & meta',
+                  'Aqui entram as métricas para acompanhar evolução sem perder o foco do dia.',
+                ),
+                const SizedBox(height: 10),
+                _formCard(),
+                const SizedBox(height: 16),
+                _tipsCard(),
+                const SizedBox(height: 16),
+                _historyCard(),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _saving ? null : _saveAll,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(_saving ? 'Salvando...' : 'Salvar registro'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _purple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
                   ),
                 ),
               ],
             ),
     );
   }
-}
 
-class _TopPill extends StatelessWidget {
-  const _TopPill({required this.icon, required this.text, required this.color});
-
-  final IconData icon;
-  final String text;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _heroCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF24103B), Color(0xFF12081F)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: _purple.withValues(alpha: 0.35)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 8),
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFC084FC), Color(0xFF9333EA)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.fitness_center_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Corpo em dia',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _dayLabel(_day),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.76),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Text(
-            text,
-            style: TextStyle(color: color, fontWeight: FontWeight.w900),
+            _entry.statusLabel,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _overview.insight,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.78),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _miniStat(
+                  title: 'Sequência',
+                  value: '${_overview.currentStreak}d',
+                  subtitle: 'dias focados',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _miniStat(
+                  title: 'Meta',
+                  value: _profile.goal ?? 'Livre',
+                  subtitle: _overview.goalLabel,
+                  compact: true,
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
-}
 
-class _SummaryMiniCard extends StatelessWidget {
-  const _SummaryMiniCard({
-    required this.title,
-    required this.value,
-    required this.accent,
-    required this.icon,
-  });
-
-  final String title;
-  final String value;
-  final Color accent;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _miniStat({
+    required String title,
+    required String value,
+    required String subtitle,
+    bool compact = false,
+  }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -413,73 +441,171 @@ class _SummaryMiniCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: accent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.72),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: compact ? 2 : 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: compact ? 15 : 22,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.60),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class _WeekStrip extends StatelessWidget {
-  const _WeekStrip({required this.points, required this.scoreColor});
+  Widget _metricsGrid() {
+    final bmi = _overview.bmi?.toStringAsFixed(1) ?? '--';
+    final weight = _overview.latestWeightKg?.toStringAsFixed(1) ?? '--';
+    final delta = _overview.weightDeltaKg == null
+        ? 'sem variação'
+        : _overview.weightDeltaKg! == 0
+        ? 'estável'
+        : _overview.weightDeltaKg! > 0
+        ? '+${_overview.weightDeltaKg!.toStringAsFixed(1)}kg'
+        : '${_overview.weightDeltaKg!.toStringAsFixed(1)}kg';
 
-  final List<BodyCareWeekPoint> points;
-  final Color Function(double?) scoreColor;
-
-  String _weekdayShort(int weekday) {
-    switch (weekday) {
-      case DateTime.monday:
-        return 'S';
-      case DateTime.tuesday:
-        return 'T';
-      case DateTime.wednesday:
-        return 'Q';
-      case DateTime.thursday:
-        return 'Q';
-      case DateTime.friday:
-        return 'S';
-      case DateTime.saturday:
-        return 'S';
-      default:
-        return 'D';
-    }
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _metricCard(
+                title: 'IMC',
+                value: bmi,
+                subtitle: _overview.bmiLabel,
+                icon: Icons.monitor_weight_outlined,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _metricCard(
+                title: 'Peso atual',
+                value: weight == '--' ? '--' : '$weight kg',
+                subtitle: delta,
+                icon: Icons.scale_rounded,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _metricCard(
+                title: 'Referência',
+                value: _overview.referenceWeightLabel,
+                subtitle: _overview.referenceWeightHint,
+                icon: Icons.straighten_rounded,
+                compact: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _metricCard(
+                title: 'Semana',
+                value: '${_overview.weeklyFocusedDays}/7',
+                subtitle: 'dias bons nesta semana',
+                icon: Icons.local_fire_department_rounded,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _metricCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    bool compact = false,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _purple.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: _purpleSoft, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            maxLines: compact ? 2 : 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: compact ? 18 : 23,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: compact ? 3 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.66),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weekCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _purple.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,49 +618,21 @@ class _WeekStrip extends StatelessWidget {
               fontSize: 16,
             ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            'O Meu Dia continua lendo comida e treino daqui.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
-              for (final point in points) ...[
-                Expanded(
-                  child: Column(
-                    children: [
-                      Container(
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: scoreColor(
-                            point.score,
-                          ).withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: scoreColor(
-                              point.score,
-                            ).withValues(alpha: 0.35),
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          point.score == null
-                              ? '--'
-                              : point.score!.toStringAsFixed(1),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _weekdayShort(point.day.weekday),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.70),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (point != points.last) const SizedBox(width: 8),
+              for (int i = 0; i < _week.length; i++) ...[
+                Expanded(child: _weekPoint(_week[i])),
+                if (i != _week.length - 1) const SizedBox(width: 8),
               ],
             ],
           ),
@@ -542,36 +640,80 @@ class _WeekStrip extends StatelessWidget {
       ),
     );
   }
-}
 
-class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.accent,
-    required this.selected,
-    required this.options,
-    required this.onSelect,
-  });
+  Widget _weekPoint(BodyCareWeekPoint point) {
+    final letters = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+    final color = _scoreColor(point.score);
+    return Column(
+      children: [
+        Container(
+          height: 54,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.35)),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            point.score == null ? '--' : point.score!.toStringAsFixed(1),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          letters[point.day.weekday - 1],
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.70),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
 
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color accent;
-  final int? selected;
-  final List<BodyCareAnswerOption> options;
-  final ValueChanged<int> onSelect;
+  Widget _sectionTitle(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.66),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _questionCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required int? selected,
+    required List<BodyCareAnswerOption> options,
+    required ValueChanged<int> onSelect,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withValues(alpha: 0.26)),
-        gradient: LinearGradient(
-          colors: [accent.withValues(alpha: 0.16), const Color(0xFF0D1223)],
+        border: Border.all(color: _purple.withValues(alpha: 0.28)),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF24103B), Color(0xFF0D0817)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -581,7 +723,16 @@ class _QuestionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, color: accent),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _purple.withValues(alpha: 0.18),
+                  border: Border.all(color: _purple.withValues(alpha: 0.32)),
+                ),
+                child: Icon(icon, color: _purpleSoft),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -598,7 +749,7 @@ class _QuestionCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: Colors.white.withValues(alpha: 0.70),
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                       ),
@@ -609,9 +760,9 @@ class _QuestionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          for (final option in options) ...[
+          for (int i = 0; i < options.length; i++) ...[
             InkWell(
-              onTap: () => onSelect(option.value),
+              onTap: () => onSelect(options[i].value),
               borderRadius: BorderRadius.circular(18),
               child: Container(
                 width: double.infinity,
@@ -619,18 +770,20 @@ class _QuestionCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: selected == option.value ? accent : Colors.white12,
-                    width: selected == option.value ? 2 : 1,
+                    color: selected == options[i].value
+                        ? _purpleSoft
+                        : Colors.white12,
+                    width: selected == options[i].value ? 2 : 1,
                   ),
-                  color: selected == option.value
-                      ? accent.withValues(alpha: 0.18)
-                      : Colors.white.withValues(alpha: 0.04),
+                  color: selected == options[i].value
+                      ? _purple.withValues(alpha: 0.16)
+                      : Colors.white.withValues(alpha: 0.03),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      option.label,
+                      options[i].label,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
@@ -638,9 +791,9 @@ class _QuestionCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      option.description,
+                      options[i].description,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.68),
+                        color: Colors.white.withValues(alpha: 0.66),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -649,55 +802,35 @@ class _QuestionCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (option != options.last) const SizedBox(height: 10),
+            if (i != options.length - 1) const SizedBox(height: 10),
           ],
         ],
       ),
     );
   }
-}
 
-class _QuickChoiceCard extends StatelessWidget {
-  const _QuickChoiceCard({
-    required this.title,
-    required this.icon,
-    required this.accent,
-    required this.selected,
-    required this.options,
-    required this.onSelect,
-  });
-
-  final String title;
-  final IconData icon;
-  final Color accent;
-  final int? selected;
-  final List<BodyCareAnswerOption> options;
-  final ValueChanged<int> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _choiceCard({
+    required String title,
+    required int? selected,
+    required List<BodyCareAnswerOption> options,
+    required ValueChanged<int> onSelect,
+  }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: _purple.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: accent),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -709,7 +842,13 @@ class _QuickChoiceCard extends StatelessWidget {
                   label: Text(option.shortLabel),
                   selected: selected == option.value,
                   onSelected: (_) => onSelect(option.value),
-                  selectedColor: accent.withValues(alpha: 0.28),
+                  selectedColor: _purple.withValues(alpha: 0.28),
+                  backgroundColor: Colors.white.withValues(alpha: 0.03),
+                  side: BorderSide(
+                    color: selected == option.value
+                        ? _purpleSoft
+                        : Colors.white12,
+                  ),
                   labelStyle: TextStyle(
                     color: selected == option.value
                         ? Colors.white
@@ -721,6 +860,263 @@ class _QuickChoiceCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _formCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _purple.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  controller: _heightCtrl,
+                  label: 'Altura',
+                  suffix: 'cm',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _field(
+                  controller: _targetWeightCtrl,
+                  label: 'Peso alvo',
+                  suffix: 'kg',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: BodyCareService.goalOptions.contains(_goal)
+                ? _goal
+                : BodyCareService.goalOptions.first,
+            dropdownColor: const Color(0xFF130A20),
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(labelText: 'Objetivo corporal'),
+            items: BodyCareService.goalOptions
+                .map((e) => DropdownMenuItem<String>(value: e, child: Text(e)))
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _goal = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  controller: _weightCtrl,
+                  label: 'Peso do dia',
+                  suffix: 'kg',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _field(
+                  controller: _waistCtrl,
+                  label: 'Cintura',
+                  suffix: 'cm',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _field(controller: _stepsCtrl, label: 'Passos'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _field(
+                  controller: _minutesCtrl,
+                  label: 'Minutos ativos',
+                  suffix: 'min',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _noteCtrl,
+            maxLines: 3,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(labelText: 'Observação rápida'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required String label,
+    String? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(labelText: label, suffixText: suffix),
+    );
+  }
+
+  Widget _tipsCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _purple.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Dicas rápidas',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (int i = 0; i < _overview.quickTips.length; i++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _purpleSoft,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _overview.quickTips[i],
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.76),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (i != _overview.quickTips.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _historyCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _purple.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Histórico recente',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_recent.isEmpty)
+            Text(
+              'Ainda não há registros suficientes para mostrar evolução.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.70),
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          else
+            for (int i = 0; i < _recent.length && i < 6; i++) ...[
+              _historyTile(_recent[i]),
+              if (i != 5 && i != _recent.length - 1)
+                const Divider(color: Colors.white12, height: 18),
+            ],
+        ],
+      ),
+    );
+  }
+
+  Widget _historyTile(MapEntry<DateTime, BodyCareEntry> item) {
+    final entry = item.value;
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _scoreColor(entry.average).withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _scoreColor(entry.average).withValues(alpha: 0.35),
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            item.key.day.toString().padLeft(2, '0'),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _dayLabel(item.key),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Comida ${entry.food ?? '-'} · Treino ${entry.training ?? '-'} · Peso ${entry.weightKg?.toStringAsFixed(1) ?? '--'}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.66),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          entry.average == null ? '--' : entry.average!.toStringAsFixed(1),
+          style: TextStyle(
+            color: _purpleSoft,
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
     );
   }
 }
