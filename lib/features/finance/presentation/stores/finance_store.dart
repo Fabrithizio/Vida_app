@@ -17,10 +17,9 @@ class FinanceStore extends ChangeNotifier {
 
   final FinanceRepository _repository;
 
-  final List<FinanceCategory> _categories = List<FinanceCategory>.from(
+  final List<FinanceCategory> _categories = List.from(
     FinanceSeedData.categories,
   );
-
   final List<FinanceTransaction> _transactions = [];
 
   bool _isLoading = false;
@@ -30,22 +29,18 @@ class FinanceStore extends ChangeNotifier {
 
   List<FinanceCategory> get categories => List.unmodifiable(_categories);
   List<FinanceTransaction> get transactions => List.unmodifiable(_transactions);
-
   bool get isLoading => _isLoading;
   bool get hasLoaded => _hasLoaded;
   bool get isEmpty => _transactions.isEmpty;
-
   FinanceFilterType get selectedFilter => _selectedFilter;
   FinancePeriodType get selectedPeriod => _selectedPeriod;
 
   Future<void> load() async {
     if (_isLoading) return;
-
     _isLoading = true;
     notifyListeners();
 
     final savedItems = await _repository.loadAll();
-
     _transactions
       ..clear()
       ..addAll(savedItems);
@@ -57,22 +52,17 @@ class FinanceStore extends ChangeNotifier {
 
   List<FinanceTransaction> get periodTransactions {
     final now = DateTime.now();
-
     return _transactions.where((transaction) {
       final date = transaction.date;
-
       switch (_selectedPeriod) {
         case FinancePeriodType.currentMonth:
           return date.year == now.year && date.month == now.month;
-
         case FinancePeriodType.previousMonth:
           final previousMonthDate = DateTime(now.year, now.month - 1, 1);
           return date.year == previousMonthDate.year &&
               date.month == previousMonthDate.month;
-
         case FinancePeriodType.currentYear:
           return date.year == now.year;
-
         case FinancePeriodType.allTime:
           return true;
       }
@@ -80,29 +70,22 @@ class FinanceStore extends ChangeNotifier {
   }
 
   List<FinanceTransaction> get previousPeriodTransactions {
-    if (_selectedPeriod == FinancePeriodType.allTime) {
-      return <FinanceTransaction>[];
-    }
+    if (_selectedPeriod == FinancePeriodType.allTime) return [];
 
     final now = DateTime.now();
-
     return _transactions.where((transaction) {
       final date = transaction.date;
-
       switch (_selectedPeriod) {
         case FinancePeriodType.currentMonth:
           final previousMonthDate = DateTime(now.year, now.month - 1, 1);
           return date.year == previousMonthDate.year &&
               date.month == previousMonthDate.month;
-
         case FinancePeriodType.previousMonth:
           final twoMonthsAgoDate = DateTime(now.year, now.month - 2, 1);
           return date.year == twoMonthsAgoDate.year &&
               date.month == twoMonthsAgoDate.month;
-
         case FinancePeriodType.currentYear:
           return date.year == now.year - 1;
-
         case FinancePeriodType.allTime:
           return false;
       }
@@ -143,14 +126,18 @@ class FinanceStore extends ChangeNotifier {
 
   double get totalIncome => _sumIncome(periodTransactions);
   double get totalExpense => _sumExpense(periodTransactions);
-  double get balance => totalIncome - totalExpense;
+
+  // Saldo disponível: só cai com saídas imediatas.
+  // Compra no crédito entra como compromisso/fatura, não como dinheiro já saído.
+  double get balance => totalIncome - totalDebitExpense;
+
   double get totalCreditExpense => _sumCreditExpense(periodTransactions);
   double get totalDebitExpense => _sumDebitExpense(periodTransactions);
 
   double get previousPeriodIncome => _sumIncome(previousPeriodTransactions);
   double get previousPeriodExpense => _sumExpense(previousPeriodTransactions);
   double get previousPeriodBalance =>
-      previousPeriodIncome - previousPeriodExpense;
+      previousPeriodIncome - _sumDebitExpense(previousPeriodTransactions);
 
   int get transactionCount => periodTransactions.length;
 
@@ -168,7 +155,6 @@ class FinanceStore extends ChangeNotifier {
 
   List<FinanceTransaction> get filteredTransactions {
     final items = recentTransactions;
-
     switch (_selectedFilter) {
       case FinanceFilterType.all:
         return items;
@@ -212,7 +198,6 @@ class FinanceStore extends ChangeNotifier {
 
     String? winnerId;
     double winnerTotal = 0;
-
     totalsByCategory.forEach((categoryId, total) {
       if (total > winnerTotal) {
         winnerId = categoryId;
@@ -234,9 +219,7 @@ class FinanceStore extends ChangeNotifier {
   }
 
   List<ExpenseCategoryChartItem> get categoryChartItems {
-    if (expenseTransactions.isEmpty) {
-      return const <ExpenseCategoryChartItem>[];
-    }
+    if (expenseTransactions.isEmpty) return const [];
 
     final totalsByCategory = <String, double>{};
     final categoryMeta = <String, FinanceCategory>{};
@@ -250,7 +233,6 @@ class FinanceStore extends ChangeNotifier {
 
     final items = totalsByCategory.entries.map((entry) {
       final category = categoryMeta[entry.key]!;
-
       return ExpenseCategoryChartItem(
         label: category.name,
         amount: entry.value,
@@ -267,23 +249,18 @@ class FinanceStore extends ChangeNotifier {
     if (periodTransactions.isEmpty) {
       return 'Nenhuma movimentação encontrada no período selecionado.';
     }
-
     if (totalExpense == 0 && totalIncome > 0) {
       return 'Neste período você registrou entradas, mas nenhuma saída.';
     }
-
     if (totalIncome == 0 && totalExpense > 0) {
       return 'Neste período você registrou saídas, mas nenhuma entrada.';
     }
-
     if (totalCreditExpense > totalDebitExpense) {
       return 'Neste período seus gastos no crédito estão maiores que no débito.';
     }
-
     if (totalDebitExpense > totalCreditExpense) {
       return 'Neste período seus gastos no débito estão maiores que no crédito.';
     }
-
     return 'Neste período seus gastos no crédito e no débito estão equilibrados.';
   }
 
@@ -291,22 +268,18 @@ class FinanceStore extends ChangeNotifier {
     if (_selectedPeriod == FinancePeriodType.allTime) {
       return 'Comparação não disponível para o período "Tudo".';
     }
-
     if (previousPeriodTransactions.isEmpty) {
       return 'Não há dados do período anterior para comparar.';
     }
 
     final currentExpense = totalExpense;
     final previousExpense = previousPeriodExpense;
-
     if (currentExpense > previousExpense) {
       return 'Você gastou mais do que no período anterior.';
     }
-
     if (currentExpense < previousExpense) {
       return 'Você gastou menos do que no período anterior.';
     }
-
     return 'Seus gastos ficaram iguais ao período anterior.';
   }
 
@@ -348,9 +321,7 @@ class FinanceStore extends ChangeNotifier {
     final index = _transactions.indexWhere(
       (transaction) => transaction.id == updatedTransaction.id,
     );
-
     if (index == -1) return;
-
     _transactions[index] = updatedTransaction;
     await _repository.saveAll(_transactions);
     notifyListeners();
