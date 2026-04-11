@@ -239,6 +239,15 @@ class BodyCareOverview {
   }
 }
 
+enum BodyCareBiologicalSex { male, female, unknown }
+
+class BodyCareReferenceResult {
+  const BodyCareReferenceResult({required this.label, required this.hint});
+
+  final String label;
+  final String hint;
+}
+
 class BodyCareService {
   static const List<String> goalOptions = [
     'Emagrecer',
@@ -562,6 +571,21 @@ class BodyCareService {
     return age < 0 ? null : age;
   }
 
+  Future<BodyCareBiologicalSex> _loadBiologicalSex() async {
+    final prefs = await _prefs();
+    final uid = _uid();
+
+    final raw = (prefs.getString('$uid:gender') ?? '').trim().toLowerCase();
+
+    if (raw.contains('mulher') || raw.contains('femin')) {
+      return BodyCareBiologicalSex.female;
+    }
+    if (raw.contains('homem') || raw.contains('masc')) {
+      return BodyCareBiologicalSex.male;
+    }
+    return BodyCareBiologicalSex.unknown;
+  }
+
   double? calculateBmi({required double? weightKg, required double? heightCm}) {
     if (weightKg == null || heightCm == null || heightCm <= 0) return null;
     final h = heightCm / 100.0;
@@ -578,30 +602,59 @@ class BodyCareService {
     return 'Obesidade';
   }
 
-  ({String label, String hint}) referenceWeightInfo({
+  BodyCareReferenceResult _referenceWeightInfo({
     required double? heightCm,
     required int? ageYears,
+    required BodyCareBiologicalSex sex,
+    required double? currentWeightKg,
   }) {
     if (heightCm == null || heightCm <= 0) {
-      return (
+      return const BodyCareReferenceResult(
         label: '--',
-        hint: 'Preencha sua altura para liberar a referência corporal.',
+        hint: 'Preencha sua altura para liberar a faixa de referência.',
       );
     }
+
     if (ageYears != null && ageYears < 18) {
-      return (
+      return const BodyCareReferenceResult(
         label: 'Em desenvolvimento',
         hint:
-            'Na adolescência, o foco principal é evolução de hábitos, energia, sono e acompanhamento responsável.',
+            'Como você ainda está em fase de crescimento, use esta área mais para acompanhar hábitos, energia e evolução do dia a dia.',
       );
     }
-    final h = heightCm / 100.0;
-    final min = 18.5 * h * h;
-    final max = 24.9 * h * h;
-    return (
-      label: '${min.toStringAsFixed(0)}–${max.toStringAsFixed(0)} kg',
-      hint: 'Faixa de referência geral para adulto pela altura.',
-    );
+
+    final meters = heightCm / 100.0;
+    final minKg = 18.5 * meters * meters;
+    final maxKg = 24.9 * meters * meters;
+
+    final minLabel = minKg.toStringAsFixed(1);
+    final maxLabel = maxKg.toStringAsFixed(1);
+
+    String hint =
+        'Faixa de referência para sua altura. Use isso como noção geral de saúde, não como cobrança estética.';
+
+    if (currentWeightKg != null) {
+      if (currentWeightKg < minKg) {
+        hint =
+            'Seu peso atual está abaixo dessa faixa de referência. Vale observar energia, alimentação e acompanhamento de saúde.';
+      } else if (currentWeightKg > maxKg) {
+        hint =
+            'Seu peso atual está acima dessa faixa de referência. O foco principal deve ser constância em comida, treino, sono e rotina.';
+      } else {
+        hint =
+            'Seu peso atual está dentro da faixa de referência para sua altura. O foco agora pode ser qualidade de rotina e composição corporal.';
+      }
+    }
+
+    if (sex == BodyCareBiologicalSex.female) {
+      hint +=
+          ' O corpo feminino também oscila com ciclo, retenção e fase do mês.';
+    } else if (sex == BodyCareBiologicalSex.male) {
+      hint +=
+          ' No corpo masculino, sono, rotina e constância influenciam bastante a evolução.';
+    }
+
+    return BodyCareReferenceResult(label: '$minLabel–$maxLabel kg', hint: hint);
   }
 
   int focusScore(BodyCareEntry entry) {
@@ -701,12 +754,16 @@ class BodyCareService {
     final items = await loadRecentEntries(days: 30);
     final birthDate = await _loadBirthDate();
     final ageYears = _ageFromBirthDate(birthDate, DateTime.now());
+    final sex = await _loadBiologicalSex();
 
     if (items.isEmpty) {
-      final ref = referenceWeightInfo(
+      final ref = _referenceWeightInfo(
         heightCm: profile.heightCm,
         ageYears: ageYears,
+        sex: sex,
+        currentWeightKg: null,
       );
+
       return BodyCareOverview.empty().copyWith(
         bmi: calculateBmi(weightKg: null, heightCm: profile.heightCm),
         bmiLabel: bmiLabel(null, ageYears: ageYears),
@@ -719,12 +776,14 @@ class BodyCareService {
 
     final latest = items.first.value;
     final today = dayOnly(DateTime.now());
+
     final weekItems = items
         .where((e) => today.difference(e.key).inDays < 7)
         .toList();
 
     int streak = 0;
     DateTime? expected;
+
     for (final pair in items) {
       final day = pair.key;
       final entry = pair.value;
@@ -743,6 +802,7 @@ class BodyCareService {
         .map((e) => e.value.food)
         .whereType<int>()
         .toList();
+
     final weeklyTrainingValues = weekItems
         .map((e) => e.value.training)
         .whereType<int>()
@@ -751,6 +811,7 @@ class BodyCareService {
     final weeklyAverageFood = weeklyFoodValues.isEmpty
         ? null
         : weeklyFoodValues.reduce((a, b) => a + b) / weeklyFoodValues.length;
+
     final weeklyAverageTraining = weeklyTrainingValues.isEmpty
         ? null
         : weeklyTrainingValues.reduce((a, b) => a + b) /
@@ -760,8 +821,10 @@ class BodyCareService {
         .map((e) => e.value.weightKg)
         .whereType<double>()
         .toList();
+
     final latestWeight = weights.isNotEmpty ? weights.first : null;
     final olderWeight = weights.length >= 2 ? weights.last : null;
+
     final weightDelta = (latestWeight != null && olderWeight != null)
         ? double.parse((latestWeight - olderWeight).toStringAsFixed(1))
         : null;
@@ -770,9 +833,12 @@ class BodyCareService {
       weightKg: latestWeight,
       heightCm: profile.heightCm,
     );
-    final ref = referenceWeightInfo(
+
+    final ref = _referenceWeightInfo(
       heightCm: profile.heightCm,
       ageYears: ageYears,
+      sex: sex,
+      currentWeightKg: latestWeight,
     );
 
     return BodyCareOverview(
