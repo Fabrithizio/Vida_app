@@ -62,7 +62,7 @@ class VoiceCommandRouter {
   }
 
   Future<VoiceCommandResult> handle(String transcript) async {
-    final original = transcript.trim();
+    final original = _stripWakeWords(transcript).trim();
     if (original.isEmpty) {
       return const VoiceCommandResult(
         message: 'Não entendi. Tente de novo.',
@@ -421,7 +421,7 @@ class VoiceCommandRouter {
 
     text = text.replaceFirst(
       RegExp(
-        r'^\s*(coloca|colocar|adiciona|adicionar|bota|botar|poe|põe)\s+',
+        r'^\s*(coloca|colocar|adiciona|adicionar|bota|botar|poe|põe|anota|anotar)\s+',
         caseSensitive: false,
       ),
       '',
@@ -429,40 +429,123 @@ class VoiceCommandRouter {
 
     text = text.replaceAll(
       RegExp(
-        r'\s+(na|pra|para)\s+lista(?:\s+de\s+compras|\s+do\s+mercado)?\s*$|\s+nas\s+compras\s*$|\s+de\s+compras\s*$|\s+na\s+lista\s*$|\s+lista\s+de\s+compras\s*$|\s+na\s+lista\s+de\s+compras\s*$',
+        r'\b(na|no|pra|para)\s+lista(\s+de\s+compras|\s+do\s+mercado)?\b',
         caseSensitive: false,
       ),
-      '',
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(r'\blista\s+de\s+compras\b', caseSensitive: false),
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(r'\blista\b|\bcompras\b|\bmercado\b', caseSensitive: false),
+      ' ',
     );
 
-    text = text.replaceAll(RegExp(r'\s+e\s+', caseSensitive: false), ',');
+    text = text.replaceAll(
+      RegExp(r'\s+(e|mais)\s+', caseSensitive: false),
+      ',',
+    );
     text = text.replaceAll(';', ',');
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     final rawParts = text
         .split(',')
+        .expand(_expandShoppingSegment)
         .map(_sanitizeShoppingItem)
         .where((e) => e.isNotEmpty)
         .toList();
 
-    return rawParts;
+    final seen = <String>{};
+    final unique = <String>[];
+    for (final item in rawParts) {
+      final key = _normalize(item);
+      if (key.isEmpty || seen.contains(key)) continue;
+      seen.add(key);
+      unique.add(item);
+    }
+    return unique;
+  }
+
+  Iterable<String> _expandShoppingSegment(String raw) sync* {
+    final text = raw.trim();
+    if (text.isEmpty) return;
+
+    final words = text
+        .split(RegExp(r'\s+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    const joinerWords = {
+      'de',
+      'da',
+      'do',
+      'das',
+      'dos',
+      'em',
+      'para',
+      'pra',
+      'com',
+      'sem',
+      'integral',
+      'light',
+      'zero',
+      'po',
+      'pó',
+      'natural',
+      'desnatado',
+      'limpeza',
+      'louca',
+      'louça',
+      'banho',
+      'rosto',
+      'cabelo',
+      'dente',
+    };
+
+    final shouldSplitIntoSingles =
+        words.length >= 2 &&
+        words.length <= 4 &&
+        !words.any((w) => joinerWords.contains(_normalize(w)));
+
+    if (shouldSplitIntoSingles) {
+      for (final word in words) {
+        yield word;
+      }
+      return;
+    }
+
+    yield text;
   }
 
   String _sanitizeShoppingItem(String raw) {
     var text = raw.trim();
     text = text.replaceAll(
       RegExp(
-        r'^(coloca|colocar|adiciona|adicionar|bota|botar|poe|põe)\s+',
+        r'^(coloca|colocar|adiciona|adicionar|bota|botar|poe|põe|anota|anotar)\s+',
         caseSensitive: false,
       ),
       '',
     );
     text = text.replaceAll(
-      RegExp(r'\b(lista|compras)\b', caseSensitive: false),
+      RegExp(
+        r'\b(lista\s+de\s+compras|lista|compras|mercado)\b',
+        caseSensitive: false,
+      ),
       '',
     );
     text = text.replaceAll(RegExp(r'^r\s+', caseSensitive: false), '');
     text = text.replaceAll(
-      RegExp(r'^(o|a|os|as|um|uma)\s+', caseSensitive: false),
+      RegExp(
+        r'^(na|no|de|do|da|pra|para|o|a|os|as|um|uma)\s+',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    text = text.replaceAll(
+      RegExp(r'\s+(na|no|de|do|da|pra|para)$', caseSensitive: false),
       '',
     );
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -474,6 +557,7 @@ class VoiceCommandRouter {
     return text.contains('tarefa da casa') ||
         text.contains('tarefas da casa') ||
         text.contains('afazer') ||
+        text.contains('afazeres') ||
         text.contains('a fazer') ||
         text.contains('em casa') ||
         text.contains('lavar') ||
@@ -494,18 +578,34 @@ class VoiceCommandRouter {
       ),
       '',
     );
-    text = text.replaceAll(
-      RegExp(r'(nas|na|pra|para|em|de)', caseSensitive: false),
-      ' ',
-    );
+
     text = text.replaceAll(
       RegExp(
-        r'(tarefas?\s+da\s+casa|tarefa\s+da\s+casa|tarefas?|casa)',
+        r'\b(nas|na|nos|no|pra|para|em)\s+(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|casa)\b',
         caseSensitive: false,
       ),
       ' ',
     );
+    text = text.replaceAll(
+      RegExp(
+        r'\b(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    text = text.replaceAll(
+      RegExp(r'^(na|no|nas|nos|pra|para|em|de)\s+', caseSensitive: false),
+      '',
+    );
+    text = text
+        .replaceAll(
+          RegExp(r'\s+(na|no|nas|nos|pra|para|em|de)$', caseSensitive: false),
+          '',
+        )
+        .trim();
+
     if (text.isEmpty) return '';
     if (RegExp(
       r'^(adiciona|adicionar|coloca|colocar|bota|botar|anota|anotar)$',
@@ -744,7 +844,7 @@ class VoiceCommandRouter {
     final source = text.toLowerCase();
 
     final moneyContext = RegExp(
-      r'(\d[\d\s\.,]*\d|\d)\s*(reais|real|r\$)?',
+      r'(?:r\$\s*)?(\d[\d\s\.,]*\d|\d)\s*(reais|real)?',
       caseSensitive: false,
     );
 
@@ -754,17 +854,117 @@ class VoiceCommandRouter {
         .where((m) => m.trim().isNotEmpty)
         .toList();
 
-    if (matches.isEmpty) return null;
-
-    matches.sort((a, b) => b.length.compareTo(a.length));
-
-    for (final raw in matches) {
-      final normalized = _normalizeAmountString(raw);
-      final value = double.tryParse(normalized);
-      if (value != null) return value;
+    if (matches.isNotEmpty) {
+      matches.sort((a, b) => b.length.compareTo(a.length));
+      for (final raw in matches) {
+        final normalized = _normalizeAmountString(raw);
+        final value = double.tryParse(normalized);
+        if (value != null && value > 0) return value;
+      }
     }
 
-    return null;
+    return _extractAmountFromWords(source);
+  }
+
+  double? _extractAmountFromWords(String text) {
+    final normalized = _normalize(text);
+    if (normalized.isEmpty) return null;
+
+    final tokens = normalized.split(RegExp(r'\s+'));
+    const units = {
+      'zero': 0,
+      'um': 1,
+      'uma': 1,
+      'dois': 2,
+      'duas': 2,
+      'tres': 3,
+      'quatro': 4,
+      'cinco': 5,
+      'seis': 6,
+      'sete': 7,
+      'oito': 8,
+      'nove': 9,
+      'dez': 10,
+      'onze': 11,
+      'doze': 12,
+      'treze': 13,
+      'catorze': 14,
+      'quatorze': 14,
+      'quinze': 15,
+      'dezesseis': 16,
+      'dezessete': 17,
+      'dezoito': 18,
+      'dezenove': 19,
+    };
+    const tens = {
+      'vinte': 20,
+      'trinta': 30,
+      'quarenta': 40,
+      'cinquenta': 50,
+      'sessenta': 60,
+      'setenta': 70,
+      'oitenta': 80,
+      'noventa': 90,
+    };
+    const hundreds = {
+      'cem': 100,
+      'cento': 100,
+      'duzentos': 200,
+      'trezentos': 300,
+      'quatrocentos': 400,
+      'quinhentos': 500,
+      'seiscentos': 600,
+      'setecentos': 700,
+      'oitocentos': 800,
+      'novecentos': 900,
+    };
+
+    int? best;
+    for (var i = 0; i < tokens.length; i++) {
+      var total = 0;
+      var current = 0;
+      var consumed = 0;
+
+      for (var j = i; j < tokens.length; j++) {
+        final token = tokens[j];
+        if (token == 'e') {
+          consumed++;
+          continue;
+        }
+        if (units.containsKey(token)) {
+          current += units[token]!;
+          consumed++;
+          continue;
+        }
+        if (tens.containsKey(token)) {
+          current += tens[token]!;
+          consumed++;
+          continue;
+        }
+        if (hundreds.containsKey(token)) {
+          current += hundreds[token]!;
+          consumed++;
+          continue;
+        }
+        if (token == 'mil') {
+          total += (current == 0 ? 1 : current) * 1000;
+          current = 0;
+          consumed++;
+          continue;
+        }
+        if (token == 'reais' || token == 'real') {
+          consumed++;
+          break;
+        }
+        break;
+      }
+
+      final value = total + current;
+      if (consumed > 0 && value > 0) {
+        best = value;
+      }
+    }
+    return best?.toDouble();
   }
 
   String _normalizeAmountString(String raw) {
@@ -963,6 +1163,16 @@ class VoiceCommandRouter {
     final hour = value.hour.toString().padLeft(2, '0');
     final minute = value.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
+  }
+
+  String _stripWakeWords(String text) {
+    return text.replaceFirst(
+      RegExp(
+        r'^\s*(vida|vi\s*da|assistente|amigo|ei)\s*[,:-]?\s+',
+        caseSensitive: false,
+      ),
+      '',
+    );
   }
 
   String _normalize(String text) {

@@ -31,6 +31,7 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   bool _initializing = true;
   bool _processedThisCycle = false;
   bool _autoStartScheduled = false;
+  String _bestTranscript = '';
 
   String _partial = '';
   String _finalText = '';
@@ -74,7 +75,7 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
     if (_autoStartScheduled) return;
     _autoStartScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future<void>.delayed(const Duration(milliseconds: 180));
+      await Future<void>.delayed(const Duration(milliseconds: 120));
       if (!mounted) return;
       _autoStartScheduled = false;
       if (!_listening && !_processing && _pendingConfirmation == null) {
@@ -87,14 +88,18 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
     if (!mounted) return;
     final done = status == 'done' || status == 'notListening';
     if (done && _listening && !_processing && !_processedThisCycle) {
-      _stopAndHandle(fromStatus: true);
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        _stopAndHandle(fromStatus: true);
+      });
     }
   }
 
   Future<void> _start() async {
     if (!_available) {
       setState(() {
-        _resultMessage = 'Microfone indisponível. Veja a permissão e tente de novo.';
+        _resultMessage =
+            'Microfone indisponível. Veja a permissão e tente de novo.';
       });
       return;
     }
@@ -108,6 +113,7 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       _lastWords = '';
       _resultMessage = null;
       _pendingConfirmation = null;
+      _bestTranscript = '';
     });
 
     await _speech.listen(
@@ -115,20 +121,24 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       listenMode: ListenMode.dictation,
       partialResults: true,
       listenOptions: SpeechListenOptions(cancelOnError: true),
-      pauseFor: const Duration(milliseconds: 2400),
-      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(milliseconds: 3800),
+      listenFor: const Duration(seconds: 45),
       onResult: _onSpeechResult,
     );
   }
 
   void _onSpeechResult(SpeechRecognitionResult result) {
     if (!mounted) return;
+    final words = result.recognizedWords.trim();
     setState(() {
-      _lastWords = result.recognizedWords;
+      if (words.length >= _bestTranscript.length) {
+        _bestTranscript = words;
+      }
+      _lastWords = words;
       if (result.finalResult) {
-        _finalText = result.recognizedWords;
+        _finalText = words;
       } else {
-        _partial = result.recognizedWords;
+        _partial = words;
       }
     });
   }
@@ -212,6 +222,9 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
     final finalText = _finalText.trim();
     if (finalText.isNotEmpty) return finalText;
 
+    final best = _bestTranscript.trim();
+    if (best.isNotEmpty) return best;
+
     final partial = _partial.trim();
     if (partial.isNotEmpty) return partial;
 
@@ -227,18 +240,18 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   @override
   Widget build(BuildContext context) {
     final examples =
-    '• “agenda treino amanhã às 7 até 8”\n'
-    '• “coloca arroz, leite e ovos na lista”\n'
-    '• “adiciona lavar banheiro nas tarefas da casa”\n'
+        '• “agenda treino amanhã às 7 até 8”\n'
+        '• “coloca arroz, leite e ovos na lista”\n'
+        '• “adiciona lavar banheiro nas tarefas da casa”\n'
         '• “recebi salário 1200 reais”';
 
     final title = _initializing
         ? 'Abrindo microfone…'
         : _listening
-            ? 'Ouvindo…'
-            : _processing
-                ? 'Processando…'
-                : 'Assistente de voz';
+        ? 'Ouvindo…'
+        : _processing
+        ? 'Processando…'
+        : 'Assistente de voz';
 
     final heardText = _pickBestTranscript();
     final contentText = heardText.isNotEmpty ? heardText : examples;
@@ -265,7 +278,7 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
               title: Text(title),
               subtitle: Text(
                 _available
-                    ? 'pt-BR • abriu, falou, ele faz'
+                    ? 'pt-BR • abriu, falou, ele faz sozinho'
                     : 'Reconhecimento indisponível',
               ),
               trailing: IconButton(
@@ -300,7 +313,8 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
                               onPressed: _processing ? null : _confirmPending,
                               icon: const Icon(Icons.check),
                               label: Text(
-                                _pendingConfirmation!.confirmLabel ?? 'Confirmar',
+                                _pendingConfirmation!.confirmLabel ??
+                                    'Confirmar',
                               ),
                             ),
                           ),
@@ -322,27 +336,28 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _initializing
-                        ? null
-                        : (_listening
-                            ? () => _stopAndHandle()
-                            : (_processing ? null : _start)),
-                    icon: Icon(_listening ? Icons.stop : Icons.refresh),
-                    label: Text(
-                      _listening
-                          ? 'Parar agora'
-                          : _initializing
-                              ? 'Abrindo...'
-                              : 'Ouvir de novo',
+            if (_pendingConfirmation == null)
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _initializing || _processing
+                          ? null
+                          : (_listening ? () => _stopAndHandle() : _start),
+                      icon: Icon(
+                        _listening ? Icons.hearing_rounded : Icons.refresh,
+                      ),
+                      label: Text(
+                        _listening
+                            ? 'Ouvindo… pode falar'
+                            : _initializing
+                            ? 'Abrindo...'
+                            : 'Ouvir de novo',
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
       ),
