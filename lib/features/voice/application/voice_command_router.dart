@@ -2,12 +2,12 @@
 // FILE: lib/features/voice/application/voice_command_router.dart
 //
 // O que faz:
-// - entende comandos por voz de compras, agenda, tarefas da casa e finanças
-// - para finanças, sempre pede confirmação antes de salvar
-// - permite corrigir/remover o último lançamento financeiro por voz
+// - entende comandos por voz para compras, tarefas da casa, agenda e finanças
+// - aceita fala mais natural e informal
+// - para finanças, sempre pede confirmação antes de salvar/editar/remover
+// - devolve mensagens curtas para o hub de voz mostrar ao usuário
 // ============================================================================
 
-import 'package:flutter/material.dart';
 import 'package:vida_app/data/models/timeline_block.dart';
 import 'package:vida_app/features/finance/data/local/finance_seed_data.dart';
 import 'package:vida_app/features/finance/data/models/finance_category.dart';
@@ -72,7 +72,7 @@ class VoiceCommandRouter {
 
     final normalized = _normalize(text);
 
-    final financeRemove = await _tryFinanceRemove(normalized);
+    final financeRemove = await _tryFinanceRemove(text, normalized);
     if (financeRemove != null) return financeRemove;
 
     final financeUpdate = await _tryFinanceUpdate(text, normalized);
@@ -81,53 +81,148 @@ class VoiceCommandRouter {
     final financeCreate = await _tryFinanceCreate(text, normalized);
     if (financeCreate != null) return financeCreate;
 
-    if (_looksLikeShoppingAdd(normalized)) {
-      final items = _extractShoppingItems(text);
-      if (items.isEmpty) {
-        return const VoiceCommandResult(
-          message: 'Fale os itens depois de “coloca na lista…”',
-          handled: false,
-        );
-      }
+    final shoppingResult = await _tryShoppingAdd(text, normalized);
+    if (shoppingResult != null) return shoppingResult;
 
-      await shopping.addMany(items);
-      return VoiceCommandResult(
-        message: 'Adicionei ${items.length} item(ns) na lista.',
-      );
-    }
+    final homeTaskResult = await _tryHomeTaskAdd(text, normalized);
+    if (homeTaskResult != null) return homeTaskResult;
 
-    final homeTask = _tryParseHomeTask(text, normalized);
-    if (homeTask != null && homeTasks != null) {
-      await homeTasks!.add(
-        title: homeTask.title,
-        effort: homeTask.effort,
-        category: homeTask.category,
-        area: homeTask.area,
-      );
-      return VoiceCommandResult(
-        message: 'Adicionei "${homeTask.title}" nas tarefas da casa.',
-      );
-    }
-
-    final event = _tryParseEvent(text, normalized);
-    if (event != null) {
-      if (timeline.hasConflict(event)) {
-        return const VoiceCommandResult(
-          message:
-              'Esse horário bate com outro compromisso. Ajuste a fala e tente de novo.',
-          handled: false,
-        );
-      }
-      await timeline.add(event);
-      return VoiceCommandResult(
-        message: 'Evento "${event.title}" criado na agenda.',
-      );
-    }
+    final eventResult = await _tryEventAdd(text, normalized);
+    if (eventResult != null) return eventResult;
 
     return const VoiceCommandResult(
       message:
           'Ainda não entendi esse comando. Tente compras, agenda, tarefas da casa ou finanças.',
       handled: false,
+    );
+  }
+
+  Future<VoiceCommandResult?> _tryShoppingAdd(
+    String original,
+    String normalized,
+  ) async {
+    if (!_looksLikeShoppingAdd(normalized)) return null;
+
+    final items = _extractShoppingItems(original);
+    if (items.isEmpty) {
+      return const VoiceCommandResult(
+        message: 'Fale os itens depois de “coloca na lista…”.',
+        handled: false,
+      );
+    }
+
+    await shopping.addMany(items);
+    if (items.length == 1) {
+      return VoiceCommandResult(message: 'Adicionei ${items.first} na lista.');
+    }
+
+    return VoiceCommandResult(
+      message: 'Adicionei ${items.length} itens na lista.',
+    );
+  }
+
+  Future<VoiceCommandResult?> _tryHomeTaskAdd(
+    String original,
+    String normalized,
+  ) async {
+    if (homeTasks == null) return null;
+    if (!_looksLikeHomeTask(normalized)) return null;
+
+    final title = _extractHomeTaskTitle(original);
+    if (title.isEmpty) {
+      return const VoiceCommandResult(
+        message:
+            'Para tarefas da casa, fale o que você quer adicionar. Ex.: “adiciona lavar banheiro nas tarefas da casa”.',
+        handled: false,
+      );
+    }
+
+    final effort = _homeTaskEffortFromText(normalized);
+    final category = _homeTaskCategoryFromText(normalized);
+    final area = _homeTaskAreaFromText(normalized);
+
+    await homeTasks!.add(
+      title: title,
+      effort: effort,
+      category: category,
+      area: area,
+    );
+
+    return VoiceCommandResult(
+      message: 'Adicionei "$title" nas tarefas da casa.',
+    );
+  }
+
+  Future<VoiceCommandResult?> _tryEventAdd(
+    String original,
+    String normalized,
+  ) async {
+    if (!_looksLikeEvent(normalized)) return null;
+
+    final date = _extractDate(normalized);
+    if (date == null) {
+      return const VoiceCommandResult(
+        message:
+            'Para agendar, fale também o dia. Ex.: “agenda treino amanhã às 7”.',
+        handled: false,
+      );
+    }
+
+    final timeRange = _extractTimeRange(normalized);
+    if (timeRange == null) {
+      return const VoiceCommandResult(
+        message:
+            'Para agendar, fale também o horário. Ex.: “agenda treino amanhã às 7” ou “das 14 às 16”.',
+        handled: false,
+      );
+    }
+
+    final title = _extractEventTitle(original);
+    if (title.isEmpty) {
+      return const VoiceCommandResult(
+        message:
+            'Fale também o nome do compromisso. Ex.: “agenda dentista amanhã às 15”.',
+        handled: false,
+      );
+    }
+
+    final start = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      timeRange.startHour,
+      timeRange.startMinute,
+    );
+    final end = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      timeRange.endHour,
+      timeRange.endMinute,
+    );
+
+    final event = TimelineBlock(
+      id: 'voice_${DateTime.now().microsecondsSinceEpoch}',
+      type: _timelineTypeFromText(_normalize(title)),
+      title: title,
+      start: start,
+      end: end,
+      notes: 'Criado por voz',
+      reminderMinutes: 10,
+    );
+
+    if (timeline.hasConflict(event)) {
+      return const VoiceCommandResult(
+        message:
+            'Esse horário bate com outro compromisso. Ajuste a fala e tente de novo.',
+        handled: false,
+      );
+    }
+
+    await timeline.add(event);
+    return VoiceCommandResult(
+      message:
+          'Evento "$title" criado para ${_formatDate(date)} às ${_formatTime(start)}.',
     );
   }
 
@@ -151,6 +246,7 @@ class VoiceCommandRouter {
     final category = _categoryFromText(normalized, isIncome: isIncome);
     final date = _extractDate(normalized) ?? DateTime.now();
     final title = _buildFinanceTitle(normalized, category, isIncome: isIncome);
+
     final summary = _financeSummary(
       title: title,
       amount: amount,
@@ -169,7 +265,7 @@ class VoiceCommandRouter {
       onConfirm: () async {
         final store = await _financeStore();
         final tx = FinanceTransaction(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          id: 'tx_voice_${DateTime.now().microsecondsSinceEpoch}',
           title: title,
           amount: amount,
           date: date,
@@ -195,7 +291,7 @@ class VoiceCommandRouter {
     String original,
     String normalized,
   ) async {
-    if (!(normalized.contains('ultimo') || normalized.contains('último'))) {
+    if (!(normalized.contains('ultimo') || normalized.contains('ultim'))) {
       return null;
     }
     if (!(normalized.contains('corrig') ||
@@ -234,7 +330,7 @@ class VoiceCommandRouter {
         newTitle == null) {
       return const VoiceCommandResult(
         message:
-            'Para corrigir o último lançamento, diga o que quer mudar. Ex.: “corrige o último gasto para 25” ou “o último foi no crédito”.',
+            'Para corrigir o último lançamento, diga o que quer mudar. Ex.: “corrige o último gasto para 25”.',
         handled: false,
       );
     }
@@ -273,11 +369,14 @@ class VoiceCommandRouter {
     );
   }
 
-  Future<VoiceCommandResult?> _tryFinanceRemove(String normalized) async {
+  Future<VoiceCommandResult?> _tryFinanceRemove(
+    String original,
+    String normalized,
+  ) async {
     if (!((normalized.contains('remove') ||
             normalized.contains('apaga') ||
             normalized.contains('exclui')) &&
-        (normalized.contains('ultimo') || normalized.contains('último')))) {
+        (normalized.contains('ultimo') || normalized.contains('ultim')))) {
       return null;
     }
 
@@ -295,7 +394,7 @@ class VoiceCommandRouter {
 
     return VoiceCommandResult(
       message:
-          'Entendi: remover o último lançamento "${last.title}" no valor de ${_formatMoney(last.amount)}. Confirmar?',
+          'Entendi: remover o último lançamento "${last.title}" no valor de ${_formatMoney(last.amount)}.',
       handled: false,
       requiresConfirmation: true,
       confirmLabel: 'Remover',
@@ -309,194 +408,342 @@ class VoiceCommandRouter {
     );
   }
 
-  bool _looksLikeFinance(String text) {
-    return text.contains('gastei') ||
-        text.contains('gasto') ||
-        text.contains('recebi') ||
-        text.contains('ganhei') ||
-        text.contains('entrou') ||
-        text.contains('entrada') ||
-        text.contains('saída') ||
-        text.contains('saida') ||
-        text.contains('paguei') ||
-        text.contains('coloque') ||
-        text.contains('coloca') ||
-        text.contains('lança') ||
-        text.contains('lanca') ||
-        text.contains('adiciona') ||
-        text.contains('adicionar') ||
-        text.contains('pix') ||
-        text.contains('crédito') ||
-        text.contains('credito') ||
-        text.contains('débito') ||
-        text.contains('debito') ||
-        text.contains('cartão') ||
-        text.contains('cartao') ||
-        text.contains('reais');
+  bool _looksLikeShoppingAdd(String normalized) {
+    final hasVerb =
+        normalized.contains('coloca') ||
+        normalized.contains('adic') ||
+        normalized.contains('bota') ||
+        normalized.contains('poe ') ||
+        normalized.contains('põe ');
+    final hasList =
+        normalized.contains('lista') || normalized.contains('compr');
+    return hasVerb && hasList;
   }
 
-  bool _looksLikeIncome(String text) {
-    return text.contains('recebi') ||
-        text.contains('ganhei') ||
-        text.contains('caiu') ||
-        text.contains('entrou') ||
-        text.contains('entrada') ||
-        text.contains('salario') ||
-        text.contains('salário');
+  bool _looksLikeHomeTask(String normalized) {
+    final hasVerb =
+        normalized.contains('adicion') ||
+        normalized.contains('coloca') ||
+        normalized.contains('bota') ||
+        normalized.contains('cria') ||
+        normalized.contains('anota');
+    final hasContext =
+        normalized.contains('tarefa') ||
+        normalized.contains('afazer') ||
+        normalized.contains('a fazer') ||
+        normalized.contains('casa') ||
+        normalized.contains('banheiro') ||
+        normalized.contains('cozinha') ||
+        normalized.contains('quarto') ||
+        normalized.contains('lavanderia') ||
+        normalized.contains('sala');
+    return hasVerb && hasContext;
   }
 
-  FinanceEntryType _entryTypeFromText(String text, {required bool isIncome}) {
-    return _entryTypeFromTextOrNull(text, isIncome: isIncome) ??
-        (isIncome ? FinanceEntryType.transferIn : FinanceEntryType.debit);
+  bool _looksLikeEvent(String normalized) {
+    if (normalized.contains('lista') || normalized.contains('compr')) {
+      return false;
+    }
+    if (_looksLikeHomeTask(normalized)) {
+      return false;
+    }
+    return normalized.contains('agenda') ||
+        normalized.contains('agenda ') ||
+        normalized.contains('agendar') ||
+        normalized.contains('marca ') ||
+        normalized.contains('marcar ') ||
+        normalized.contains('cria evento') ||
+        normalized.contains('criar evento') ||
+        normalized.contains('compromisso') ||
+        normalized.contains('reuniao') ||
+        normalized.contains('reuni') ||
+        normalized.contains('consulta') ||
+        normalized.contains('treino');
   }
 
-  FinanceEntryType? _entryTypeFromTextOrNull(
-    String text, {
-    required bool isIncome,
+  bool _looksLikeFinance(String normalized) {
+    return normalized.contains('reais') ||
+        normalized.contains('real') ||
+        normalized.contains('r\$') ||
+        normalized.contains('gastei') ||
+        normalized.contains('recebi') ||
+        normalized.contains('ganhei') ||
+        normalized.contains('entrou') ||
+        normalized.contains('caiu') ||
+        normalized.contains('paguei') ||
+        normalized.contains('comprei') ||
+        normalized.contains('debito') ||
+        normalized.contains('credito') ||
+        normalized.contains('pix') ||
+        normalized.contains('boleto') ||
+        normalized.contains('salario') ||
+        normalized.contains('freela') ||
+        normalized.contains('gasolina') ||
+        normalized.contains('mercado') ||
+        normalized.contains('aluguel');
+  }
+
+  bool _looksLikeIncome(String normalized) {
+    return normalized.contains('recebi') ||
+        normalized.contains('ganhei') ||
+        normalized.contains('entrou') ||
+        normalized.contains('caiu') ||
+        normalized.contains('deposit') ||
+        normalized.contains('salario') ||
+        normalized.contains('pagamento') ||
+        normalized.contains('freela') ||
+        normalized.contains('freelance');
+  }
+
+  List<String> _extractShoppingItems(String original) {
+    var working = original.trim();
+
+    working = working.replaceAll(
+      RegExp(
+        r'^\s*(coloca|coloque|adiciona|adicionar|bota|botar|poe|põe)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    working = working.replaceAll(
+      RegExp(
+        r'\b(na lista( de compras)?|na compra|nas compras|de compras)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    working = working.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (working.isEmpty) return const [];
+
+    final pieces = working
+        .split(RegExp(r'\s*,\s*|\s+e\s+', caseSensitive: false))
+        .map(_sanitizeListItem)
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    return pieces;
+  }
+
+  String _sanitizeListItem(String raw) {
+    var text = raw.trim();
+    text = text.replaceAll(RegExp(r'^[•\-–—]+\s*'), '');
+    text = text.replaceAll(RegExp(r'^(r|erre)\s+', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'^de\s+', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'^um\s+', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'^uma\s+', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'\.$'), '');
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return text;
+  }
+
+  String _extractHomeTaskTitle(String original) {
+    var title = original.trim();
+    title = title.replaceAll(
+      RegExp(
+        r'^\s*(adiciona|adicionar|coloca|coloque|bota|botar|cria|criar|anota|anotar)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    title = title.replaceAll(
+      RegExp(
+        r'\b(nas tarefas da casa|na tarefa da casa|na lista da casa|em casa|pra casa|para casa|nos afazeres de casa|nos afazeres da casa|nas tarefas|nos afazeres)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    title = title.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (title.isEmpty) return '';
+    return _capitalize(title);
+  }
+
+  HomeTaskEffort _homeTaskEffortFromText(String normalized) {
+    if (normalized.contains('consert') ||
+        normalized.contains('organiza guarda') ||
+        normalized.contains('faxina') ||
+        normalized.contains('limpa o banheiro inteiro') ||
+        normalized.contains('limpar o banheiro') ||
+        normalized.contains('pint') ||
+        normalized.contains('vazamento')) {
+      return HomeTaskEffort.major;
+    }
+    return HomeTaskEffort.quick;
+  }
+
+  HomeTaskCategory _homeTaskCategoryFromText(String normalized) {
+    if (normalized.contains('consert') ||
+        normalized.contains('troca') ||
+        normalized.contains('vazamento') ||
+        normalized.contains('reparo')) {
+      return HomeTaskCategory.maintenance;
+    }
+    if (normalized.contains('organiza') ||
+        normalized.contains('guardar') ||
+        normalized.contains('arruma') ||
+        normalized.contains('arrumar')) {
+      return HomeTaskCategory.organization;
+    }
+    return HomeTaskCategory.cleaning;
+  }
+
+  HomeTaskArea _homeTaskAreaFromText(String normalized) {
+    if (normalized.contains('cozinha')) return HomeTaskArea.kitchen;
+    if (normalized.contains('banheiro')) return HomeTaskArea.bathroom;
+    if (normalized.contains('quarto')) return HomeTaskArea.bedroom;
+    if (normalized.contains('sala')) return HomeTaskArea.livingRoom;
+    if (normalized.contains('lavanderia') ||
+        normalized.contains('lavar roupa')) {
+      return HomeTaskArea.laundry;
+    }
+    if (normalized.contains('quintal') || normalized.contains('garagem')) {
+      return HomeTaskArea.outdoor;
+    }
+    if (normalized.contains('casa toda')) return HomeTaskArea.wholeHouse;
+    return HomeTaskArea.other;
+  }
+
+  String _extractEventTitle(String original) {
+    var title = original.trim();
+    title = title.replaceAll(
+      RegExp(
+        r'^\s*(agenda|agendar|marca|marcar|cria|criar|anota|anotar)\b',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    title = title.replaceAll(
+      RegExp(r'\b(evento|compromisso)\b', caseSensitive: false),
+      '',
+    );
+    title = title.replaceAll(
+      RegExp(
+        r'\b(hoje|amanha|amanhã|depois de amanha|depois de amanhã|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b.*$',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    title = title.replaceAll(
+      RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b.*$', caseSensitive: false),
+      '',
+    );
+    title = title.replaceAll(
+      RegExp(r'\b(as|às|das)\b.*$', caseSensitive: false),
+      '',
+    );
+    title = title.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _capitalize(title);
+  }
+
+  _ParsedTimeRange? _extractTimeRange(String normalized) {
+    final explicitRange = RegExp(
+      r'\b(?:das\s+)?(\d{1,2})(?::|h)?(\d{0,2})\s*(?:ate|até|as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (explicitRange != null) {
+      final sh = int.tryParse(explicitRange.group(1) ?? '');
+      final sm = _minuteValue(explicitRange.group(2));
+      final eh = int.tryParse(explicitRange.group(3) ?? '');
+      final em = _minuteValue(explicitRange.group(4));
+      if (sh != null && eh != null) {
+        final startHour = _adjustHourByPartOfDay(normalized, sh);
+        final endHour = _adjustHourByPartOfDay(normalized, eh, isEnd: true);
+        return _ParsedTimeRange(startHour, sm, endHour, em);
+      }
+    }
+
+    final one = RegExp(
+      r'\b(?:as|às|a|das)\s*(\d{1,2})(?::|h)?(\d{0,2})',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (one != null) {
+      final h = int.tryParse(one.group(1) ?? '');
+      final m = _minuteValue(one.group(2));
+      if (h != null) {
+        final startHour = _adjustHourByPartOfDay(normalized, h);
+        return _ParsedTimeRange(startHour, m, startHour + 1, m);
+      }
+    }
+
+    final simple = RegExp(
+      r'\b(\d{1,2})\s*(da manha|da manhã|da tarde|da noite)\b',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (simple != null) {
+      final h = int.tryParse(simple.group(1) ?? '');
+      if (h != null) {
+        final adjusted = _adjustHourByPartOfDay(normalized, h);
+        return _ParsedTimeRange(adjusted, 0, adjusted + 1, 0);
+      }
+    }
+
+    return null;
+  }
+
+  int _minuteValue(String? raw) {
+    if (raw == null || raw.isEmpty) return 0;
+    return int.tryParse(raw.padRight(2, '0')) ?? 0;
+  }
+
+  int _adjustHourByPartOfDay(
+    String normalized,
+    int hour, {
+    bool isEnd = false,
   }) {
-    if (text.contains('crédito') ||
-        text.contains('credito') ||
-        text.contains('cartão') ||
-        text.contains('cartao')) {
-      return FinanceEntryType.credit;
-    }
-    if (text.contains('débito') || text.contains('debito')) {
-      return FinanceEntryType.debit;
-    }
-    if (text.contains('dinheiro')) {
-      return FinanceEntryType.cash;
-    }
-    if (text.contains('boleto')) {
-      return FinanceEntryType.boleto;
-    }
-    if (text.contains('pix')) {
-      return isIncome ? FinanceEntryType.pixIn : FinanceEntryType.pixOut;
-    }
-    if (text.contains('transfer')) {
-      return isIncome
-          ? FinanceEntryType.transferIn
-          : FinanceEntryType.transferOut;
-    }
-    return null;
+    if (hour == 24) return 23;
+    var result = hour.clamp(0, 23);
+    if (normalized.contains('meio dia')) return 12;
+    if (normalized.contains('meia noite')) return 0;
+    final hasMorning =
+        normalized.contains('manha') || normalized.contains('manhã');
+    final hasAfternoon = normalized.contains('tarde');
+    final hasNight = normalized.contains('noite');
+    if (hasMorning && result == 12) return 0;
+    if ((hasAfternoon || hasNight) && result < 12) result += 12;
+    if (isEnd && result <= 0) return 1;
+    return result.clamp(0, 23);
   }
 
-  FinanceCategory _categoryFromText(String text, {required bool isIncome}) {
-    return _categoryFromTextOrNull(text, isIncome: isIncome) ??
-        FinanceSeedData.getCategoryById(
-          isIncome ? 'other_income' : 'other_expense',
-        );
-  }
-
-  FinanceCategory? _categoryFromTextOrNull(
-    String text, {
-    required bool isIncome,
-  }) {
-    if (isIncome) {
-      if (text.contains('salario') ||
-          text.contains('salário') ||
-          text.contains('pagamento')) {
-        return FinanceSeedData.getCategoryById('salary');
-      }
-      return text.contains('entrada') ||
-              text.contains('recebi') ||
-              text.contains('ganhei')
-          ? FinanceSeedData.getCategoryById('other_income')
-          : null;
-    }
-
-    final map = <String, String>{
-      'gasolina': 'transport',
-      'combust': 'transport',
-      'uber': 'transport',
-      'onibus': 'transport',
-      'ônibus': 'transport',
-      'mercado': 'food',
-      'comida': 'food',
-      'ifood': 'food',
-      'restaurante': 'food',
-      'farmacia': 'health',
-      'farmácia': 'health',
-      'medico': 'health',
-      'médico': 'health',
-      'remedio': 'health',
-      'remédio': 'health',
-      'roupa': 'shopping',
-      'presente': 'shopping',
-      'compras': 'shopping',
-      'shopping': 'shopping',
-      'cinema': 'leisure',
-      'lazer': 'leisure',
-      'jogo': 'leisure',
-      'internet': 'home',
-      'aluguel': 'home',
-      'energia': 'home',
-      'agua': 'home',
-      'água': 'home',
-      'casa': 'home',
-      'curso': 'education',
-      'estudo': 'education',
-      'faculdade': 'education',
-      'escola': 'education',
-    };
-
-    for (final entry in map.entries) {
-      if (text.contains(entry.key)) {
-        return FinanceSeedData.getCategoryById(entry.value);
-      }
-    }
-    return null;
-  }
-
-  double? _extractAmount(String text) {
-    final patterns = [
-      RegExp(r'(\d+[.,]?\d*)\s*reais'),
-      RegExp(r'r\$?\s*(\d+[.,]?\d*)'),
-      RegExp(r'(\d+[.,]?\d*)'),
-    ];
-
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(text);
-      if (match != null) {
-        final value = double.tryParse(match.group(1)!.replaceAll(',', '.'));
-        if (value != null) return value;
-      }
-    }
-    return null;
-  }
-
-  DateTime? _extractDate(String text) {
+  DateTime? _extractDate(String normalized) {
     final now = DateTime.now();
-    if (text.contains('hoje')) return DateTime(now.year, now.month, now.day);
-    if (text.contains('ontem')) {
-      final d = now.subtract(const Duration(days: 1));
-      return DateTime(d.year, d.month, d.day);
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (normalized.contains('depois de amanha') ||
+        normalized.contains('depois de amanhã')) {
+      return today.add(const Duration(days: 2));
     }
-    if (text.contains('amanha') || text.contains('amanhã')) {
-      final d = now.add(const Duration(days: 1));
-      return DateTime(d.year, d.month, d.day);
+    if (normalized.contains('amanha') || normalized.contains('amanhã')) {
+      return today.add(const Duration(days: 1));
+    }
+    if (normalized.contains('hoje')) {
+      return today;
+    }
+    if (normalized.contains('ontem')) {
+      return today.subtract(const Duration(days: 1));
     }
 
     final slash = RegExp(
-      r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?',
-    ).firstMatch(text);
+      r'\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b',
+    ).firstMatch(normalized);
     if (slash != null) {
-      final day = int.tryParse(slash.group(1)!);
-      final month = int.tryParse(slash.group(2)!);
+      final day = int.tryParse(slash.group(1) ?? '');
+      final month = int.tryParse(slash.group(2) ?? '');
       final yearRaw = slash.group(3);
       if (day != null && month != null) {
-        final year = yearRaw == null
-            ? now.year
-            : (yearRaw.length == 2
-                  ? 2000 + int.parse(yearRaw)
-                  : int.parse(yearRaw));
+        var year = now.year;
+        if (yearRaw != null && yearRaw.isNotEmpty) {
+          year = int.tryParse(yearRaw) ?? year;
+          if (year < 100) year += 2000;
+        }
         return DateTime(year, month, day);
       }
     }
 
     final weekdays = <String, int>{
       'segunda': DateTime.monday,
-      'terça': DateTime.tuesday,
       'terca': DateTime.tuesday,
+      'terça': DateTime.tuesday,
       'quarta': DateTime.wednesday,
       'quinta': DateTime.thursday,
       'sexta': DateTime.friday,
@@ -504,36 +751,186 @@ class VoiceCommandRouter {
       'sábado': DateTime.saturday,
       'domingo': DateTime.sunday,
     };
+
     for (final entry in weekdays.entries) {
-      if (text.contains(entry.key)) {
-        final current = now.weekday;
-        var delta = entry.value - current;
-        if (delta <= 0) delta += 7;
-        final d = now.add(Duration(days: delta));
-        return DateTime(d.year, d.month, d.day);
+      if (normalized.contains(entry.key)) {
+        var diff = entry.value - today.weekday;
+        if (diff <= 0) diff += 7;
+        return today.add(Duration(days: diff));
       }
+    }
+
+    return null;
+  }
+
+  TimelineBlockType _timelineTypeFromText(String normalizedTitle) {
+    if (normalizedTitle.contains('treino') ||
+        normalizedTitle.contains('academ')) {
+      return TimelineBlockType.workout;
+    }
+    if (normalizedTitle.contains('estud') ||
+        normalizedTitle.contains('prova')) {
+      return TimelineBlockType.study;
+    }
+    if (normalizedTitle.contains('dent') ||
+        normalizedTitle.contains('consulta') ||
+        normalizedTitle.contains('medic') ||
+        normalizedTitle.contains('exame')) {
+      return TimelineBlockType.health;
+    }
+    if (normalizedTitle.contains('descanso') ||
+        normalizedTitle.contains('sono')) {
+      return TimelineBlockType.rest;
+    }
+    if (normalizedTitle.contains('anivers') ||
+        normalizedTitle.contains('encontro') ||
+        normalizedTitle.contains('amigo') ||
+        normalizedTitle.contains('famil')) {
+      return TimelineBlockType.social;
+    }
+    return TimelineBlockType.event;
+  }
+
+  double? _extractAmount(String normalized) {
+    final match = RegExp(
+      r'(?:r\$\s*)?(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{1,2})?|\d+(?:[\.,]\d{1,2})?)',
+    ).firstMatch(normalized);
+    if (match == null) return null;
+    final raw = (match.group(1) ?? '').trim();
+    if (raw.isEmpty) return null;
+
+    var cleaned = raw;
+    if (cleaned.contains(',') && cleaned.contains('.')) {
+      cleaned = cleaned.replaceAll('.', '').replaceAll(',', '.');
+    } else if (cleaned.contains(',')) {
+      cleaned = cleaned.replaceAll(',', '.');
+    }
+
+    return double.tryParse(cleaned);
+  }
+
+  FinanceEntryType _entryTypeFromText(
+    String normalized, {
+    required bool isIncome,
+  }) {
+    if (normalized.contains('credito') || normalized.contains('cartao')) {
+      return FinanceEntryType.credit;
+    }
+    if (normalized.contains('debito')) {
+      return FinanceEntryType.debit;
+    }
+    if (normalized.contains('boleto')) {
+      return FinanceEntryType.boleto;
+    }
+    if (normalized.contains('dinheiro')) {
+      return FinanceEntryType.cash;
+    }
+    if (normalized.contains('pix')) {
+      return isIncome ? FinanceEntryType.pixIn : FinanceEntryType.pixOut;
+    }
+    if (normalized.contains('transfer')) {
+      return isIncome
+          ? FinanceEntryType.transferIn
+          : FinanceEntryType.transferOut;
+    }
+    return isIncome ? FinanceEntryType.transferIn : FinanceEntryType.debit;
+  }
+
+  FinanceEntryType? _entryTypeFromTextOrNull(
+    String normalized, {
+    required bool isIncome,
+  }) {
+    if (normalized.contains('credito') || normalized.contains('cartao')) {
+      return FinanceEntryType.credit;
+    }
+    if (normalized.contains('debito')) {
+      return FinanceEntryType.debit;
+    }
+    if (normalized.contains('boleto')) {
+      return FinanceEntryType.boleto;
+    }
+    if (normalized.contains('dinheiro')) {
+      return FinanceEntryType.cash;
+    }
+    if (normalized.contains('pix')) {
+      return isIncome ? FinanceEntryType.pixIn : FinanceEntryType.pixOut;
+    }
+    if (normalized.contains('transfer')) {
+      return isIncome
+          ? FinanceEntryType.transferIn
+          : FinanceEntryType.transferOut;
     }
     return null;
   }
 
-  DateTime? _extractTimeAnchor(String text, DateTime date) {
-    final interval = RegExp(
-      r'(?:as|às|a partir das|das)\s*(\d{1,2})(?::(\d{2}))?',
-    ).firstMatch(text);
-    if (interval != null) {
-      final hour = int.tryParse(interval.group(1)!);
-      final minute = int.tryParse(interval.group(2) ?? '0');
-      if (hour != null && minute != null) {
-        return DateTime(date.year, date.month, date.day, hour, minute);
+  FinanceCategory _categoryFromText(
+    String normalized, {
+    required bool isIncome,
+  }) {
+    final found = _categoryFromTextOrNull(normalized, isIncome: isIncome);
+    if (found != null) return found;
+    return FinanceSeedData.getCategoryById(
+      isIncome ? 'other_income' : 'other_expense',
+    );
+  }
+
+  FinanceCategory? _categoryFromTextOrNull(
+    String normalized, {
+    required bool isIncome,
+  }) {
+    if (isIncome) {
+      if (normalized.contains('salario') || normalized.contains('salário')) {
+        return FinanceSeedData.getCategoryById('salary');
       }
+      return FinanceSeedData.getCategoryById('other_income');
     }
 
-    final compact = RegExp(r'(\d{1,2})\s*h(?:oras?)?').firstMatch(text);
-    if (compact != null) {
-      final hour = int.tryParse(compact.group(1)!);
-      if (hour != null) {
-        return DateTime(date.year, date.month, date.day, hour);
-      }
+    if (normalized.contains('gasolina') ||
+        normalized.contains('uber') ||
+        normalized.contains('onibus') ||
+        normalized.contains('ônibus') ||
+        normalized.contains('combust')) {
+      return FinanceSeedData.getCategoryById('transport');
+    }
+    if (normalized.contains('mercado') ||
+        normalized.contains('supermercado') ||
+        normalized.contains('almoco') ||
+        normalized.contains('almoço') ||
+        normalized.contains('comida') ||
+        normalized.contains('lanche') ||
+        normalized.contains('janta')) {
+      return FinanceSeedData.getCategoryById('food');
+    }
+    if (normalized.contains('farmac') ||
+        normalized.contains('remedio') ||
+        normalized.contains('remédio') ||
+        normalized.contains('medico') ||
+        normalized.contains('médico')) {
+      return FinanceSeedData.getCategoryById('health');
+    }
+    if (normalized.contains('cinema') ||
+        normalized.contains('lazer') ||
+        normalized.contains('jogo') ||
+        normalized.contains('stream')) {
+      return FinanceSeedData.getCategoryById('leisure');
+    }
+    if (normalized.contains('camisa') ||
+        normalized.contains('roupa') ||
+        normalized.contains('compra')) {
+      return FinanceSeedData.getCategoryById('shopping');
+    }
+    if (normalized.contains('aluguel') ||
+        normalized.contains('energia') ||
+        normalized.contains('agua') ||
+        normalized.contains('água') ||
+        normalized.contains('internet') ||
+        normalized.contains('casa')) {
+      return FinanceSeedData.getCategoryById('home');
+    }
+    if (normalized.contains('curso') ||
+        normalized.contains('faculdade') ||
+        normalized.contains('estudo')) {
+      return FinanceSeedData.getCategoryById('education');
     }
 
     return null;
@@ -545,36 +942,51 @@ class VoiceCommandRouter {
     required bool isIncome,
   }) {
     if (isIncome) {
-      if (normalized.contains('salario') || normalized.contains('salário')) {
-        return 'Salário';
+      if (category.id == 'salary') return 'Salário';
+      if (normalized.contains('freela') || normalized.contains('freelance')) {
+        return 'Freelance';
       }
-      if (normalized.contains('freela')) {
-        return 'Freela';
-      }
-      return category.name;
+      if (normalized.contains('pagamento')) return 'Pagamento';
+      return 'Entrada';
     }
 
-    if (normalized.contains('gasolina') || normalized.contains('combust')) {
-      return 'Gasolina';
+    switch (category.id) {
+      case 'transport':
+        if (normalized.contains('gasolina') || normalized.contains('combust')) {
+          return 'Combustível';
+        }
+        return 'Transporte';
+      case 'food':
+        if (normalized.contains('mercado') ||
+            normalized.contains('supermercado')) {
+          return 'Supermercado';
+        }
+        return 'Alimentação';
+      case 'health':
+        return 'Saúde';
+      case 'shopping':
+        return 'Compras';
+      case 'leisure':
+        return 'Lazer';
+      case 'home':
+        return 'Casa';
+      case 'education':
+        return 'Estudos';
+      default:
+        return 'Saída';
     }
-    if (normalized.contains('mercado')) return 'Mercado';
-    if (normalized.contains('farmacia') || normalized.contains('farmácia')) {
-      return 'Farmácia';
-    }
-    if (normalized.contains('internet')) return 'Internet';
-    if (normalized.contains('aluguel')) return 'Aluguel';
-    if (normalized.contains('uber')) return 'Uber';
-
-    return category.name;
   }
 
   String? _buildUpdateTitle(String normalized, FinanceTransaction last) {
-    if (normalized.contains('gasolina')) return 'Gasolina';
-    if (normalized.contains('mercado')) return 'Mercado';
-    if (normalized.contains('farmacia') || normalized.contains('farmácia'))
-      return 'Farmácia';
-    if (normalized.contains('internet')) return 'Internet';
-    if (normalized.contains('aluguel')) return 'Aluguel';
+    if (normalized.contains('gasolina') || normalized.contains('combust')) {
+      return 'Combustível';
+    }
+    if (normalized.contains('mercado') || normalized.contains('supermercado')) {
+      return 'Supermercado';
+    }
+    if (normalized.contains('salario') || normalized.contains('salário')) {
+      return 'Salário';
+    }
     return null;
   }
 
@@ -586,252 +998,61 @@ class VoiceCommandRouter {
     required bool isIncome,
     required DateTime date,
   }) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final action = isIncome ? 'entrada' : 'gasto';
-    return '$action de ${_formatMoney(amount)} em "$title"'
-        ' (${category.name}, ${entryType.label.toLowerCase()})'
-        ' em $day/$month';
+    final kind = isIncome ? 'entrada' : 'gasto';
+    return '$kind de ${_formatMoney(amount)} em ${title.toLowerCase()} '
+        '(${category.name.toLowerCase()}, ${entryType.label.toLowerCase()}) '
+        'em ${_formatDate(date)}';
   }
 
   String _formatMoney(double value) {
+    final cents = ((value - value.truncateToDouble()) * 100).round();
+    if (cents == 0) {
+      return 'R\$ ${value.toStringAsFixed(0)}';
+    }
     return 'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
   }
 
-  bool _looksLikeShoppingAdd(String text) {
-    return (text.contains('lista') || text.contains('compras')) &&
-        (text.contains('coloca') ||
-            text.contains('adiciona') ||
-            text.contains('bota') ||
-            text.contains('por na lista') ||
-            text.contains('põe na lista'));
+  String _formatDate(DateTime date) {
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    return '$d/$m/${date.year}';
   }
 
-  List<String> _extractShoppingItems(String original) {
-    var text = _normalize(original);
-    final removals = [
-      'na lista de compras',
-      'na lista',
-      'lista de compras',
-      'lista',
-      'adiciona',
-      'adicionar',
-      'coloca',
-      'coloque',
-      'bota',
-      'por',
-      'poe',
-      'põe',
-      'comprar',
-    ];
-    for (final token in removals) {
-      text = text.replaceAll(token, ' ');
-    }
-
-    final parts = text
-        .split(RegExp(r',| e '))
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .map((e) => e[0].toUpperCase() + e.substring(1))
-        .toList();
-
-    return parts;
+  String _formatTime(DateTime date) {
+    final h = date.hour.toString().padLeft(2, '0');
+    final m = date.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
-  _ParsedHomeTask? _tryParseHomeTask(String original, String normalized) {
-    final isHome =
-        normalized.contains('tarefa da casa') ||
-        normalized.contains('tarefas da casa') ||
-        normalized.contains('em casa') ||
-        normalized.contains('afazer de casa') ||
-        normalized.contains('lavar') ||
-        normalized.contains('limpar') ||
-        normalized.contains('organizar') ||
-        normalized.contains('consertar');
-
-    if (!isHome) return null;
-
-    var title = original.trim();
-    final removals = [
-      RegExp(r'(?i)adiciona(r)?'),
-      RegExp(r'(?i)coloca(r)?'),
-      RegExp(r'(?i)nas tarefas da casa'),
-      RegExp(r'(?i)na tarefa da casa'),
-      RegExp(r'(?i)em casa'),
-    ];
-    for (final r in removals) {
-      title = title.replaceAll(r, ' ').trim();
-    }
-    if (title.isEmpty) return null;
-
-    HomeTaskEffort effort = HomeTaskEffort.quick;
-    if (normalized.contains('consert') ||
-        normalized.contains('trocar') ||
-        normalized.contains('vazamento') ||
-        normalized.contains('guarda-roupa') ||
-        normalized.contains('banheiro')) {
-      effort = HomeTaskEffort.major;
-    }
-
-    HomeTaskCategory category = HomeTaskCategory.cleaning;
-    if (normalized.contains('organiza')) {
-      category = HomeTaskCategory.organization;
-    } else if (normalized.contains('consert') ||
-        normalized.contains('trocar') ||
-        normalized.contains('manuten') ||
-        normalized.contains('vazamento')) {
-      category = HomeTaskCategory.maintenance;
-    }
-
-    HomeTaskArea area = HomeTaskArea.wholeHouse;
-    if (normalized.contains('cozinha')) area = HomeTaskArea.kitchen;
-    if (normalized.contains('banheiro')) area = HomeTaskArea.bathroom;
-    if (normalized.contains('quarto')) area = HomeTaskArea.bedroom;
-    if (normalized.contains('sala')) area = HomeTaskArea.livingRoom;
-    if (normalized.contains('lavanderia')) area = HomeTaskArea.laundry;
-    if (normalized.contains('quintal') || normalized.contains('garagem')) {
-      area = HomeTaskArea.outdoor;
-    }
-
-    return _ParsedHomeTask(
-      title: title.trim(),
-      effort: effort,
-      category: category,
-      area: area,
-    );
+  String _capitalize(String text) {
+    if (text.trim().isEmpty) return '';
+    final trimmed = text.trim();
+    return trimmed[0].toUpperCase() + trimmed.substring(1);
   }
 
-  TimelineBlock? _tryParseEvent(String original, String normalized) {
-    final eventIntent =
-        normalized.contains('agenda') ||
-        normalized.contains('agendar') ||
-        normalized.contains('marca') ||
-        normalized.contains('marcar') ||
-        normalized.contains('cria evento') ||
-        normalized.contains('compromisso') ||
-        normalized.contains('reuniao') ||
-        normalized.contains('reunião');
-
-    if (!eventIntent) return null;
-
-    final date = _extractDate(normalized) ?? DateTime.now();
-    final start = _extractTimeAnchor(normalized, date);
-    if (start == null) return null;
-
-    final end = _extractEndTime(normalized, start);
-    final title = _extractEventTitle(original);
-    if (title.isEmpty) return null;
-
-    final type = _guessEventType(normalized);
-
-    return TimelineBlock(
-      id: 'voice_${DateTime.now().millisecondsSinceEpoch}',
-      type: type,
-      title: title,
-      start: start,
-      end: end,
-      reminderMinutes: 10,
-      repeatType: TimelineRepeatType.none,
-    );
-  }
-
-  DateTime? _extractEndTime(String text, DateTime start) {
-    final match = RegExp(
-      r'(?:até|ate)\s*(\d{1,2})(?::(\d{2}))?',
-    ).firstMatch(text);
-    if (match != null) {
-      final hour = int.tryParse(match.group(1)!);
-      final minute = int.tryParse(match.group(2) ?? '0');
-      if (hour != null && minute != null) {
-        return DateTime(start.year, start.month, start.day, hour, minute);
-      }
+  String _normalize(String text) {
+    const from = 'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç';
+    const to = 'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc';
+    var out = text;
+    for (var i = 0; i < from.length; i++) {
+      out = out.replaceAll(from[i], to[i]);
     }
-    return start.add(const Duration(hours: 1));
-  }
-
-  String _extractEventTitle(String original) {
-    var text = original.trim();
-    final patterns = [
-      RegExp(r'(?i)\bagenda(r)?\b'),
-      RegExp(r'(?i)\bmarca(r)?\b'),
-      RegExp(r'(?i)\bcria(r)? evento\b'),
-      RegExp(r'(?i)\bcompromisso\b'),
-    ];
-    for (final p in patterns) {
-      text = text.replaceAll(p, ' ');
-    }
-    text = text
-        .replaceAll(RegExp(r'(?i)\bamanh[ãa]\b'), ' ')
-        .replaceAll(RegExp(r'(?i)\bhoje\b'), ' ')
-        .replaceAll(
-          RegExp(
-            r'(?i)\bsegunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo\b',
-          ),
-          ' ',
-        )
-        .replaceAll(RegExp(r'(?i)\bàs?\s*\d{1,2}(?::\d{2})?\b'), ' ')
-        .replaceAll(RegExp(r'(?i)\bdas\s*\d{1,2}(?::\d{2})?\b'), ' ')
-        .replaceAll(RegExp(r'(?i)\bat[eé]\s*\d{1,2}(?::\d{2})?\b'), ' ')
-        .replaceAll(RegExp(r'\d{1,2}/\d{1,2}(?:/\d{2,4})?'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    if (text.isEmpty) {
-      return 'Compromisso';
-    }
-    return text[0].toUpperCase() + text.substring(1);
-  }
-
-  TimelineBlockType _guessEventType(String text) {
-    if (text.contains('treino')) return TimelineBlockType.workout;
-    if (text.contains('estudo') || text.contains('aula'))
-      return TimelineBlockType.study;
-    if (text.contains('consulta') ||
-        text.contains('medico') ||
-        text.contains('médico')) {
-      return TimelineBlockType.health;
-    }
-    if (text.contains('descanso')) return TimelineBlockType.rest;
-    if (text.contains('amigo') ||
-        text.contains('familia') ||
-        text.contains('família')) {
-      return TimelineBlockType.social;
-    }
-    return TimelineBlockType.event;
-  }
-
-  String _normalize(String value) {
-    const map = {
-      'á': 'a',
-      'à': 'a',
-      'ã': 'a',
-      'â': 'a',
-      'é': 'e',
-      'ê': 'e',
-      'í': 'i',
-      'ó': 'o',
-      'ô': 'o',
-      'õ': 'o',
-      'ú': 'u',
-      'ç': 'c',
-    };
-
-    var out = value.toLowerCase();
-    map.forEach((k, v) => out = out.replaceAll(k, v));
+    out = out.toLowerCase();
+    out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
     return out;
   }
 }
 
-class _ParsedHomeTask {
-  const _ParsedHomeTask({
-    required this.title,
-    required this.effort,
-    required this.category,
-    required this.area,
-  });
+class _ParsedTimeRange {
+  const _ParsedTimeRange(
+    this.startHour,
+    this.startMinute,
+    this.endHour,
+    this.endMinute,
+  );
 
-  final String title;
-  final HomeTaskEffort effort;
-  final HomeTaskCategory category;
-  final HomeTaskArea area;
+  final int startHour;
+  final int startMinute;
+  final int endHour;
+  final int endMinute;
 }
