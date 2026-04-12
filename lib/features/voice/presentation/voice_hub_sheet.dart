@@ -2,11 +2,13 @@
 // FILE: lib/features/voice/presentation/voice_hub_sheet.dart
 //
 // O que faz:
-// - abre o assistente de voz do app
-// - começa a ouvir automaticamente ao abrir
-// - processa sozinho quando o usuário para de falar
-// - mostra confirmação quando o comando precisa de confirmação
+// - abre o assistente e já começa a ouvir sozinho
+// - processa automaticamente quando o usuário para de falar
+// - mostra confirmação quando o comando pede confirmação
+// - permite tentar de novo sem fechar o sheet
 // ============================================================================
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
@@ -28,16 +30,14 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   bool _available = false;
   bool _listening = false;
   bool _processing = false;
-  bool _initializing = true;
   bool _processedThisCycle = false;
-  bool _autoStartScheduled = false;
-  String _bestTranscript = '';
 
   String _partial = '';
   String _finalText = '';
   String _lastWords = '';
   String? _resultMessage;
   VoiceCommandResult? _pendingConfirmation;
+  Timer? _autoProcessTimer;
 
   @override
   void initState() {
@@ -46,62 +46,46 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   }
 
   Future<void> _initSpeech() async {
-    final available = await _speech.initialize(
+    _available = await _speech.initialize(
       onStatus: _onSpeechStatus,
       onError: (error) {
         if (!mounted) return;
         setState(() {
           _listening = false;
           _processing = false;
-          _initializing = false;
           _resultMessage = 'Erro no microfone: ${error.errorMsg}';
         });
       },
       debugLogging: false,
     );
-
     if (!mounted) return;
-    setState(() {
-      _available = available;
-      _initializing = false;
-    });
-
+    setState(() {});
     if (_available) {
-      _scheduleAutoStart();
+      await _start(auto: true);
     }
-  }
-
-  void _scheduleAutoStart() {
-    if (_autoStartScheduled) return;
-    _autoStartScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      if (!mounted) return;
-      _autoStartScheduled = false;
-      if (!_listening && !_processing && _pendingConfirmation == null) {
-        await _start();
-      }
-    });
   }
 
   void _onSpeechStatus(String status) {
     if (!mounted) return;
     final done = status == 'done' || status == 'notListening';
     if (done && _listening && !_processing && !_processedThisCycle) {
-      Future<void>.delayed(const Duration(milliseconds: 350), () {
-        if (!mounted) return;
-        _stopAndHandle(fromStatus: true);
-      });
+      _scheduleAutoProcess();
     }
   }
 
-  Future<void> _start() async {
+  Future<void> _start({bool auto = false}) async {
+    _autoProcessTimer?.cancel();
+
     if (!_available) {
       setState(() {
         _resultMessage =
             'Microfone indisponível. Veja a permissão e tente de novo.';
       });
       return;
+    }
+
+    if (_speech.isListening) {
+      await _speech.stop();
     }
 
     setState(() {
@@ -111,75 +95,86 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       _partial = '';
       _finalText = '';
       _lastWords = '';
-      _resultMessage = null;
-      _pendingConfirmation = null;
-      _bestTranscript = '';
+      if (!auto) {
+        _resultMessage = null;
+        _pendingConfirmation = null;
+      }
     });
 
     await _speech.listen(
       localeId: 'pt_BR',
       listenMode: ListenMode.dictation,
       partialResults: true,
-      listenOptions: SpeechListenOptions(cancelOnError: true),
-      pauseFor: const Duration(milliseconds: 3800),
-      listenFor: const Duration(seconds: 45),
+      cancelOnError: true,
+      pauseFor: const Duration(seconds: 3),
+      listenFor: const Duration(seconds: 30),
       onResult: _onSpeechResult,
     );
   }
 
   void _onSpeechResult(SpeechRecognitionResult result) {
     if (!mounted) return;
-    final words = result.recognizedWords.trim();
     setState(() {
-      if (words.length >= _bestTranscript.length) {
-        _bestTranscript = words;
-      }
-      _lastWords = words;
+      _lastWords = result.recognizedWords;
       if (result.finalResult) {
-        _finalText = words;
+        _finalText = result.recognizedWords;
       } else {
-        _partial = words;
+        _partial = result.recognizedWords;
       }
+    });
+
+    _autoProcessTimer?.cancel();
+    if (result.finalResult) {
+      _scheduleAutoProcess(delay: const Duration(milliseconds: 450));
+    }
+  }
+
+  void _scheduleAutoProcess({
+    Duration delay = const Duration(milliseconds: 900),
+  }) {
+    _autoProcessTimer?.cancel();
+    _autoProcessTimer = Timer(delay, () {
+      if (!mounted) return;
+      _stopAndHandle(fromStatus: true);
     });
   }
 
   Future<void> _stopAndHandle({bool fromStatus = false}) async {
     if (_processing || _processedThisCycle) return;
-
     _processedThisCycle = true;
-    _processing = true;
+    _autoProcessTimer?.cancel();
 
-    if (!fromStatus) {
+    if (!fromStatus && _speech.isListening) {
       await _speech.stop();
     }
 
     final transcript = _pickBestTranscript();
+    if (!mounted) return;
 
-    if (mounted) {
-      setState(() {
-        _listening = false;
-        _processing = false;
-      });
-    }
+    setState(() {
+      _listening = false;
+      _processing = true;
+    });
 
     if (transcript.isEmpty) {
-      if (!mounted) return;
       setState(() {
+        _processing = false;
         _resultMessage = 'Não consegui pegar sua fala. Tente de novo.';
       });
       return;
     }
 
-    final result = await widget.router.handle(transcript);
+    final res = await widget.router.handle(transcript);
     if (!mounted) return;
 
     setState(() {
-      _resultMessage = result.message;
-      _pendingConfirmation = result.requiresConfirmation ? result : null;
+      _processing = false;
+      _resultMessage = res.message;
+      _pendingConfirmation = res.requiresConfirmation ? res : null;
     });
 
-    if (result.handled && !result.requiresConfirmation) {
-      await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (res.handled && !res.requiresConfirmation) {
+      await Future.delayed(const Duration(milliseconds: 700));
       if (mounted) Navigator.of(context).pop();
     }
   }
@@ -187,18 +182,17 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   Future<void> _confirmPending() async {
     final pending = _pendingConfirmation;
     if (pending?.onConfirm == null) return;
-
-    setState(() => _processing = true);
-    final result = await pending!.onConfirm!();
+    setState(() {
+      _processing = true;
+    });
+    final res = await pending!.onConfirm!();
     if (!mounted) return;
-
     setState(() {
       _processing = false;
       _pendingConfirmation = null;
-      _resultMessage = result.message;
+      _resultMessage = res.message;
     });
-
-    await Future<void>.delayed(const Duration(milliseconds: 700));
+    await Future.delayed(const Duration(milliseconds: 700));
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -208,53 +202,46 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       setState(() => _pendingConfirmation = null);
       return;
     }
-
-    final result = await pending!.onCancel!();
+    final res = await pending!.onCancel!();
     if (!mounted) return;
-
     setState(() {
       _pendingConfirmation = null;
-      _resultMessage = result.message;
+      _resultMessage = res.message;
     });
   }
 
   String _pickBestTranscript() {
     final finalText = _finalText.trim();
     if (finalText.isNotEmpty) return finalText;
-
-    final best = _bestTranscript.trim();
-    if (best.isNotEmpty) return best;
-
     final partial = _partial.trim();
     if (partial.isNotEmpty) return partial;
-
     return _lastWords.trim();
   }
 
   @override
   void dispose() {
+    _autoProcessTimer?.cancel();
     _speech.stop();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final examples =
+    final hint =
+        'Exemplos:\n'
         '• “agenda treino amanhã às 7 até 8”\n'
         '• “coloca arroz, leite e ovos na lista”\n'
         '• “adiciona lavar banheiro nas tarefas da casa”\n'
-        '• “recebi salário 1200 reais”';
+        '• “gastei 20 reais de gasolina no débito”';
 
-    final title = _initializing
-        ? 'Abrindo microfone…'
-        : _listening
+    final title = _listening
         ? 'Ouvindo…'
         : _processing
         ? 'Processando…'
         : 'Assistente de voz';
 
     final heardText = _pickBestTranscript();
-    final contentText = heardText.isNotEmpty ? heardText : examples;
+    final contentText = heardText.isNotEmpty ? heardText : hint;
 
     return SafeArea(
       child: Padding(
@@ -264,21 +251,13 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _listening
-                      ? const Color(0xFF22C55E).withValues(alpha: 0.18)
-                      : Colors.white.withValues(alpha: 0.08),
-                ),
-                child: Icon(_listening ? Icons.mic : Icons.mic_none),
-              ),
+              leading: Icon(_listening ? Icons.mic : Icons.mic_none),
               title: Text(title),
               subtitle: Text(
                 _available
-                    ? 'pt-BR • abriu, falou, ele faz sozinho'
+                    ? (_listening
+                          ? 'pt-BR • pode falar normalmente'
+                          : 'pt-BR • toque para tentar de novo')
                     : 'Reconhecimento indisponível',
               ),
               trailing: IconButton(
@@ -336,28 +315,21 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
               ),
             ),
             const SizedBox(height: 10),
-            if (_pendingConfirmation == null)
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _initializing || _processing
-                          ? null
-                          : (_listening ? () => _stopAndHandle() : _start),
-                      icon: Icon(
-                        _listening ? Icons.hearing_rounded : Icons.refresh,
-                      ),
-                      label: Text(
-                        _listening
-                            ? 'Ouvindo… pode falar'
-                            : _initializing
-                            ? 'Abrindo...'
-                            : 'Ouvir de novo',
-                      ),
-                    ),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _processing
+                        ? null
+                        : (_listening
+                              ? () => _stopAndHandle()
+                              : () => _start()),
+                    icon: Icon(_listening ? Icons.stop : Icons.refresh),
+                    label: Text(_listening ? 'Parar agora' : 'Tentar de novo'),
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
           ],
         ),
       ),

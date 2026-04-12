@@ -3,9 +3,9 @@
 //
 // O que faz:
 // - entende comandos por voz para compras, tarefas da casa, agenda e finanças
-// - aceita fala natural/informal
+// - aceita fala mais natural e tenta limpar "sujeira" do reconhecimento
 // - confirma lançamentos financeiros antes de salvar
-// - corrige/remover o último lançamento financeiro por voz
+// - permite corrigir/remover o último lançamento financeiro por voz
 // ============================================================================
 
 import 'package:vida_app/data/models/timeline_block.dart';
@@ -136,11 +136,12 @@ class VoiceCommandRouter {
       );
     }
 
+    final taskText = _normalize(title);
     await homeTasks!.add(
       title: title,
-      effort: _homeTaskEffortFromText(_normalize(title)),
-      category: _homeTaskCategoryFromText(_normalize(title)),
-      area: _homeTaskAreaFromText(_normalize(title)),
+      effort: _homeTaskEffortFromText(taskText),
+      category: _homeTaskCategoryFromText(taskText),
+      area: _homeTaskAreaFromText(taskText),
     );
 
     return VoiceCommandResult(
@@ -240,7 +241,12 @@ class VoiceCommandRouter {
     final entryType = _entryTypeFromText(normalized, isIncome: isIncome);
     final category = _categoryFromText(normalized, isIncome: isIncome);
     final date = _extractDate(normalized) ?? DateTime.now();
-    final title = _buildFinanceTitle(normalized, category, isIncome: isIncome);
+    final title = _buildFinanceTitle(
+      original,
+      normalized,
+      category,
+      isIncome: isIncome,
+    );
 
     final summary = _financeSummary(
       title: title,
@@ -317,7 +323,7 @@ class VoiceCommandRouter {
       normalized,
       isIncome: last.isIncome,
     );
-    final newTitle = _buildUpdateTitle(normalized, last);
+    final newTitle = _buildUpdateTitle(original, normalized, last);
 
     if (newAmount == null &&
         newEntryType == null &&
@@ -410,8 +416,11 @@ class VoiceCommandRouter {
         text.contains('adiciona') ||
         text.contains('adicionar') ||
         text.contains('bota') ||
+        text.contains('botar') ||
         text.contains('poe') ||
-        text.contains('põe');
+        text.contains('poe') ||
+        text.contains('põe') ||
+        text.contains('anota');
     final hasContext = text.contains('lista') || text.contains('compras');
     return hasVerb && hasContext;
   }
@@ -428,21 +437,20 @@ class VoiceCommandRouter {
     );
 
     text = text.replaceAll(
+      RegExp(r'\b(a|a\s+)?lista\s+de\s+compras?\b', caseSensitive: false),
+      ' ',
+    );
+    text = text.replaceAll(
       RegExp(
-        r'\b(na|no|pra|para)\s+lista(\s+de\s+compras|\s+do\s+mercado)?\b',
+        r'\b(lista\s+de\s+compras?|lista|compras?|mercado)\b',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
-      RegExp(r'\blista\s+de\s+compras\b', caseSensitive: false),
+      RegExp(r'\b(na|no|pra|para|pro|de|da|do)\b', caseSensitive: false),
       ' ',
     );
-    text = text.replaceAll(
-      RegExp(r'\blista\b|\bcompras\b|\bmercado\b', caseSensitive: false),
-      ' ',
-    );
-
     text = text.replaceAll(
       RegExp(r'\s+(e|mais)\s+', caseSensitive: false),
       ',',
@@ -503,11 +511,12 @@ class VoiceCommandRouter {
       'rosto',
       'cabelo',
       'dente',
+      'papel',
     };
 
     final shouldSplitIntoSingles =
         words.length >= 2 &&
-        words.length <= 4 &&
+        words.length <= 5 &&
         !words.any((w) => joinerWords.contains(_normalize(w)));
 
     if (shouldSplitIntoSingles) {
@@ -531,7 +540,7 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(lista\s+de\s+compras|lista|compras|mercado)\b',
+        r'\b(lista\s+de\s+compras?|lista|compras?|mercado)\b',
         caseSensitive: false,
       ),
       '',
@@ -539,18 +548,24 @@ class VoiceCommandRouter {
     text = text.replaceAll(RegExp(r'^r\s+', caseSensitive: false), '');
     text = text.replaceAll(
       RegExp(
-        r'^(na|no|de|do|da|pra|para|o|a|os|as|um|uma)\s+',
+        r'^(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma)\s+',
         caseSensitive: false,
       ),
       '',
     );
     text = text.replaceAll(
-      RegExp(r'\s+(na|no|de|do|da|pra|para)$', caseSensitive: false),
+      RegExp(
+        r'\s+(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma)$',
+        caseSensitive: false,
+      ),
       '',
     );
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.length == 1 && {'a', 'e', 'o'}.contains(text.toLowerCase())) {
+      return '';
+    }
     if (text.isEmpty) return '';
-    return text[0].toUpperCase() + text.substring(1);
+    return _capitalize(text);
   }
 
   bool _looksLikeHomeTask(String text) {
@@ -613,7 +628,7 @@ class VoiceCommandRouter {
     ).hasMatch(text)) {
       return '';
     }
-    return text[0].toUpperCase() + text.substring(1);
+    return _capitalize(text);
   }
 
   HomeTaskEffort _homeTaskEffortFromText(String text) {
@@ -696,12 +711,15 @@ class VoiceCommandRouter {
     final today = DateTime(now.year, now.month, now.day);
 
     if (text.contains('hoje')) return today;
-    if (text.contains('amanha') || text.contains('amanhã')) {
-      return today.add(const Duration(days: 1));
-    }
     if (text.contains('depois de amanha') ||
         text.contains('depois de amanhã')) {
       return today.add(const Duration(days: 2));
+    }
+    if (text.contains('amanha') || text.contains('amanhã')) {
+      return today.add(const Duration(days: 1));
+    }
+    if (text.contains('ontem')) {
+      return today.subtract(const Duration(days: 1));
     }
 
     final slash = RegExp(
@@ -742,7 +760,7 @@ class VoiceCommandRouter {
 
   _TimeRange? _extractTimeRange(String text) {
     final full = RegExp(
-      r'(?:das\s+)?(\d{1,2})(?::|h)?(\d{0,2})\s*(?:ate|até|as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})',
+      r'(?:das\s+|da\s+)?(\d{1,2})(?::|h)?(\d{0,2})\s*(?:ate|até|as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})',
     ).firstMatch(text);
     if (full != null) {
       final sh = int.tryParse(full.group(1)!);
@@ -795,7 +813,7 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(amanha|amanhã|hoje|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
+        r'\b(amanha|amanhã|hoje|ontem|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -803,14 +821,15 @@ class VoiceCommandRouter {
     text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(
       RegExp(
-        r'(?:das\s+)?\d{1,2}(?::\d{1,2}|h\d{0,2}|h)?\s*(?:ate|até|as|às|a)?\s*\d{0,2}(?::\d{1,2}|h\d{0,2}|h)?',
+        r'(?:das\s+|da\s+)?\d{1,2}(?::\d{1,2}|h\d{0,2}|h)?\s*(?:ate|até|as|às|a)?\s*\d{0,2}(?::\d{1,2}|h\d{0,2}|h)?',
         caseSensitive: false,
       ),
       ' ',
     );
+    text = text.replaceAll(RegExp(r'\bhoras?\b', caseSensitive: false), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.isEmpty) return '';
-    return text[0].toUpperCase() + text.substring(1);
+    return _capitalize(text);
   }
 
   bool _looksLikeFinance(String text) {
@@ -878,6 +897,7 @@ class VoiceCommandRouter {
       'dois': 2,
       'duas': 2,
       'tres': 3,
+      'três': 3,
       'quatro': 4,
       'cinco': 5,
       'seis': 6,
@@ -1069,6 +1089,11 @@ class VoiceCommandRouter {
       'comida': 'food',
       'ifood': 'food',
       'restaurante': 'food',
+      'agua': 'home',
+      'água': 'home',
+      'internet': 'home',
+      'aluguel': 'home',
+      'energia': 'home',
       'farmacia': 'health',
       'farmácia': 'health',
       'medico': 'health',
@@ -1082,11 +1107,6 @@ class VoiceCommandRouter {
       'cinema': 'leisure',
       'lazer': 'leisure',
       'jogo': 'leisure',
-      'internet': 'home',
-      'aluguel': 'home',
-      'energia': 'home',
-      'agua': 'home',
-      'água': 'home',
       'faculdade': 'education',
       'curso': 'education',
       'escola': 'education',
@@ -1101,6 +1121,7 @@ class VoiceCommandRouter {
   }
 
   String _buildFinanceTitle(
+    String original,
     String normalized,
     FinanceCategory category, {
     required bool isIncome,
@@ -1112,6 +1133,9 @@ class VoiceCommandRouter {
       if (normalized.contains('pagamento')) return 'Pagamento';
       return 'Entrada';
     }
+
+    final explicit = _extractExpenseItemTitle(original);
+    if (explicit != null && explicit.isNotEmpty) return explicit;
 
     if (normalized.contains('gasolina') || normalized.contains('combust')) {
       return 'Gasolina';
@@ -1125,7 +1149,35 @@ class VoiceCommandRouter {
     return category.name;
   }
 
-  String? _buildUpdateTitle(String normalized, FinanceTransaction last) {
+  String? _extractExpenseItemTitle(String original) {
+    var text = _normalize(original);
+    text = text.replaceAll(
+      RegExp(
+        r'^(gastei|gastar|paguei|pagar|comprei|comprar|lancei|lancar|adiciona gasto|adicionar gasto)\s+',
+      ),
+      '',
+    );
+    text = text.replaceAll(RegExp(r'(?:r\$\s*)?\d[\d\s\.,]*\d|\d'), ' ');
+    text = text.replaceAll(RegExp(r'\b(real|reais)\b'), ' ');
+    text = text.replaceAll(
+      RegExp(
+        r'\b(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
+      ),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b(hoje|amanha|amanhã|ontem)\b'), ' ');
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.isEmpty) return null;
+    return _capitalize(text);
+  }
+
+  String? _buildUpdateTitle(
+    String original,
+    String normalized,
+    FinanceTransaction last,
+  ) {
+    final extracted = _extractExpenseItemTitle(original);
+    if (extracted != null && extracted.isNotEmpty) return extracted;
     if (normalized.contains('gasolina')) return 'Gasolina';
     if (normalized.contains('mercado')) return 'Mercado';
     if (normalized.contains('internet')) return 'Internet';
@@ -1187,6 +1239,19 @@ class VoiceCommandRouter {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return value;
+  }
+
+  String _capitalize(String text) {
+    final value = text.trim();
+    if (value.isEmpty) return value;
+    final words = value.split(RegExp(r'\s+'));
+    final result = words
+        .map((word) {
+          if (word.isEmpty) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join(' ');
+    return result;
   }
 }
 
