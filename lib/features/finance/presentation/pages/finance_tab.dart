@@ -18,10 +18,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/finance_category.dart';
 import '../../data/models/finance_period_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
 import 'add_transaction_page.dart';
+import 'finance/finance_planning_catalog.dart';
 import 'finance/finance_tab_models.dart';
 import 'finance/finance_tab_utils.dart';
 import 'finance/finance_tab_widgets.dart';
@@ -60,6 +62,13 @@ class _FinanceTabState extends State<FinanceTab> {
   double _planningEssentialPercent = 60;
   double _planningFuturePercent = 30;
   double _planningFreePercent = 10;
+  Map<String, double> _plannedByCategory = <String, double>{};
+  Set<String> _activePlanningCategoryIds = <String>{};
+  bool _planningOwnHome = false;
+  bool _planningMealTicket = false;
+  bool _planningNoCar = false;
+  bool _planningFreeTransit = false;
+  bool _planningHasHealthPlan = false;
 
   double _investedPrincipal = 0;
   double _investedCurrentValue = 0;
@@ -99,6 +108,15 @@ class _FinanceTabState extends State<FinanceTab> {
     ),
   ];
 
+  List<FinanceCategory> get _planningCategories => _store.categories
+      .where((item) => item.isIncomeCategory != true)
+      .cast<FinanceCategory>()
+      .toList();
+
+  Set<String> _defaultActivePlanningIds() {
+    return FinancePlanningCatalog.defaultActiveIds(_planningCategories).toSet();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -120,6 +138,21 @@ class _FinanceTabState extends State<FinanceTab> {
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    final nextPlanned = <String, double>{};
+
+    for (final category in _planningCategories) {
+      nextPlanned[category.id] =
+          prefs.getDouble('$_prefsPrefix:plan:${category.id}') ?? 0;
+    }
+
+    final rawActiveIds = prefs.getStringList(
+      '$_prefsPrefix:finance_plan_active_ids',
+    );
+    final knownIds = _planningCategories.map((item) => item.id).toSet();
+    final activeIds = (rawActiveIds == null || rawActiveIds.isEmpty)
+        ? _defaultActivePlanningIds()
+        : rawActiveIds.where(knownIds.contains).toSet();
+
     if (!mounted) return;
 
     setState(() {
@@ -135,6 +168,17 @@ class _FinanceTabState extends State<FinanceTab> {
           prefs.getDouble('$_prefsPrefix:finance_plan_future_percent') ?? 30;
       _planningFreePercent =
           prefs.getDouble('$_prefsPrefix:finance_plan_free_percent') ?? 10;
+      _plannedByCategory = nextPlanned;
+      _activePlanningCategoryIds = activeIds;
+      _planningOwnHome =
+          prefs.getBool('$_prefsPrefix:plan_life_own_home') ?? false;
+      _planningMealTicket =
+          prefs.getBool('$_prefsPrefix:plan_life_meal_ticket') ?? false;
+      _planningNoCar = prefs.getBool('$_prefsPrefix:plan_life_no_car') ?? false;
+      _planningFreeTransit =
+          prefs.getBool('$_prefsPrefix:plan_life_free_transit') ?? false;
+      _planningHasHealthPlan =
+          prefs.getBool('$_prefsPrefix:plan_life_health_plan') ?? false;
       _investedPrincipal =
           prefs.getDouble('$_prefsPrefix:invest_principal') ?? 0;
       _investedCurrentValue =
@@ -203,11 +247,84 @@ class _FinanceTabState extends State<FinanceTab> {
     final incomeController = TextEditingController(
       text: _monthlyIncomePlan == 0 ? '' : moneyField(_monthlyIncomePlan),
     );
+    final controllers = <String, TextEditingController>{
+      for (final category in _planningCategories)
+        category.id: TextEditingController(
+          text: (_plannedByCategory[category.id] ?? 0) <= 0
+              ? ''
+              : moneyField(_plannedByCategory[category.id] ?? 0),
+        ),
+    };
 
     int localPreset = _planningPresetIndex;
     double essential = _planningEssentialPercent;
     double future = _planningFuturePercent;
     double free = _planningFreePercent;
+    var localActiveIds = <String>{
+      ...(_activePlanningCategoryIds.isEmpty
+          ? _defaultActivePlanningIds()
+          : _activePlanningCategoryIds),
+    };
+    bool ownHome = _planningOwnHome;
+    bool mealTicket = _planningMealTicket;
+    bool noCar = _planningNoCar;
+    bool freeTransit = _planningFreeTransit;
+    bool hasHealthPlan = _planningHasHealthPlan;
+    bool showAllOptional = false;
+
+    Map<String, double> readCurrentValues() {
+      return {
+        for (final category in _planningCategories)
+          category.id: parseMoney(controllers[category.id]!.text),
+      };
+    }
+
+    double totalAllocated(Map<String, double> values) {
+      return localActiveIds.fold<double>(
+        0,
+        (sum, id) => sum + (values[id] ?? 0),
+      );
+    }
+
+    Map<String, double> autoPlan() {
+      return _autoDistributePlan(
+        income: parseMoney(incomeController.text),
+        essentialPercent: essential,
+        futurePercent: future,
+        freePercent: free,
+        activeIds: localActiveIds,
+        ownHome: ownHome,
+        mealTicket: mealTicket,
+        noCar: noCar,
+        freeTransit: freeTransit,
+        hasHealthPlan: hasHealthPlan,
+      );
+    }
+
+    void applyAutomatic({bool preserveManual = false}) {
+      final suggested = autoPlan();
+      final currentValues = readCurrentValues();
+      for (final category in _planningCategories) {
+        final currentValue = currentValues[category.id] ?? 0;
+        final nextValue = preserveManual && currentValue > 0
+            ? currentValue
+            : (suggested[category.id] ?? 0);
+        controllers[category.id]!.text = nextValue <= 0
+            ? ''
+            : moneyField(nextValue);
+      }
+    }
+
+    String saveProfileLabel() {
+      final labels = <String>[];
+      if (ownHome) labels.add('casa própria');
+      if (mealTicket) labels.add('vale alimentação');
+      if (noCar) labels.add('sem carro');
+      if (freeTransit) labels.add('passagem grátis');
+      if (hasHealthPlan) labels.add('plano de saúde');
+      if (labels.isEmpty) return 'Nenhum atalho aplicado.';
+      return labels.join(' • ');
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -216,16 +333,199 @@ class _FinanceTabState extends State<FinanceTab> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final preview = _buildPlanningBuckets(
-              income: parseMoney(incomeController.text),
-              essentialPercent: essential,
-              futurePercent: future,
-              freePercent: free,
+            final income = parseMoney(incomeController.text);
+            final currentValues = readCurrentValues();
+            final allocated = totalAllocated(currentValues);
+            final remaining = math.max(0.0, income - allocated).toDouble();
+            final activeCategories = _sortedPlanningCategories(localActiveIds);
+            final optionalCategories = _sortedPlanningCategories(
+              _planningCategories
+                  .map((item) => item.id)
+                  .toSet()
+                  .difference(localActiveIds),
             );
+
+            Future<void> save() async {
+              final parsedIncome = parseMoney(incomeController.text);
+              var parsedValues = readCurrentValues();
+              double allocatedValue = localActiveIds.fold<double>(
+                0,
+                (sum, id) => sum + (parsedValues[id] ?? 0),
+              );
+
+              if (allocatedValue <= 0.01) {
+                parsedValues = autoPlan();
+                allocatedValue = localActiveIds.fold<double>(
+                  0,
+                  (sum, id) => sum + (parsedValues[id] ?? 0),
+                );
+              }
+
+              if (allocatedValue > parsedIncome + 0.1) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Os valores planejados passaram da renda do mês.',
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              final remainder = parsedIncome - allocatedValue;
+              if (remainder > 0.01) {
+                final receiverId = _pickRemainderCategory(localActiveIds);
+                if (receiverId != null) {
+                  parsedValues[receiverId] =
+                      (parsedValues[receiverId] ?? 0) + remainder;
+                  localActiveIds.add(receiverId);
+                }
+              }
+
+              await prefs.setDouble(
+                '$_prefsPrefix:finance_income_plan',
+                parsedIncome,
+              );
+              await prefs.setInt(
+                '$_prefsPrefix:finance_plan_preset',
+                localPreset,
+              );
+              await prefs.setDouble(
+                '$_prefsPrefix:finance_plan_essentials_percent',
+                essential,
+              );
+              await prefs.setDouble(
+                '$_prefsPrefix:finance_plan_future_percent',
+                future,
+              );
+              await prefs.setDouble(
+                '$_prefsPrefix:finance_plan_free_percent',
+                free,
+              );
+              await prefs.setStringList(
+                '$_prefsPrefix:finance_plan_active_ids',
+                localActiveIds.toList(),
+              );
+              await prefs.setBool('$_prefsPrefix:plan_life_own_home', ownHome);
+              await prefs.setBool(
+                '$_prefsPrefix:plan_life_meal_ticket',
+                mealTicket,
+              );
+              await prefs.setBool('$_prefsPrefix:plan_life_no_car', noCar);
+              await prefs.setBool(
+                '$_prefsPrefix:plan_life_free_transit',
+                freeTransit,
+              );
+              await prefs.setBool(
+                '$_prefsPrefix:plan_life_health_plan',
+                hasHealthPlan,
+              );
+
+              for (final category in _planningCategories) {
+                await prefs.setDouble(
+                  '$_prefsPrefix:plan:${category.id}',
+                  parsedValues[category.id] ?? 0,
+                );
+              }
+
+              if (!mounted) return;
+              Navigator.of(context).pop();
+              await _loadPrefs();
+            }
+
+            Widget buildLifeChip({
+              required bool selected,
+              required IconData icon,
+              required String label,
+              required VoidCallback onTap,
+            }) {
+              return FilterChip(
+                selected: selected,
+                onSelected: (_) => onTap(),
+                avatar: Icon(icon, size: 18),
+                label: Text(label),
+              );
+            }
+
+            Widget buildCategoryEditor(FinanceCategory category) {
+              final bucket = FinancePlanningCatalog.bucketOf(category.id);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  color: const Color(0xFF111A1A),
+                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 18,
+                          backgroundColor: category.color.withOpacity(0.18),
+                          child: Icon(
+                            category.icon,
+                            color: category.color,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                category.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                FinancePlanningCatalog.bucketLabel(bucket),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.62),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remover do plano',
+                          onPressed: () {
+                            setSheetState(() {
+                              localActiveIds.remove(category.id);
+                              controllers[category.id]!.text = '';
+                            });
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controllers[category.id],
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Valor planejado',
+                        prefixText: 'R\$ ',
+                        prefixIcon: Icon(category.icon),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
 
             return FinanceSheetFrame(
               title: 'Planejar o mês',
-              subtitle: 'Escolha um modelo simples para separar sua renda.',
+              subtitle:
+                  'O app sugere, mas você adapta ao seu jeito de viver. O que você não usa sai da divisão.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -260,6 +560,7 @@ class _FinanceTabState extends State<FinanceTab> {
                             essential = preset.essential;
                             future = preset.future;
                             free = preset.free;
+                            applyAutomatic();
                           });
                         },
                       );
@@ -293,43 +594,185 @@ class _FinanceTabState extends State<FinanceTab> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Seu jeito de viver',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      buildLifeChip(
+                        selected: ownHome,
+                        icon: Icons.home_work_outlined,
+                        label: 'Casa própria',
+                        onTap: () => setSheetState(() {
+                          ownHome = !ownHome;
+                          applyAutomatic(preserveManual: true);
+                        }),
+                      ),
+                      buildLifeChip(
+                        selected: mealTicket,
+                        icon: Icons.lunch_dining_outlined,
+                        label: 'Vale alimentação',
+                        onTap: () => setSheetState(() {
+                          mealTicket = !mealTicket;
+                          applyAutomatic(preserveManual: true);
+                        }),
+                      ),
+                      buildLifeChip(
+                        selected: noCar,
+                        icon: Icons.no_crash_outlined,
+                        label: 'Sem carro',
+                        onTap: () => setSheetState(() {
+                          noCar = !noCar;
+                          applyAutomatic(preserveManual: true);
+                        }),
+                      ),
+                      buildLifeChip(
+                        selected: freeTransit,
+                        icon: Icons.directions_bus_outlined,
+                        label: 'Passagem grátis',
+                        onTap: () => setSheetState(() {
+                          freeTransit = !freeTransit;
+                          applyAutomatic(preserveManual: true);
+                        }),
+                      ),
+                      buildLifeChip(
+                        selected: hasHealthPlan,
+                        icon: Icons.health_and_safety_outlined,
+                        label: 'Plano de saúde',
+                        onTap: () => setSheetState(() {
+                          hasHealthPlan = !hasHealthPlan;
+                          applyAutomatic(preserveManual: true);
+                        }),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  FinanceSoftInfoCard(
+                    title: 'Perfil aplicado',
+                    text: saveProfileLabel(),
+                    icon: Icons.auto_awesome_outlined,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              setSheetState(() => applyAutomatic()),
+                          icon: const Icon(Icons.auto_fix_high_rounded),
+                          label: const Text('Distribuir automático'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => setSheetState(
+                            () => applyAutomatic(preserveManual: true),
+                          ),
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Redistribuir restante'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const FinanceSoftInfoCard(
+                    title: 'Como o saldo restante é tratado',
+                    text:
+                        'Se você reduzir uma categoria e sobrar dinheiro, o restante vai para reserva/caixinha ao salvar.',
+                    icon: Icons.savings_outlined,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FinanceValueBadge(
+                          label: 'Planejado agora',
+                          value: formatCurrency(allocated, hideValues: false),
+                          color: const Color(0xFF39D0FF),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FinanceValueBadge(
+                          label: 'Ainda sobrando',
+                          value: formatCurrency(remaining, hideValues: false),
+                          color: const Color(0xFFFFB020),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 18),
                   const Text(
-                    'Sugestão automática',
+                    'Categorias do seu plano',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 8),
-                  ...preview.map(_buildPlanPreviewTile),
+                  Text(
+                    'Ative só o que faz sentido para sua vida. O resto fica como opção.',
+                    style: TextStyle(color: Colors.white.withOpacity(0.68)),
+                  ),
+                  const SizedBox(height: 12),
+                  ...activeCategories.map(buildCategoryEditor),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Adicionar mais categorias',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final category
+                          in (showAllOptional
+                              ? optionalCategories
+                              : optionalCategories.take(12).toList()))
+                        ActionChip(
+                          avatar: Icon(
+                            category.icon,
+                            size: 18,
+                            color: category.color,
+                          ),
+                          label: Text(category.name),
+                          onPressed: () {
+                            setSheetState(() {
+                              localActiveIds.add(category.id);
+                              final suggested = autoPlan()[category.id] ?? 0;
+                              if (parseMoney(controllers[category.id]!.text) <=
+                                  0) {
+                                controllers[category.id]!.text = suggested <= 0
+                                    ? ''
+                                    : moneyField(suggested);
+                              }
+                            });
+                          },
+                        ),
+                      if (optionalCategories.length > 12)
+                        ActionChip(
+                          avatar: const Icon(
+                            Icons.more_horiz_rounded,
+                            size: 18,
+                          ),
+                          label: Text(
+                            showAllOptional ? 'Ver menos' : 'Ver mais',
+                          ),
+                          onPressed: () => setSheetState(() {
+                            showAllOptional = !showAllOptional;
+                          }),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 18),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: () async {
-                        final income = parseMoney(incomeController.text);
-                        await prefs.setDouble(
-                          '$_prefsPrefix:finance_income_plan',
-                          income,
-                        );
-                        await prefs.setInt(
-                          '$_prefsPrefix:finance_plan_preset',
-                          localPreset,
-                        );
-                        await prefs.setDouble(
-                          '$_prefsPrefix:finance_plan_essentials_percent',
-                          essential,
-                        );
-                        await prefs.setDouble(
-                          '$_prefsPrefix:finance_plan_future_percent',
-                          future,
-                        );
-                        await prefs.setDouble(
-                          '$_prefsPrefix:finance_plan_free_percent',
-                          free,
-                        );
-                        if (!mounted) return;
-                        Navigator.of(context).pop();
-                        await _loadPrefs();
-                      },
+                      onPressed: save,
                       icon: const Icon(Icons.check_rounded),
                       label: const Text('Salvar planejamento'),
                     ),
@@ -521,66 +964,199 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
-  List<FinancePlanningBucket> _buildPlanningBuckets({
+  Map<String, double> _resolvedPlanValues() {
+    final activeIds = _activePlanningCategoryIds.isEmpty
+        ? _defaultActivePlanningIds()
+        : _activePlanningCategoryIds;
+    final currentValues = <String, double>{
+      for (final category in _planningCategories)
+        category.id: activeIds.contains(category.id)
+            ? (_plannedByCategory[category.id] ?? 0)
+            : 0,
+    };
+    final total = activeIds.fold<double>(
+      0,
+      (sum, id) => sum + (currentValues[id] ?? 0),
+    );
+    if (total <= 0.01) {
+      return _autoDistributePlan(
+        income: _monthlyIncomePlan,
+        essentialPercent: _planningEssentialPercent,
+        futurePercent: _planningFuturePercent,
+        freePercent: _planningFreePercent,
+        activeIds: activeIds,
+        ownHome: _planningOwnHome,
+        mealTicket: _planningMealTicket,
+        noCar: _planningNoCar,
+        freeTransit: _planningFreeTransit,
+        hasHealthPlan: _planningHasHealthPlan,
+      );
+    }
+    return currentValues;
+  }
+
+  List<FinanceCategory> _sortedPlanningCategories(Iterable<String> ids) {
+    final idSet = ids.toSet();
+    final items = _planningCategories
+        .where((item) => idSet.contains(item.id))
+        .toList();
+    items.sort(FinancePlanningCatalog.compareCategories);
+    return items;
+  }
+
+  String? _pickRemainderCategory(Set<String> activeIds) {
+    const preferredIds = <String>[
+      'future_emergency',
+      'future_caixinha',
+      'future_stocks',
+      'other_expense',
+    ];
+    for (final id in preferredIds) {
+      if (_planningCategories.any((category) => category.id == id)) {
+        return id;
+      }
+    }
+    if (activeIds.isNotEmpty) {
+      final sorted = _sortedPlanningCategories(activeIds);
+      return sorted.isEmpty ? null : sorted.first.id;
+    }
+    final defaults = _defaultActivePlanningIds();
+    return defaults.isEmpty ? null : defaults.first;
+  }
+
+  Map<String, double> _autoDistributePlan({
     required double income,
     required double essentialPercent,
     required double futurePercent,
     required double freePercent,
+    required Set<String> activeIds,
+    required bool ownHome,
+    required bool mealTicket,
+    required bool noCar,
+    required bool freeTransit,
+    required bool hasHealthPlan,
   }) {
+    final safeActiveIds = activeIds.isEmpty
+        ? _defaultActivePlanningIds()
+        : activeIds;
+    final result = <String, double>{
+      for (final category in _planningCategories) category.id: 0,
+    };
+
     final essentialTotal = income * (essentialPercent / 100);
     final futureTotal = income * (futurePercent / 100);
     final freeTotal = income * (freePercent / 100);
 
-    return [
-      FinancePlanningBucket(
-        title: 'Moradia + contas',
-        subtitle: 'aluguel, energia, água, internet',
-        amount: essentialTotal * 0.45,
-        color: const Color(0xFF28C76F),
-      ),
-      FinancePlanningBucket(
-        title: 'Alimentação',
-        subtitle: 'mercado, padaria, açougue, hortifruti',
-        amount: essentialTotal * 0.25,
-        color: const Color(0xFF00C2A8),
-      ),
-      FinancePlanningBucket(
-        title: 'Transporte + saúde',
-        subtitle: 'combustível, ônibus, remédios, consultas',
-        amount: essentialTotal * 0.20,
-        color: const Color(0xFF39D0FF),
-      ),
-      FinancePlanningBucket(
-        title: 'Investir + reserva',
-        subtitle: 'reserva, caixinha, ações, FIIs',
-        amount: futureTotal,
-        color: const Color(0xFF6C63FF),
-      ),
-      FinancePlanningBucket(
-        title: 'Livre + lazer',
-        subtitle: 'restaurantes, delivery, roupas, hobbies',
-        amount: freeTotal,
-        color: const Color(0xFFFFB020),
-      ),
-      FinancePlanningBucket(
-        title: 'Margem de ajuste',
-        subtitle: 'sobras para reorganizar o mês',
-        amount: math.max(
-          0,
-          income - (essentialTotal * 0.90 + futureTotal + freeTotal),
+    void distribute(FinancePlanningBucketKind bucket, double total) {
+      final bucketCategories = _planningCategories.where((category) {
+        return safeActiveIds.contains(category.id) &&
+            FinancePlanningCatalog.bucketOf(category.id) == bucket;
+      }).toList();
+
+      final fallback = _planningCategories.where((category) {
+        return FinancePlanningCatalog.bucketOf(category.id) == bucket &&
+            FinancePlanningCatalog.starterFor(category.id);
+      }).toList();
+
+      final targets = bucketCategories.isEmpty ? fallback : bucketCategories;
+      if (targets.isEmpty || total <= 0) return;
+
+      final weights = <String, double>{};
+      var totalWeight = 0.0;
+      for (final category in targets) {
+        final baseWeight = FinancePlanningCatalog.baseWeightFor(category.id);
+        final profileWeight = FinancePlanningCatalog.profileMultiplier(
+          category.id,
+          ownHome: ownHome,
+          mealTicket: mealTicket,
+          noCar: noCar,
+          freeTransit: freeTransit,
+          hasHealthPlan: hasHealthPlan,
+        );
+        final weight = math.max(0.0, baseWeight * profileWeight).toDouble();
+        if (weight <= 0) continue;
+        weights[category.id] = weight;
+        totalWeight += weight;
+      }
+
+      if (weights.isEmpty || totalWeight <= 0) return;
+
+      var distributed = 0.0;
+      final targetIds = weights.keys.toList();
+      for (var index = 0; index < targetIds.length; index++) {
+        final id = targetIds[index];
+        final isLast = index == targetIds.length - 1;
+        final value = isLast
+            ? (total - distributed)
+            : double.parse(
+                (total * (weights[id]! / totalWeight)).toStringAsFixed(2),
+              );
+        result[id] = math.max(0.0, value).toDouble();
+        distributed += result[id]!;
+      }
+    }
+
+    distribute(FinancePlanningBucketKind.essential, essentialTotal);
+    distribute(FinancePlanningBucketKind.future, futureTotal);
+    distribute(FinancePlanningBucketKind.free, freeTotal);
+    return result;
+  }
+
+  List<FinancePlanningBucket> _buildPlanningBuckets() {
+    final values = _resolvedPlanValues();
+    final activeCategories = _sortedPlanningCategories(
+      _activePlanningCategoryIds.isEmpty
+          ? _defaultActivePlanningIds()
+          : _activePlanningCategoryIds,
+    );
+
+    final items = <FinancePlanningBucket>[];
+    for (final category in activeCategories) {
+      final amount = values[category.id] ?? 0;
+      if (amount <= 0) continue;
+      final bucket = FinancePlanningCatalog.bucketOf(category.id);
+      items.add(
+        FinancePlanningBucket(
+          title: category.name,
+          subtitle: FinancePlanningCatalog.bucketLabel(bucket),
+          amount: amount,
+          color: category.color,
         ),
-        color: const Color(0xFFFF6B6B),
-      ),
-    ];
+      );
+    }
+
+    items.sort((a, b) => b.amount.compareTo(a.amount));
+    return items;
   }
 
   Map<String, double> _buildPlanningSummary() {
     final income = _monthlyIncomePlan;
+    final values = _resolvedPlanValues();
+    double essential = 0;
+    double future = 0;
+    double free = 0;
+
+    for (final category in _planningCategories) {
+      final amount = values[category.id] ?? 0;
+      switch (FinancePlanningCatalog.bucketOf(category.id)) {
+        case FinancePlanningBucketKind.essential:
+          essential += amount;
+          break;
+        case FinancePlanningBucketKind.future:
+          future += amount;
+          break;
+        case FinancePlanningBucketKind.free:
+          free += amount;
+          break;
+      }
+    }
+
     return {
       'Renda planejada': income,
-      'Essenciais': income * (_planningEssentialPercent / 100),
-      'Investir + reserva': income * (_planningFuturePercent / 100),
-      'Livre': income * (_planningFreePercent / 100),
+      'Essenciais': essential,
+      'Investir + reserva': future,
+      'Livre': free,
+      'Sobra': math.max(0.0, income - (essential + future + free)).toDouble(),
     };
   }
 
@@ -830,19 +1406,26 @@ class _FinanceTabState extends State<FinanceTab> {
 
   Widget _buildPlanningSection() {
     final summary = _buildPlanningSummary();
-    final preview = _buildPlanningBuckets(
-      income: _monthlyIncomePlan,
-      essentialPercent: _planningEssentialPercent,
-      futurePercent: _planningFuturePercent,
-      freePercent: _planningFreePercent,
+    final preview = _buildPlanningBuckets();
+    final activeCategories = _sortedPlanningCategories(
+      _activePlanningCategoryIds.isEmpty
+          ? _defaultActivePlanningIds()
+          : _activePlanningCategoryIds,
     );
+    final lifeFlags = <String>[
+      if (_planningOwnHome) 'Casa própria',
+      if (_planningMealTicket) 'Vale alimentação',
+      if (_planningNoCar) 'Sem carro',
+      if (_planningFreeTransit) 'Passagem grátis',
+      if (_planningHasHealthPlan) 'Plano de saúde',
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FinanceSectionCard(
           title: 'Planejamento do mês',
-          subtitle: 'Separação simples para não virar planilha chata.',
+          subtitle: 'O app sugere, mas você adapta ao seu jeito de viver.',
           trailing: TextButton.icon(
             onPressed: _openPlanningSheet,
             icon: const Icon(Icons.edit_outlined),
@@ -901,16 +1484,78 @@ class _FinanceTabState extends State<FinanceTab> {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              FinanceValueBadge(
+                label: 'Sobra automática',
+                value: formatCurrency(
+                  summary['Sobra'] ?? 0,
+                  hideValues: _hideValues,
+                ),
+                color: const Color(0xFF39D0FF),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 14),
         FinanceSectionCard(
-          title: 'Sugestão de divisão',
-          subtitle:
-              'Base simples para você começar e depois ajustar com o dedo ou pela voz.',
+          title: 'Seu perfil do mês',
+          subtitle: 'Esses atalhos mudam a divisão automática.',
           child: Column(
-            children: preview.take(5).map(_buildPlanPreviewTile).toList(),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (lifeFlags.isEmpty)
+                Text(
+                  'Nenhum atalho ligado. Toque em Editar para marcar casa própria, vale alimentação, sem carro e outros.',
+                  style: TextStyle(color: Colors.white.withOpacity(0.72)),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: lifeFlags
+                      .map((label) => Chip(label: Text(label)))
+                      .toList(),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
+          title: 'Categorias ativas do plano',
+          subtitle: 'Só aparece forte aqui o que você realmente usa.',
+          child: Column(
+            children: [
+              if (activeCategories.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('Nenhuma categoria ativa ainda.'),
+                )
+              else
+                ...activeCategories.take(8).map((category) {
+                  final amount = (_resolvedPlanValues()[category.id] ?? 0);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: FinanceCategorySummaryTile(
+                      icon: category.icon,
+                      color: category.color,
+                      title: category.name,
+                      subtitle: FinancePlanningCatalog.bucketLabel(
+                        FinancePlanningCatalog.bucketOf(category.id),
+                      ),
+                      trailing: formatCurrency(amount, hideValues: _hideValues),
+                    ),
+                  );
+                }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
+          title: 'Sugestão em ação',
+          subtitle:
+              'A divisão automática respeita as categorias ativas e o jeito que você vive.',
+          child: Column(
+            children: preview.take(6).map(_buildPlanPreviewTile).toList(),
           ),
         ),
       ],

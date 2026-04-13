@@ -1,28 +1,27 @@
 // ============================================================================
 // FILE: lib/features/finance/presentation/pages/finance/finance_planning_catalog.dart
 //
-// Catálogo do planejamento financeiro.
+// Catálogo de planejamento financeiro do Vida.
 //
 // O que este arquivo faz:
-// - Diz em qual balde cada categoria entra: essenciais, futuro ou livre.
-// - Define pesos base para a distribuição automática da renda.
-// - Traz atalhos para adaptar o plano ao estilo de vida do usuário.
-// - Mantém categorias detalhadas disponíveis sem poluir a home.
+// - Define em qual grupo cada categoria entra no Planejar.
+// - Dá pesos base para a distribuição automática.
+// - Marca quais categorias aparecem por padrão para não poluir a tela.
+// - Aplica ajustes de estilo de vida, como casa própria, vale alimentação,
+//   sem carro, passagem grátis e plano de saúde.
 // ============================================================================
 
 import '../../../data/models/finance_category.dart';
 import 'finance_tab_models.dart';
 
-class FinancePlanningCategoryConfig {
-  const FinancePlanningCategoryConfig({
-    required this.id,
+class FinancePlanningCategoryMeta {
+  const FinancePlanningCategoryMeta({
     required this.bucket,
     required this.baseWeight,
     required this.starter,
     required this.order,
   });
 
-  final String id;
   final FinancePlanningBucketKind bucket;
   final double baseWeight;
   final bool starter;
@@ -32,39 +31,440 @@ class FinancePlanningCategoryConfig {
 class FinancePlanningCatalog {
   FinancePlanningCatalog._();
 
-  static FinancePlanningCategoryConfig ofId(String id) {
-    return _configs[id] ?? _fallback(id);
+  static const Map<String, FinancePlanningCategoryMeta> _items = {
+    'house_rent': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 2.3,
+      starter: true,
+      order: 10,
+    ),
+    'house_condo': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.9,
+      starter: false,
+      order: 11,
+    ),
+    'house_iptu': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.5,
+      starter: false,
+      order: 12,
+    ),
+    'house_insurance': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.4,
+      starter: false,
+      order: 13,
+    ),
+    'house_maintenance': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.6,
+      starter: false,
+      order: 14,
+    ),
+    'house_furniture': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.6,
+      starter: false,
+      order: 15,
+    ),
+    'utility_energy': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 1.0,
+      starter: true,
+      order: 16,
+    ),
+    'utility_water': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: true,
+      order: 17,
+    ),
+    'utility_gas': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.5,
+      starter: false,
+      order: 18,
+    ),
+    'utility_internet': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: true,
+      order: 19,
+    ),
+    'utility_phone': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.7,
+      starter: false,
+      order: 20,
+    ),
+    'food_market': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 1.9,
+      starter: true,
+      order: 30,
+    ),
+    'food_butcher': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: false,
+      order: 31,
+    ),
+    'food_hortifruti': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: false,
+      order: 32,
+    ),
+    'food_bakery': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.5,
+      starter: false,
+      order: 33,
+    ),
+    'food_cleaning': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.9,
+      starter: true,
+      order: 34,
+    ),
+    'leisure_restaurants': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 1.0,
+      starter: true,
+      order: 35,
+    ),
+    'leisure_delivery': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.9,
+      starter: false,
+      order: 36,
+    ),
+    'transport_fuel': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 1.2,
+      starter: false,
+      order: 40,
+    ),
+    'transport_parking': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.3,
+      starter: false,
+      order: 41,
+    ),
+    'transport_maintenance': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.6,
+      starter: false,
+      order: 42,
+    ),
+    'transport_insurance': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.4,
+      starter: false,
+      order: 43,
+    ),
+    'transport_ipva': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.3,
+      starter: false,
+      order: 44,
+    ),
+    'transport_toll': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.2,
+      starter: false,
+      order: 45,
+    ),
+    'transport_public': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.7,
+      starter: true,
+      order: 46,
+    ),
+    'transport_ride': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.5,
+      starter: false,
+      order: 47,
+    ),
+    'health_plan': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: false,
+      order: 50,
+    ),
+    'health_medicine': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.5,
+      starter: false,
+      order: 51,
+    ),
+    'health_consult': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.4,
+      starter: false,
+      order: 52,
+    ),
+    'health_dentist': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.3,
+      starter: false,
+      order: 53,
+    ),
+    'health_therapy': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.3,
+      starter: false,
+      order: 54,
+    ),
+    'health_fitness': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.8,
+      starter: false,
+      order: 55,
+    ),
+    'health_hygiene': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.5,
+      starter: false,
+      order: 56,
+    ),
+    'education_school': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 1.1,
+      starter: false,
+      order: 60,
+    ),
+    'education_courses': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.7,
+      starter: false,
+      order: 61,
+    ),
+    'education_books': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.4,
+      starter: false,
+      order: 62,
+    ),
+    'software_apps': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.4,
+      starter: false,
+      order: 63,
+    ),
+    'shopping_clothes': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.8,
+      starter: false,
+      order: 70,
+    ),
+    'shopping_beauty': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.5,
+      starter: false,
+      order: 71,
+    ),
+    'shopping_laundry': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.3,
+      starter: false,
+      order: 72,
+    ),
+    'shopping_hardware': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.4,
+      starter: false,
+      order: 73,
+    ),
+    'personal_beauty': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.5,
+      starter: false,
+      order: 74,
+    ),
+    'tech_devices': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.5,
+      starter: false,
+      order: 80,
+    ),
+    'tech_maintenance': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.3,
+      starter: false,
+      order: 81,
+    ),
+    'leisure_cinema': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.4,
+      starter: false,
+      order: 90,
+    ),
+    'leisure_travel': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.7,
+      starter: false,
+      order: 91,
+    ),
+    'leisure_hobby': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.6,
+      starter: false,
+      order: 92,
+    ),
+    'leisure_gifts': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.3,
+      starter: false,
+      order: 93,
+    ),
+    'subscription_video': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.4,
+      starter: true,
+      order: 94,
+    ),
+    'subscription_music': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.3,
+      starter: false,
+      order: 95,
+    ),
+    'subscription_chatgpt': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.3,
+      starter: false,
+      order: 96,
+    ),
+    'subscription_games': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.3,
+      starter: false,
+      order: 97,
+    ),
+    'gaming_credits': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.2,
+      starter: false,
+      order: 98,
+    ),
+    'pet_food': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.7,
+      starter: false,
+      order: 100,
+    ),
+    'pet_vet': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.3,
+      starter: false,
+      order: 101,
+    ),
+    'pet_care': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.2,
+      starter: false,
+      order: 102,
+    ),
+    'pet_medicine': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.2,
+      starter: false,
+      order: 103,
+    ),
+    'debt_credit_card': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: false,
+      order: 110,
+    ),
+    'debt_loan': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.8,
+      starter: false,
+      order: 111,
+    ),
+    'bank_fees': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.2,
+      starter: false,
+      order: 112,
+    ),
+    'finance_taxes': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.4,
+      starter: false,
+      order: 113,
+    ),
+    'finance_other_insurance': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.4,
+      starter: false,
+      order: 114,
+    ),
+    'future_emergency': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.future,
+      baseWeight: 1.4,
+      starter: true,
+      order: 120,
+    ),
+    'future_caixinha': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.future,
+      baseWeight: 1.0,
+      starter: true,
+      order: 121,
+    ),
+    'future_stocks': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.future,
+      baseWeight: 0.8,
+      starter: false,
+      order: 122,
+    ),
+    'future_crypto': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.future,
+      baseWeight: 0.3,
+      starter: false,
+      order: 123,
+    ),
+    'family_children': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 1.0,
+      starter: false,
+      order: 130,
+    ),
+    'family_support': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.essential,
+      baseWeight: 0.7,
+      starter: false,
+      order: 131,
+    ),
+    'other_expense': FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.4,
+      starter: false,
+      order: 999,
+    ),
+  };
+
+  static FinancePlanningCategoryMeta metaOf(String id) {
+    return _items[id] ?? _fallback(id);
   }
 
-  static FinancePlanningBucketKind bucketOf(String id) => ofId(id).bucket;
-
-  static double baseWeightFor(String id) => ofId(id).baseWeight;
+  static FinancePlanningBucketKind bucketOf(String id) => metaOf(id).bucket;
+  static double baseWeightFor(String id) => metaOf(id).baseWeight;
+  static bool starterFor(String id) => metaOf(id).starter;
 
   static String bucketLabel(FinancePlanningBucketKind bucket) {
     switch (bucket) {
       case FinancePlanningBucketKind.essential:
-        return 'Essenciais';
+        return 'Essencial';
       case FinancePlanningBucketKind.future:
         return 'Investir + reserva';
       case FinancePlanningBucketKind.free:
-        return 'Livre e estilo de vida';
+        return 'Livre';
     }
-  }
-
-  static List<String> defaultActiveIds(Iterable<FinanceCategory> categories) {
-    final items = categories.where((item) => ofId(item.id).starter).toList();
-    items.sort(compareCategories);
-    return items.map((item) => item.id).toList();
-  }
-
-  static int compareCategories(FinanceCategory a, FinanceCategory b) {
-    final aConfig = ofId(a.id);
-    final bConfig = ofId(b.id);
-    final bucketCompare = aConfig.bucket.index.compareTo(bConfig.bucket.index);
-    if (bucketCompare != 0) return bucketCompare;
-    final orderCompare = aConfig.order.compareTo(bConfig.order);
-    if (orderCompare != 0) return orderCompare;
-    return a.name.compareTo(b.name);
   }
 
   static double profileMultiplier(
@@ -75,570 +475,113 @@ class FinancePlanningCatalog {
     required bool freeTransit,
     required bool hasHealthPlan,
   }) {
-    var multiplier = 1.0;
-
-    if (ownHome && id == 'house_rent') multiplier = 0;
+    if (ownHome && id == 'house_rent') return 0;
 
     if (mealTicket) {
-      if (id == 'food_market') multiplier *= 0.45;
-      if (id == 'food_butcher') multiplier *= 0.45;
-      if (id == 'food_hortifruti') multiplier *= 0.45;
-      if (id == 'food_bakery') multiplier *= 0.65;
-      if (id == 'leisure_restaurants') multiplier *= 0.75;
-      if (id == 'leisure_delivery') multiplier *= 0.70;
-    }
-
-    if (noCar) {
       if ({
-        'transport_fuel',
-        'transport_parking',
-        'transport_maintenance',
-        'transport_insurance',
-        'transport_ipva',
-        'transport_toll',
+        'food_market',
+        'food_butcher',
+        'food_hortifruti',
+        'food_bakery',
       }.contains(id)) {
-        multiplier = 0;
+        return 0.35;
+      }
+      if (id == 'leisure_restaurants' || id == 'leisure_delivery') {
+        return 0.85;
       }
     }
 
-    if (freeTransit && id == 'transport_public') multiplier = 0;
+    if (noCar &&
+        {
+          'transport_fuel',
+          'transport_parking',
+          'transport_maintenance',
+          'transport_insurance',
+          'transport_ipva',
+          'transport_toll',
+        }.contains(id)) {
+      return 0;
+    }
+
+    if (freeTransit && id == 'transport_public') {
+      return 0;
+    }
 
     if (hasHealthPlan) {
-      if (id == 'health_plan') multiplier *= 1.10;
-      if (id == 'health_consult') multiplier *= 0.55;
-      if (id == 'health_medicine') multiplier *= 0.80;
-      if (id == 'health_dentist') multiplier *= 0.75;
+      if ({'health_consult', 'health_dentist', 'health_therapy'}.contains(id)) {
+        return 0.55;
+      }
+      if (id == 'health_medicine') {
+        return 0.8;
+      }
     }
 
-    return multiplier;
+    return 1;
   }
 
-  static FinancePlanningCategoryConfig _fallback(String id) {
+  static Set<String> defaultActiveIds(Iterable<FinanceCategory> categories) {
+    final available = categories.map((item) => item.id).toSet();
+    final defaults = _items.entries
+        .where((entry) => entry.value.starter && available.contains(entry.key))
+        .map((entry) => entry.key)
+        .toSet();
+    if (defaults.isNotEmpty) return defaults;
+    return categories.take(8).map((item) => item.id).toSet();
+  }
+
+  static int compareCategories(FinanceCategory a, FinanceCategory b) {
+    final metaA = metaOf(a.id);
+    final metaB = metaOf(b.id);
+    final bucketA = _bucketOrder(metaA.bucket);
+    final bucketB = _bucketOrder(metaB.bucket);
+    if (bucketA != bucketB) return bucketA.compareTo(bucketB);
+    if (metaA.starter != metaB.starter) {
+      return metaA.starter ? -1 : 1;
+    }
+    if (metaA.order != metaB.order) return metaA.order.compareTo(metaB.order);
+    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  }
+
+  static int _bucketOrder(FinancePlanningBucketKind bucket) {
+    switch (bucket) {
+      case FinancePlanningBucketKind.essential:
+        return 0;
+      case FinancePlanningBucketKind.future:
+        return 1;
+      case FinancePlanningBucketKind.free:
+        return 2;
+    }
+  }
+
+  static FinancePlanningCategoryMeta _fallback(String id) {
     if (id.startsWith('future_')) {
-      return FinancePlanningCategoryConfig(
-        id: id,
+      return const FinancePlanningCategoryMeta(
         bucket: FinancePlanningBucketKind.future,
-        baseWeight: 1,
+        baseWeight: 0.5,
         starter: false,
-        order: 999,
+        order: 900,
       );
     }
-
-    if (id.startsWith('leisure_') ||
-        id.startsWith('shopping_') ||
-        id.startsWith('subscription_') ||
-        id.startsWith('gaming_') ||
-        id.startsWith('tech_')) {
-      return FinancePlanningCategoryConfig(
-        id: id,
-        bucket: FinancePlanningBucketKind.free,
-        baseWeight: 1,
+    if (id.startsWith('house_') ||
+        id.startsWith('utility_') ||
+        id.startsWith('health_') ||
+        id.startsWith('transport_') ||
+        id.startsWith('food_') ||
+        id.startsWith('family_') ||
+        id.startsWith('debt_') ||
+        id.startsWith('finance_')) {
+      return const FinancePlanningCategoryMeta(
+        bucket: FinancePlanningBucketKind.essential,
+        baseWeight: 0.5,
         starter: false,
-        order: 999,
+        order: 950,
       );
     }
-
-    return FinancePlanningCategoryConfig(
-      id: id,
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 1,
+    return const FinancePlanningCategoryMeta(
+      bucket: FinancePlanningBucketKind.free,
+      baseWeight: 0.5,
       starter: false,
-      order: 999,
+      order: 980,
     );
   }
-
-  static const Map<String, FinancePlanningCategoryConfig> _configs = {
-    'food_market': FinancePlanningCategoryConfig(
-      id: 'food_market',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 1.55,
-      starter: true,
-      order: 10,
-    ),
-    'food_cleaning': FinancePlanningCategoryConfig(
-      id: 'food_cleaning',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.85,
-      starter: true,
-      order: 11,
-    ),
-    'food_butcher': FinancePlanningCategoryConfig(
-      id: 'food_butcher',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.75,
-      starter: false,
-      order: 12,
-    ),
-    'food_hortifruti': FinancePlanningCategoryConfig(
-      id: 'food_hortifruti',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.70,
-      starter: false,
-      order: 13,
-    ),
-    'food_bakery': FinancePlanningCategoryConfig(
-      id: 'food_bakery',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.50,
-      starter: false,
-      order: 14,
-    ),
-
-    'house_rent': FinancePlanningCategoryConfig(
-      id: 'house_rent',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 1.50,
-      starter: true,
-      order: 20,
-    ),
-    'house_condo': FinancePlanningCategoryConfig(
-      id: 'house_condo',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.65,
-      starter: false,
-      order: 21,
-    ),
-    'house_iptu': FinancePlanningCategoryConfig(
-      id: 'house_iptu',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.35,
-      starter: false,
-      order: 22,
-    ),
-    'house_insurance': FinancePlanningCategoryConfig(
-      id: 'house_insurance',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.25,
-      starter: false,
-      order: 23,
-    ),
-    'house_maintenance': FinancePlanningCategoryConfig(
-      id: 'house_maintenance',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.50,
-      starter: false,
-      order: 24,
-    ),
-    'house_furniture': FinancePlanningCategoryConfig(
-      id: 'house_furniture',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.35,
-      starter: false,
-      order: 25,
-    ),
-
-    'utility_energy': FinancePlanningCategoryConfig(
-      id: 'utility_energy',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.95,
-      starter: true,
-      order: 30,
-    ),
-    'utility_water': FinancePlanningCategoryConfig(
-      id: 'utility_water',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.70,
-      starter: true,
-      order: 31,
-    ),
-    'utility_gas': FinancePlanningCategoryConfig(
-      id: 'utility_gas',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.45,
-      starter: false,
-      order: 32,
-    ),
-    'utility_internet': FinancePlanningCategoryConfig(
-      id: 'utility_internet',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.60,
-      starter: true,
-      order: 33,
-    ),
-    'utility_phone': FinancePlanningCategoryConfig(
-      id: 'utility_phone',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.45,
-      starter: true,
-      order: 34,
-    ),
-
-    'transport_public': FinancePlanningCategoryConfig(
-      id: 'transport_public',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.70,
-      starter: true,
-      order: 40,
-    ),
-    'transport_ride': FinancePlanningCategoryConfig(
-      id: 'transport_ride',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.40,
-      starter: false,
-      order: 41,
-    ),
-    'transport_fuel': FinancePlanningCategoryConfig(
-      id: 'transport_fuel',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 1.15,
-      starter: false,
-      order: 42,
-    ),
-    'transport_parking': FinancePlanningCategoryConfig(
-      id: 'transport_parking',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.35,
-      starter: false,
-      order: 43,
-    ),
-    'transport_maintenance': FinancePlanningCategoryConfig(
-      id: 'transport_maintenance',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.35,
-      starter: false,
-      order: 44,
-    ),
-    'transport_insurance': FinancePlanningCategoryConfig(
-      id: 'transport_insurance',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.25,
-      starter: false,
-      order: 45,
-    ),
-    'transport_ipva': FinancePlanningCategoryConfig(
-      id: 'transport_ipva',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.25,
-      starter: false,
-      order: 46,
-    ),
-    'transport_toll': FinancePlanningCategoryConfig(
-      id: 'transport_toll',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.20,
-      starter: false,
-      order: 47,
-    ),
-
-    'health_plan': FinancePlanningCategoryConfig(
-      id: 'health_plan',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.95,
-      starter: true,
-      order: 50,
-    ),
-    'health_medicine': FinancePlanningCategoryConfig(
-      id: 'health_medicine',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.55,
-      starter: false,
-      order: 51,
-    ),
-    'health_consult': FinancePlanningCategoryConfig(
-      id: 'health_consult',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.45,
-      starter: false,
-      order: 52,
-    ),
-    'health_dentist': FinancePlanningCategoryConfig(
-      id: 'health_dentist',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.25,
-      starter: false,
-      order: 53,
-    ),
-    'health_therapy': FinancePlanningCategoryConfig(
-      id: 'health_therapy',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.30,
-      starter: false,
-      order: 54,
-    ),
-    'health_fitness': FinancePlanningCategoryConfig(
-      id: 'health_fitness',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.40,
-      starter: false,
-      order: 55,
-    ),
-    'health_hygiene': FinancePlanningCategoryConfig(
-      id: 'health_hygiene',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.45,
-      starter: false,
-      order: 56,
-    ),
-
-    'education_school': FinancePlanningCategoryConfig(
-      id: 'education_school',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.55,
-      starter: false,
-      order: 60,
-    ),
-    'education_courses': FinancePlanningCategoryConfig(
-      id: 'education_courses',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.35,
-      starter: false,
-      order: 61,
-    ),
-    'education_books': FinancePlanningCategoryConfig(
-      id: 'education_books',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.20,
-      starter: false,
-      order: 62,
-    ),
-
-    'pet_food': FinancePlanningCategoryConfig(
-      id: 'pet_food',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.45,
-      starter: false,
-      order: 70,
-    ),
-    'pet_vet': FinancePlanningCategoryConfig(
-      id: 'pet_vet',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.20,
-      starter: false,
-      order: 71,
-    ),
-    'pet_care': FinancePlanningCategoryConfig(
-      id: 'pet_care',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.18,
-      starter: false,
-      order: 72,
-    ),
-    'pet_medicine': FinancePlanningCategoryConfig(
-      id: 'pet_medicine',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.15,
-      starter: false,
-      order: 73,
-    ),
-
-    'debt_credit_card': FinancePlanningCategoryConfig(
-      id: 'debt_credit_card',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.85,
-      starter: true,
-      order: 80,
-    ),
-    'debt_loan': FinancePlanningCategoryConfig(
-      id: 'debt_loan',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.55,
-      starter: false,
-      order: 81,
-    ),
-    'bank_fees': FinancePlanningCategoryConfig(
-      id: 'bank_fees',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.10,
-      starter: false,
-      order: 82,
-    ),
-    'finance_taxes': FinancePlanningCategoryConfig(
-      id: 'finance_taxes',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.25,
-      starter: false,
-      order: 83,
-    ),
-    'finance_other_insurance': FinancePlanningCategoryConfig(
-      id: 'finance_other_insurance',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.20,
-      starter: false,
-      order: 84,
-    ),
-    'family_children': FinancePlanningCategoryConfig(
-      id: 'family_children',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.60,
-      starter: false,
-      order: 85,
-    ),
-    'family_support': FinancePlanningCategoryConfig(
-      id: 'family_support',
-      bucket: FinancePlanningBucketKind.essential,
-      baseWeight: 0.45,
-      starter: false,
-      order: 86,
-    ),
-
-    'future_emergency': FinancePlanningCategoryConfig(
-      id: 'future_emergency',
-      bucket: FinancePlanningBucketKind.future,
-      baseWeight: 1.45,
-      starter: true,
-      order: 100,
-    ),
-    'future_caixinha': FinancePlanningCategoryConfig(
-      id: 'future_caixinha',
-      bucket: FinancePlanningBucketKind.future,
-      baseWeight: 0.90,
-      starter: true,
-      order: 101,
-    ),
-    'future_stocks': FinancePlanningCategoryConfig(
-      id: 'future_stocks',
-      bucket: FinancePlanningBucketKind.future,
-      baseWeight: 0.70,
-      starter: false,
-      order: 102,
-    ),
-    'future_crypto': FinancePlanningCategoryConfig(
-      id: 'future_crypto',
-      bucket: FinancePlanningBucketKind.future,
-      baseWeight: 0.35,
-      starter: false,
-      order: 103,
-    ),
-
-    'leisure_restaurants': FinancePlanningCategoryConfig(
-      id: 'leisure_restaurants',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.95,
-      starter: true,
-      order: 120,
-    ),
-    'leisure_delivery': FinancePlanningCategoryConfig(
-      id: 'leisure_delivery',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.80,
-      starter: true,
-      order: 121,
-    ),
-    'shopping_clothes': FinancePlanningCategoryConfig(
-      id: 'shopping_clothes',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.50,
-      starter: false,
-      order: 122,
-    ),
-    'personal_beauty': FinancePlanningCategoryConfig(
-      id: 'personal_beauty',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.35,
-      starter: false,
-      order: 123,
-    ),
-    'shopping_beauty': FinancePlanningCategoryConfig(
-      id: 'shopping_beauty',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.35,
-      starter: false,
-      order: 124,
-    ),
-    'shopping_laundry': FinancePlanningCategoryConfig(
-      id: 'shopping_laundry',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.15,
-      starter: false,
-      order: 125,
-    ),
-    'subscription_video': FinancePlanningCategoryConfig(
-      id: 'subscription_video',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.30,
-      starter: true,
-      order: 126,
-    ),
-    'subscription_music': FinancePlanningCategoryConfig(
-      id: 'subscription_music',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.15,
-      starter: false,
-      order: 127,
-    ),
-    'subscription_chatgpt': FinancePlanningCategoryConfig(
-      id: 'subscription_chatgpt',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.15,
-      starter: false,
-      order: 128,
-    ),
-    'subscription_games': FinancePlanningCategoryConfig(
-      id: 'subscription_games',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.15,
-      starter: false,
-      order: 129,
-    ),
-    'gaming_credits': FinancePlanningCategoryConfig(
-      id: 'gaming_credits',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.10,
-      starter: false,
-      order: 130,
-    ),
-    'leisure_cinema': FinancePlanningCategoryConfig(
-      id: 'leisure_cinema',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.20,
-      starter: false,
-      order: 131,
-    ),
-    'leisure_travel': FinancePlanningCategoryConfig(
-      id: 'leisure_travel',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.25,
-      starter: false,
-      order: 132,
-    ),
-    'leisure_hobby': FinancePlanningCategoryConfig(
-      id: 'leisure_hobby',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.30,
-      starter: false,
-      order: 133,
-    ),
-    'leisure_gifts': FinancePlanningCategoryConfig(
-      id: 'leisure_gifts',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.12,
-      starter: false,
-      order: 134,
-    ),
-    'software_apps': FinancePlanningCategoryConfig(
-      id: 'software_apps',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.15,
-      starter: false,
-      order: 135,
-    ),
-    'tech_devices': FinancePlanningCategoryConfig(
-      id: 'tech_devices',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.25,
-      starter: false,
-      order: 136,
-    ),
-    'tech_maintenance': FinancePlanningCategoryConfig(
-      id: 'tech_maintenance',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.15,
-      starter: false,
-      order: 137,
-    ),
-    'shopping_hardware': FinancePlanningCategoryConfig(
-      id: 'shopping_hardware',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.18,
-      starter: false,
-      order: 138,
-    ),
-    'other_expense': FinancePlanningCategoryConfig(
-      id: 'other_expense',
-      bucket: FinancePlanningBucketKind.free,
-      baseWeight: 0.10,
-      starter: false,
-      order: 999,
-    ),
-  };
 }

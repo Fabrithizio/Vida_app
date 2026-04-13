@@ -33,6 +33,57 @@ class FinanceSeedData {
       colorValue: 0xFF1B5E20,
       isIncomeCategory: true,
     ),
+
+    // categorias gerais para manter compatibilidade com versões antigas
+    const FinanceCategory(
+      id: 'food',
+      name: 'Alimentação',
+      iconKey: 'food',
+      colorValue: 0xFFE65100,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'transport',
+      name: 'Transporte',
+      iconKey: 'transport',
+      colorValue: 0xFF1565C0,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'health',
+      name: 'Saúde',
+      iconKey: 'health',
+      colorValue: 0xFFC62828,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'shopping',
+      name: 'Compras',
+      iconKey: 'shopping',
+      colorValue: 0xFF6A1B9A,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'leisure',
+      name: 'Lazer',
+      iconKey: 'leisure',
+      colorValue: 0xFF00838F,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'home',
+      name: 'Casa',
+      iconKey: 'home',
+      colorValue: 0xFF5D4037,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'education',
+      name: 'Estudos',
+      iconKey: 'education',
+      colorValue: 0xFF283593,
+      isIncomeCategory: false,
+    ),
     const FinanceCategory(
       id: 'food_market',
       name: 'Supermercado',
