@@ -2,11 +2,16 @@
 // FILE: lib/features/body_care/body_care_service.dart
 //
 // O que este arquivo faz:
-// - Salva e lê os registros do módulo "Corpo em dia"
+// - Salva e lê os registros do módulo "Corpo & Saúde"
 // - Mantém comida, treino, água, sono, passos, minutos ativos, peso e cintura
 // - Salva um perfil corporal simples com altura, meta e peso-alvo
 // - Calcula streak, IMC, resumo semanal e referência corporal básica
-// - Preserva os dados de comida e treino usados no Meu Dia
+// - Gera um guia visual de alimentação e foco para o módulo do Meu Dia
+// - Preserva os dados de comida e treino usados no resto do app
+//
+// Observação importante:
+// - As tabelas de alimentação e energia são guias gerais de bem-estar.
+// - Para menores de 18 anos, o app mostra faixas amplas e evita metas rígidas.
 // ============================================================================
 
 import 'dart:convert';
@@ -248,6 +253,140 @@ class BodyCareReferenceResult {
   final String hint;
 }
 
+class BodyCareNutritionGuide {
+  const BodyCareNutritionGuide({
+    required this.title,
+    required this.energyLabel,
+    required this.energyHint,
+    required this.hydrationLabel,
+    required this.hydrationHint,
+    required this.activityLabel,
+    required this.activityHint,
+    required this.plateTitle,
+    required this.plateHint,
+    required this.mainTips,
+    required this.foodCareTips,
+    required this.trainingCareTips,
+    required this.meals,
+    required this.foodTable,
+  });
+
+  final String title;
+  final String energyLabel;
+  final String energyHint;
+  final String hydrationLabel;
+  final String hydrationHint;
+  final String activityLabel;
+  final String activityHint;
+  final String plateTitle;
+  final String plateHint;
+  final List<String> mainTips;
+  final List<String> foodCareTips;
+  final List<String> trainingCareTips;
+  final List<BodyCareMealSuggestion> meals;
+  final List<BodyCareFoodTableItem> foodTable;
+
+  factory BodyCareNutritionGuide.fallback() {
+    return BodyCareNutritionGuide(
+      title: 'Base simples para seguir firme',
+      energyLabel: 'Faixa geral',
+      energyHint:
+          'Use isso como noção de combustível, não como cobrança rígida.',
+      hydrationLabel: '6–8 copos por dia',
+      hydrationHint:
+          'Em dias de treino, calor ou muito suor, normalmente você precisa de mais.',
+      activityLabel: 'Movimento diário',
+      activityHint:
+          'Manter o corpo ativo quase todo dia ajuda mais do que treinos aleatórios.',
+      plateTitle: 'Monte o prato com equilíbrio',
+      plateHint:
+          'Metade do prato com frutas e vegetais, um quarto com proteína e um quarto com carboidrato já resolve muito do básico.',
+      mainTips: const [
+        'Comida boa, treino possível e sono decente já fazem diferença real.',
+        'Não tente compensar um dia ruim com radicalismo no dia seguinte.',
+        'Consistência vence perfeição.',
+      ],
+      foodCareTips: const [
+        'Evite passar o dia inteiro só beliscando.',
+        'Ter uma base de refeições prontas reduz improviso.',
+        'Proteína, fibra e água ajudam a sustentar melhor a fome ao longo do dia.',
+      ],
+      trainingCareTips: const [
+        'Progresso vem de repetir o básico por semanas, não de um único treino forte.',
+        'Sono e recuperação influenciam diretamente seu desempenho.',
+        'Treino ruim, mas feito, ainda conta para o ritmo.',
+      ],
+      meals: const [
+        BodyCareMealSuggestion(
+          title: 'Café da manhã base',
+          subtitle: 'Combina energia + proteína',
+          items: [
+            BodyCareMealItem(name: '2 ovos', portion: '2 un', calories: 156),
+            BodyCareMealItem(
+              name: 'Pão integral',
+              portion: '2 fatias',
+              calories: 140,
+            ),
+            BodyCareMealItem(name: 'Banana', portion: '1 un', calories: 90),
+          ],
+        ),
+      ],
+      foodTable: const [
+        BodyCareFoodTableItem(
+          group: 'Base',
+          item: 'Banana',
+          portion: '1 un',
+          calories: 90,
+          note: 'Boa para lanche rápido.',
+        ),
+      ],
+    );
+  }
+}
+
+class BodyCareMealSuggestion {
+  const BodyCareMealSuggestion({
+    required this.title,
+    required this.subtitle,
+    required this.items,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<BodyCareMealItem> items;
+
+  int get totalCalories =>
+      items.fold<int>(0, (sum, item) => sum + item.calories);
+}
+
+class BodyCareMealItem {
+  const BodyCareMealItem({
+    required this.name,
+    required this.portion,
+    required this.calories,
+  });
+
+  final String name;
+  final String portion;
+  final int calories;
+}
+
+class BodyCareFoodTableItem {
+  const BodyCareFoodTableItem({
+    required this.group,
+    required this.item,
+    required this.portion,
+    required this.calories,
+    required this.note,
+  });
+
+  final String group;
+  final String item;
+  final String portion;
+  final int calories;
+  final String note;
+}
+
 class BodyCareService {
   static const List<String> goalOptions = [
     'Emagrecer',
@@ -280,8 +419,7 @@ class BodyCareService {
       value: 3,
       label: 'Boa',
       shortLabel: 'Boa',
-      description:
-          'Na maior parte do dia, você comeu de um jeito bom para o corpo.',
+      description: 'Na maior parte do dia, você alimentou bem o corpo.',
     ),
     BodyCareAnswerOption(
       value: 4,
@@ -429,8 +567,9 @@ class BodyCareService {
     final decoded = jsonDecode(raw);
     if (decoded is Map<String, dynamic>)
       return BodyCareProfile.fromJson(decoded);
-    if (decoded is Map)
+    if (decoded is Map) {
       return BodyCareProfile.fromJson(Map<String, dynamic>.from(decoded));
+    }
     return const BodyCareProfile();
   }
 
@@ -446,8 +585,9 @@ class BodyCareService {
     final raw = await _loadRawDaysMap();
     final value = raw[keyForDay(day)];
     if (value is Map<String, dynamic>) return BodyCareEntry.fromJson(value);
-    if (value is Map)
+    if (value is Map) {
       return BodyCareEntry.fromJson(Map<String, dynamic>.from(value));
+    }
     return const BodyCareEntry();
   }
 
@@ -860,6 +1000,392 @@ class BodyCareService {
         weeklyFocusedDays: weeklyFocusedDays,
       ),
       quickTips: _buildTips(latest: latest, profile: profile),
+    );
+  }
+
+  String _energyLabel({
+    required int? ageYears,
+    required BodyCareBiologicalSex sex,
+    required double? weeklyTrainingAverage,
+  }) {
+    final isActive = (weeklyTrainingAverage ?? 0) >= 3.0;
+
+    if (ageYears != null && ageYears < 18) {
+      if (sex == BodyCareBiologicalSex.male) {
+        return isActive
+            ? 'Referência geral: 2.500 kcal/dia ou um pouco mais em dias bem ativos'
+            : 'Referência geral: perto de 2.500 kcal/dia';
+      }
+      if (sex == BodyCareBiologicalSex.female) {
+        return isActive
+            ? 'Referência geral: 2.000 kcal/dia ou um pouco mais em dias bem ativos'
+            : 'Referência geral: perto de 2.000 kcal/dia';
+      }
+      return 'Referência geral: 2.000–2.500 kcal/dia';
+    }
+
+    if (sex == BodyCareBiologicalSex.male) {
+      return isActive
+          ? 'Base adulta: perto de 2.500 kcal/dia, variando com rotina e treino'
+          : 'Base adulta: perto de 2.500 kcal/dia';
+    }
+    if (sex == BodyCareBiologicalSex.female) {
+      return isActive
+          ? 'Base adulta: perto de 2.000 kcal/dia, variando com rotina e treino'
+          : 'Base adulta: perto de 2.000 kcal/dia';
+    }
+    return 'Base geral: algo entre 2.000 e 2.500 kcal/dia';
+  }
+
+  String _energyHint({
+    required int? ageYears,
+    required double? heightCm,
+    required double? weightKg,
+  }) {
+    final hasBodyData =
+        heightCm != null && heightCm > 0 && weightKg != null && weightKg > 0;
+    if (ageYears != null && ageYears < 18) {
+      return hasBodyData
+          ? 'Como você ainda está crescendo, use esta faixa só como noção de combustível. Foque em regularidade, qualidade e sinais do corpo.'
+          : 'Para adolescentes, a necessidade de energia muda muito com crescimento, treino e rotina. Use a faixa só como guia amplo.';
+    }
+    return hasBodyData
+        ? 'Seu peso e sua altura já ajudam a dar contexto, mas treino, sono, rotina e trabalho também mudam sua necessidade diária.'
+        : 'Sem peso e altura completos, o app usa uma faixa ampla para ajudar no dia a dia.';
+  }
+
+  String _hydrationLabel({
+    required int? ageYears,
+    required BodyCareBiologicalSex sex,
+    required double? weeklyTrainingAverage,
+  }) {
+    final isActive = (weeklyTrainingAverage ?? 0) >= 3.0;
+    if (ageYears != null && ageYears >= 14 && ageYears < 18) {
+      if (sex == BodyCareBiologicalSex.male) {
+        return isActive
+            ? 'Meta base: 8–11 copos/dia'
+            : 'Meta base: 8–10 copos/dia';
+      }
+      if (sex == BodyCareBiologicalSex.female) {
+        return isActive ? 'Meta base: 8–9 copos/dia' : 'Meta base: 8 copos/dia';
+      }
+    }
+    return isActive ? 'Meta base: 6–8+ copos/dia' : 'Meta base: 6–8 copos/dia';
+  }
+
+  String _hydrationHint({required double? weeklyTrainingAverage}) {
+    final isActive = (weeklyTrainingAverage ?? 0) >= 3.0;
+    return isActive
+        ? 'Treino, calor e suor costumam pedir mais água. Um bom sinal prático é manter a urina clara ao longo do dia.'
+        : 'Beba ao longo do dia, não só quando bater muita sede.';
+  }
+
+  String _activityLabel({required int? ageYears}) {
+    if (ageYears != null && ageYears < 18) {
+      return 'Movimento alvo: 60 min por dia';
+    }
+    return 'Movimento alvo: 150 min por semana + força 2x';
+  }
+
+  String _activityHint({required int? ageYears}) {
+    if (ageYears != null && ageYears < 18) {
+      return 'Para adolescentes, misturar movimento diário com atividades que fortaleçam músculo e osso durante a semana ajuda bastante.';
+    }
+    return 'Para adultos, caminhada forte, bike, corrida, dança e treino de força entram nessa conta.';
+  }
+
+  String _plateHint({required String goal}) {
+    final lower = goal.toLowerCase();
+    if (lower.contains('massa')) {
+      return 'Metade do prato com vegetais e frutas ao longo do dia, um quarto com carboidrato e um quarto com proteína. Em fase de ganhar massa, vale reforçar carboidrato e proteína nas refeições principais.';
+    }
+    if (lower.contains('emag')) {
+      return 'Metade do prato com vegetais e frutas, um quarto com proteína e um quarto com carboidrato ajuda a comer bem sem radicalizar.';
+    }
+    return 'Metade do prato com vegetais e frutas, um quarto com proteína e um quarto com carboidrato já resolve muito do básico.';
+  }
+
+  List<String> _mainNutritionTips({
+    required BodyCareOverview overview,
+    required BodyCareProfile profile,
+  }) {
+    final tips = <String>[
+      'Coma em ritmo que você consegue repetir, não em modo extremo.',
+      'Procure ter proteína, água e algum vegetal aparecendo com frequência na rotina.',
+      'Quando o dia apertar, simplifique em vez de largar: um prato básico ainda conta.',
+    ];
+
+    final goal = (profile.goal ?? '').toLowerCase();
+    if (goal.contains('massa')) {
+      tips.add(
+        'Se a meta é ganhar massa, não deixe treino e alimentação se desencontrarem no mesmo dia.',
+      );
+    } else if (goal.contains('emag')) {
+      tips.add(
+        'Se a meta é emagrecer, fuja da lógica de passar fome e depois compensar com exagero.',
+      );
+    }
+
+    if ((overview.weeklyAverageTraining ?? 0) < 2.5) {
+      tips.add(
+        'Seu movimento ainda está oscilando. Regularidade pequena já vai ajudar no resto do módulo.',
+      );
+    }
+
+    return tips.take(4).toList();
+  }
+
+  List<String> _foodCareTips({required int? ageYears}) {
+    return [
+      'Tente não trocar refeições por beliscos o dia inteiro.',
+      'Monte pelo menos 2 refeições do dia com base simples: proteína + carboidrato + vegetal/fruta.',
+      'Doces e ultraprocessados podem existir, mas não precisam virar o centro da rotina.',
+      if (ageYears != null && ageYears < 18)
+        'Como você ainda está em fase de crescimento, o foco deve ser nutrir e organizar, não entrar em dieta radical.',
+    ];
+  }
+
+  List<String> _trainingCareTips({required int? ageYears}) {
+    return [
+      if (ageYears != null && ageYears < 18)
+        'Seu corpo responde bem a movimento diário, esporte, treino e recuperação bem feitos.'
+      else
+        'Para adulto, força 2 vezes por semana já muda bastante a base do corpo e da disposição.',
+      'Treino bom é o treino que cabe na sua semana real.',
+      'Sono ruim atrapalha treino, fome, foco e recuperação ao mesmo tempo.',
+      'Dias leves também contam para manter o corpo em movimento.',
+    ];
+  }
+
+  List<BodyCareMealSuggestion> _mealSuggestions({required String goal}) {
+    final lower = goal.toLowerCase();
+    final defaultMeals = <BodyCareMealSuggestion>[
+      const BodyCareMealSuggestion(
+        title: 'Café da manhã base',
+        subtitle: 'Energia + proteína para começar melhor',
+        items: [
+          BodyCareMealItem(name: '2 ovos', portion: '2 un', calories: 156),
+          BodyCareMealItem(
+            name: 'Pão integral',
+            portion: '2 fatias',
+            calories: 140,
+          ),
+          BodyCareMealItem(name: 'Banana', portion: '1 un', calories: 90),
+        ],
+      ),
+      const BodyCareMealSuggestion(
+        title: 'Almoço simples',
+        subtitle: 'Prato base fácil de repetir',
+        items: [
+          BodyCareMealItem(
+            name: 'Arroz cozido',
+            portion: '120 g',
+            calories: 156,
+          ),
+          BodyCareMealItem(
+            name: 'Feijão cozido',
+            portion: '100 g',
+            calories: 76,
+          ),
+          BodyCareMealItem(
+            name: 'Frango grelhado',
+            portion: '120 g',
+            calories: 198,
+          ),
+          BodyCareMealItem(
+            name: 'Salada variada',
+            portion: '1 prato',
+            calories: 45,
+          ),
+        ],
+      ),
+      const BodyCareMealSuggestion(
+        title: 'Lanche da tarde',
+        subtitle: 'Ajuda a segurar o ritmo',
+        items: [
+          BodyCareMealItem(
+            name: 'Iogurte natural',
+            portion: '170 g',
+            calories: 110,
+          ),
+          BodyCareMealItem(name: 'Aveia', portion: '30 g', calories: 114),
+          BodyCareMealItem(name: 'Maçã', portion: '1 un', calories: 70),
+        ],
+      ),
+      const BodyCareMealSuggestion(
+        title: 'Jantar enxuto',
+        subtitle: 'Leve, mas com sustento',
+        items: [
+          BodyCareMealItem(
+            name: 'Batata-doce',
+            portion: '150 g',
+            calories: 129,
+          ),
+          BodyCareMealItem(
+            name: 'Carne magra',
+            portion: '120 g',
+            calories: 210,
+          ),
+          BodyCareMealItem(name: 'Legumes', portion: '1 prato', calories: 60),
+        ],
+      ),
+    ];
+
+    if (lower.contains('massa')) {
+      return [
+        const BodyCareMealSuggestion(
+          title: 'Café da manhã reforçado',
+          subtitle: 'Mais sustento para fase de ganho',
+          items: [
+            BodyCareMealItem(name: '3 ovos', portion: '3 un', calories: 234),
+            BodyCareMealItem(
+              name: 'Pão integral',
+              portion: '3 fatias',
+              calories: 210,
+            ),
+            BodyCareMealItem(name: 'Leite', portion: '250 ml', calories: 150),
+            BodyCareMealItem(name: 'Banana', portion: '1 un', calories: 90),
+          ],
+        ),
+        ...defaultMeals.skip(1),
+      ];
+    }
+
+    if (lower.contains('emag')) {
+      return [
+        const BodyCareMealSuggestion(
+          title: 'Café da manhã enxuto',
+          subtitle: 'Proteína + fruta + carboidrato simples',
+          items: [
+            BodyCareMealItem(name: '2 ovos', portion: '2 un', calories: 156),
+            BodyCareMealItem(
+              name: 'Pão integral',
+              portion: '1 fatia',
+              calories: 70,
+            ),
+            BodyCareMealItem(name: 'Mamão', portion: '1 fatia', calories: 55),
+          ],
+        ),
+        ...defaultMeals.skip(1),
+      ];
+    }
+
+    return defaultMeals;
+  }
+
+  List<BodyCareFoodTableItem> _foodTable() {
+    return const [
+      BodyCareFoodTableItem(
+        group: 'Proteína',
+        item: 'Ovo',
+        portion: '1 un',
+        calories: 78,
+        note: 'Bom para café, lanche ou refeição.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Proteína',
+        item: 'Frango grelhado',
+        portion: '100 g',
+        calories: 165,
+        note: 'Base prática para almoço ou jantar.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Carboidrato',
+        item: 'Arroz cozido',
+        portion: '100 g',
+        calories: 130,
+        note: 'Energia simples e fácil de combinar.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Carboidrato',
+        item: 'Batata-doce',
+        portion: '100 g',
+        calories: 86,
+        note: 'Boa opção para variar do arroz.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Base',
+        item: 'Feijão cozido',
+        portion: '100 g',
+        calories: 76,
+        note: 'Ajuda com fibra e saciedade.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Fruta',
+        item: 'Banana',
+        portion: '1 un',
+        calories: 90,
+        note: 'Lanche rápido e fácil.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Fruta',
+        item: 'Maçã',
+        portion: '1 un',
+        calories: 70,
+        note: 'Boa para levar no dia.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Laticínio',
+        item: 'Iogurte natural',
+        portion: '170 g',
+        calories: 110,
+        note: 'Vai bem com aveia e fruta.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Grãos',
+        item: 'Aveia',
+        portion: '30 g',
+        calories: 114,
+        note: 'Ajuda a dar mais sustento ao lanche.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Gordura boa',
+        item: 'Azeite',
+        portion: '1 colher sopa',
+        calories: 90,
+        note: 'Use com medida, não no olho.',
+      ),
+    ];
+  }
+
+  Future<BodyCareNutritionGuide> loadNutritionGuide() async {
+    final overview = await loadOverview();
+    final profile = await loadProfile();
+    final birthDate = await _loadBirthDate();
+    final ageYears = _ageFromBirthDate(birthDate, DateTime.now());
+    final sex = await _loadBiologicalSex();
+
+    final energyLabel = _energyLabel(
+      ageYears: ageYears,
+      sex: sex,
+      weeklyTrainingAverage: overview.weeklyAverageTraining,
+    );
+
+    return BodyCareNutritionGuide(
+      title: 'Combustível e constância',
+      energyLabel: energyLabel,
+      energyHint: _energyHint(
+        ageYears: ageYears,
+        heightCm: profile.heightCm,
+        weightKg: overview.latestWeightKg,
+      ),
+      hydrationLabel: _hydrationLabel(
+        ageYears: ageYears,
+        sex: sex,
+        weeklyTrainingAverage: overview.weeklyAverageTraining,
+      ),
+      hydrationHint: _hydrationHint(
+        weeklyTrainingAverage: overview.weeklyAverageTraining,
+      ),
+      activityLabel: _activityLabel(ageYears: ageYears),
+      activityHint: _activityHint(ageYears: ageYears),
+      plateTitle: 'Prato base do seu foco',
+      plateHint: _plateHint(goal: profile.goal ?? ''),
+      mainTips: _mainNutritionTips(overview: overview, profile: profile),
+      foodCareTips: _foodCareTips(ageYears: ageYears),
+      trainingCareTips: _trainingCareTips(ageYears: ageYears),
+      meals: _mealSuggestions(goal: profile.goal ?? ''),
+      foodTable: _foodTable(),
     );
   }
 }
