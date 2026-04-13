@@ -4,15 +4,14 @@
 // Tela principal do financeiro do Vida.
 //
 // O que este arquivo faz:
-// - Deixa a home do financeiro mais viva e com menos altura no topo.
-// - Mantém o básico em destaque: saldo, entradas, saídas, débito e crédito.
+// - Mantém a home do financeiro mais compacta e com visual mais vivo.
+// - Destaca o básico: saldo, entradas, saídas, débito e crédito.
 // - Separa o restante em 4 áreas internas: Visão, Planejar, Investir e Controle.
-// - Planejar foca em distribuição da renda e metas do mês, sem misturar com
-//   simulação de investimentos.
-// - Investir vira uma área própria com aporte, patrimônio atual, rendimento,
-//   projeções e tempo estimado até uma meta.
-// - Controle concentra filtro/período, recorrências, parcelas, tags e histórico.
-// - Corrige overflows usando layout flexível e sheets com rolagem segura.
+// - Planejar agora usa modelos simples de divisão da renda (ex.: 60/30/10)
+//   com distribuição automática e edição manual por categoria.
+// - Investir mostra aportes, juros, composição atual e simulação por tempo.
+// - Controle concentra filtros, período, recorrências, tags e histórico.
+// - Corrige overflows usando cards mais estáveis e sheets com rolagem segura.
 // ============================================================================
 
 import 'dart:math' as math;
@@ -25,7 +24,6 @@ import '../../data/models/finance_filter_type.dart';
 import '../../data/models/finance_period_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
-import '../widgets/expense_category_chart.dart';
 import 'add_transaction_page.dart';
 
 class FinanceTab extends StatefulWidget {
@@ -46,12 +44,15 @@ class _FinanceTabState extends State<FinanceTab> {
   int _currentSection = 0;
   int _investmentMode = 0;
 
-  bool _showQuickModules = true;
   bool _showPlanningPreview = true;
   bool _showCategoryFocus = true;
   bool _showRecentTransactions = true;
 
+  int _planningPresetIndex = 0;
   double _monthlyIncomePlan = 0;
+  double _planningEssentialPercent = 60;
+  double _planningFuturePercent = 30;
+  double _planningFreePercent = 10;
   Map<String, double> _plannedByCategory = <String, double>{};
 
   double _investedPrincipal = 0;
@@ -96,16 +97,23 @@ class _FinanceTabState extends State<FinanceTab> {
     if (!mounted) return;
     setState(() {
       _hideValues = prefs.getBool('$_prefsPrefix:finance_hide_values') ?? false;
-      _showQuickModules =
-          prefs.getBool('$_prefsPrefix:finance_home_modules') ?? true;
       _showPlanningPreview =
           prefs.getBool('$_prefsPrefix:finance_home_planning_preview') ?? true;
       _showCategoryFocus =
           prefs.getBool('$_prefsPrefix:finance_home_category_focus') ?? true;
       _showRecentTransactions =
           prefs.getBool('$_prefsPrefix:finance_home_recent') ?? true;
+      _planningPresetIndex =
+          prefs.getInt('$_prefsPrefix:finance_plan_preset') ?? 0;
       _monthlyIncomePlan =
           prefs.getDouble('$_prefsPrefix:finance_income_plan') ?? 0;
+      _planningEssentialPercent =
+          prefs.getDouble('$_prefsPrefix:finance_plan_essentials_percent') ??
+          60;
+      _planningFuturePercent =
+          prefs.getDouble('$_prefsPrefix:finance_plan_future_percent') ?? 30;
+      _planningFreePercent =
+          prefs.getDouble('$_prefsPrefix:finance_plan_free_percent') ?? 10;
       _plannedByCategory = nextPlanned;
       _investedPrincipal =
           prefs.getDouble('$_prefsPrefix:invest_principal') ?? 0;
@@ -177,7 +185,6 @@ class _FinanceTabState extends State<FinanceTab> {
 
   Future<void> _openHomeCustomizeSheet() async {
     final prefs = await SharedPreferences.getInstance();
-    bool localModules = _showQuickModules;
     bool localPlanning = _showPlanningPreview;
     bool localCategory = _showCategoryFocus;
     bool localRecent = _showRecentTransactions;
@@ -185,7 +192,7 @@ class _FinanceTabState extends State<FinanceTab> {
     await _showLargeSheet(
       title: 'Personalizar financeiro',
       subtitle:
-          'Deixe a home mais enxuta ou mais completa sem perder a pegada do app.',
+          'Escolha só o que fica na home. O restante continua nas abas abaixo.',
       child: StatefulBuilder(
         builder: (context, setSheetState) {
           Widget buildToggle({
@@ -203,31 +210,26 @@ class _FinanceTabState extends State<FinanceTab> {
           }
 
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               buildToggle(
-                title: 'Módulos rápidos',
-                subtitle: 'Cards para abrir Planejar, Investir e Controle.',
-                value: localModules,
-                onChanged: (value) => localModules = value,
-              ),
-              const SizedBox(height: 12),
-              buildToggle(
                 title: 'Prévia do planejamento',
-                subtitle: 'Mostra renda planejada, distribuído e livre.',
+                subtitle: 'Mostra a divisão da renda logo na home.',
                 value: localPlanning,
                 onChanged: (value) => localPlanning = value,
               ),
               const SizedBox(height: 12),
               buildToggle(
-                title: 'Foco por categoria',
-                subtitle: 'Mostra as categorias que mais pesam no período.',
+                title: 'Gastos por categoria',
+                subtitle:
+                    'Lista as categorias do período e abre o detalhamento ao tocar.',
                 value: localCategory,
                 onChanged: (value) => localCategory = value,
               ),
               const SizedBox(height: 12),
               buildToggle(
                 title: 'Lançamentos recentes',
-                subtitle: 'Mantém os últimos registros logo na home.',
+                subtitle: 'Mantém os últimos registros visíveis na home.',
                 value: localRecent,
                 onChanged: (value) => localRecent = value,
               ),
@@ -236,10 +238,6 @@ class _FinanceTabState extends State<FinanceTab> {
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: () async {
-                    await prefs.setBool(
-                      '$_prefsPrefix:finance_home_modules',
-                      localModules,
-                    );
                     await prefs.setBool(
                       '$_prefsPrefix:finance_home_planning_preview',
                       localPlanning,
@@ -272,12 +270,30 @@ class _FinanceTabState extends State<FinanceTab> {
     final incomeController = TextEditingController(
       text: _moneyField(_monthlyIncomePlan),
     );
+    final essentialController = TextEditingController(
+      text: _planningEssentialPercent == 0
+          ? ''
+          : _planningEssentialPercent.toStringAsFixed(0),
+    );
+    final futureController = TextEditingController(
+      text: _planningFuturePercent == 0
+          ? ''
+          : _planningFuturePercent.toStringAsFixed(0),
+    );
+    final freeController = TextEditingController(
+      text: _planningFreePercent == 0
+          ? ''
+          : _planningFreePercent.toStringAsFixed(0),
+    );
+
     final controllers = <String, TextEditingController>{
       for (final category in _expenseCategories)
         category.id: TextEditingController(
           text: _moneyField(_plannedByCategory[category.id] ?? 0),
         ),
     };
+
+    int localPreset = _planningPresetIndex;
 
     double parseMoney(TextEditingController controller) {
       return double.tryParse(
@@ -286,76 +302,224 @@ class _FinanceTabState extends State<FinanceTab> {
           0;
     }
 
+    double parsePercent(TextEditingController controller) {
+      return double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? 0;
+    }
+
+    void applySuggestedDistribution() {
+      final income = parseMoney(incomeController);
+      final essentials = parsePercent(essentialController);
+      final free = parsePercent(freeController);
+      final suggested = _autoDistributePlan(
+        income: income,
+        essentialPercent: essentials,
+        freePercent: free,
+      );
+      for (final category in _expenseCategories) {
+        controllers[category.id]!.text = _moneyField(
+          suggested[category.id] ?? 0,
+        );
+      }
+    }
+
     await _showLargeSheet(
       title: 'Planejar o mês',
       subtitle:
-          'Aqui você define a renda esperada e distribui para cada parte da vida sem misturar com investimentos.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SheetField(
-            controller: incomeController,
-            label: 'Renda planejada do mês',
-            prefixText: 'R\$ ',
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            icon: Icons.payments_outlined,
-          ),
-          const SizedBox(height: 16),
-          _HintBand(
-            title: 'Sugestão base',
-            text:
-                'Para começar sem neura: separe primeiro essenciais, depois metas e só então o restante para conforto e lazer.',
-            icon: Icons.lightbulb_outline_rounded,
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Distribuição por categoria',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 10),
-          ..._expenseCategories.map(
-            (category) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _SheetField(
-                controller: controllers[category.id]!,
-                label: category.name,
+          'Escolha um modelo simples para dividir sua renda e ajuste só o necessário.',
+      child: StatefulBuilder(
+        builder: (context, setSheetState) {
+          Future<void> save() async {
+            final essential = parsePercent(essentialController);
+            final future = parsePercent(futureController);
+            final free = parsePercent(freeController);
+            final totalPercent = essential + future + free;
+
+            if ((totalPercent - 100).abs() > 0.1) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('A soma dos percentuais precisa dar 100%.'),
+                ),
+              );
+              return;
+            }
+
+            await prefs.setDouble(
+              '$_prefsPrefix:finance_income_plan',
+              parseMoney(incomeController),
+            );
+            await prefs.setInt(
+              '$_prefsPrefix:finance_plan_preset',
+              localPreset,
+            );
+            await prefs.setDouble(
+              '$_prefsPrefix:finance_plan_essentials_percent',
+              essential,
+            );
+            await prefs.setDouble(
+              '$_prefsPrefix:finance_plan_future_percent',
+              future,
+            );
+            await prefs.setDouble(
+              '$_prefsPrefix:finance_plan_free_percent',
+              free,
+            );
+
+            for (final category in _expenseCategories) {
+              await prefs.setDouble(
+                '$_prefsPrefix:plan:${category.id}',
+                parseMoney(controllers[category.id]!),
+              );
+            }
+
+            if (!mounted) return;
+            Navigator.of(context).pop();
+            await _loadPrefs();
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SheetField(
+                controller: incomeController,
+                label: 'Renda do mês',
                 prefixText: 'R\$ ',
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                icon: category.icon,
-                iconColor: category.color,
+                icon: Icons.payments_outlined,
               ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () async {
-                await prefs.setDouble(
-                  '$_prefsPrefix:finance_income_plan',
-                  parseMoney(incomeController),
-                );
-                for (final category in _expenseCategories) {
-                  await prefs.setDouble(
-                    '$_prefsPrefix:plan:${category.id}',
-                    parseMoney(controllers[category.id]!),
+              const SizedBox(height: 16),
+              const Text(
+                'Modelos rápidos',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(_planningPresets.length, (index) {
+                  final preset = _planningPresets[index];
+                  return ChoiceChip(
+                    label: Text(preset.label),
+                    selected: localPreset == index,
+                    onSelected: (_) {
+                      setSheetState(() {
+                        localPreset = index;
+                        essentialController.text = preset.essential
+                            .toStringAsFixed(0);
+                        futureController.text = preset.future.toStringAsFixed(
+                          0,
+                        );
+                        freeController.text = preset.free.toStringAsFixed(0);
+                        applySuggestedDistribution();
+                      });
+                    },
                   );
-                }
-                if (!mounted) return;
-                Navigator.of(context).pop();
-                await _loadPrefs();
-              },
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('Salvar planejamento'),
-            ),
-          ),
-        ],
+                }),
+              ),
+              const SizedBox(height: 14),
+              _HintBand(
+                title: 'Como funciona',
+                text:
+                    'Essenciais cobrem a vida prática. Investir + reserva fica separado. Livre é o que sobra para conforto e lazer.',
+                icon: Icons.lightbulb_outline_rounded,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _SheetField(
+                      controller: essentialController,
+                      label: 'Essenciais',
+                      suffixText: '%',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      icon: Icons.home_work_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _SheetField(
+                      controller: futureController,
+                      label: 'Investir + reserva',
+                      suffixText: '%',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      icon: Icons.savings_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _SheetField(
+                      controller: freeController,
+                      label: 'Livre',
+                      suffixText: '%',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      icon: Icons.celebration_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => setSheetState(applySuggestedDistribution),
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('Aplicar distribuição automática'),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Distribuição sugerida por categoria',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Você pode mexer nos valores abaixo. O modelo serve para te dar um ponto de partida, não para te prender.',
+                style: TextStyle(color: Colors.white.withOpacity(0.74)),
+              ),
+              const SizedBox(height: 12),
+              ..._expenseCategories.map(
+                (category) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _SheetField(
+                    controller: controllers[category.id]!,
+                    label: category.name,
+                    prefixText: 'R\$ ',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    icon: category.icon,
+                    iconColor: category.color,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    await save();
+                  },
+                  icon: const Icon(Icons.check_rounded),
+                  label: const Text('Salvar planejamento'),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
 
     incomeController.dispose();
+    essentialController.dispose();
+    futureController.dispose();
+    freeController.dispose();
     for (final controller in controllers.values) {
       controller.dispose();
     }
@@ -395,13 +559,13 @@ class _FinanceTabState extends State<FinanceTab> {
     await _showLargeSheet(
       title: 'Ajustar investimentos',
       subtitle:
-          'Área separada da renda do mês. Aqui você controla patrimônio investido, aporte e meta.',
+          'Aqui você acompanha seus aportes, os juros acumulados e o tempo até uma meta.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SheetField(
             controller: principalController,
-            label: 'Quanto do patrimônio foi seu dinheiro',
+            label: 'Aportes acumulados (só dinheiro seu)',
             prefixText: 'R\$ ',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             icon: Icons.account_balance_wallet_outlined,
@@ -409,7 +573,7 @@ class _FinanceTabState extends State<FinanceTab> {
           const SizedBox(height: 12),
           _SheetField(
             controller: currentValueController,
-            label: 'Valor atual investido',
+            label: 'Valor atual total investido',
             prefixText: 'R\$ ',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             icon: Icons.savings_outlined,
@@ -417,7 +581,7 @@ class _FinanceTabState extends State<FinanceTab> {
           const SizedBox(height: 12),
           _SheetField(
             controller: monthlyContributionController,
-            label: 'Aporte mensal planejado',
+            label: 'Aporte mensal',
             prefixText: 'R\$ ',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             icon: Icons.calendar_month_outlined,
@@ -425,7 +589,7 @@ class _FinanceTabState extends State<FinanceTab> {
           const SizedBox(height: 12),
           _SheetField(
             controller: rateController,
-            label: 'Taxa média anual usada na simulação',
+            label: 'Juros médios ao ano usados na simulação',
             suffixText: '%',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             icon: Icons.trending_up_rounded,
@@ -440,9 +604,9 @@ class _FinanceTabState extends State<FinanceTab> {
           ),
           const SizedBox(height: 16),
           _HintBand(
-            title: 'Importante',
+            title: 'Leitura correta',
             text:
-                'Aqui é manual e simples: ótimo para ter noção do caminho, sem virar um home broker dentro do Vida.',
+                'O Vida usa esses dados como simulador visual. Valor atual = aportes + juros. O detalhamento aparece na aba Investir.',
             icon: Icons.insights_rounded,
           ),
           const SizedBox(height: 18),
@@ -502,7 +666,7 @@ class _FinanceTabState extends State<FinanceTab> {
         final media = MediaQuery.of(context);
         final theme = Theme.of(context);
         return FractionallySizedBox(
-          heightFactor: 0.9,
+          heightFactor: 0.94,
           child: Container(
             decoration: BoxDecoration(
               color: _panelColor(theme),
@@ -578,7 +742,7 @@ class _FinanceTabState extends State<FinanceTab> {
         final totalCredit = _store.totalCreditExpense;
 
         final planningSummary = _buildPlanningSummary();
-        final categoryFocus = _buildCategoryFocusItems();
+        final categoryItems = _buildCategoryExpenseItems();
         final investmentData = _buildInvestmentData();
         final recentItems = _store.recentTransactions.take(5).toList();
         final recurringRules = _recurringRules();
@@ -597,11 +761,9 @@ class _FinanceTabState extends State<FinanceTab> {
               children: [
                 _CompactFinanceHero(
                   title: 'Finanças',
-                  subtitle:
-                      'Visão viva do dinheiro • ${_store.selectedPeriod.label}',
+                  subtitle: _store.selectedPeriod.label,
                   mainLabel: 'Saldo disponível',
                   mainValue: _displayMoney(totalBalance),
-                  insight: _store.quickInsight,
                   onTogglePrivacy: _loadingPrefs ? null : _togglePrivacy,
                   onCustomize: _loadingPrefs ? null : _openHomeCustomizeSheet,
                   hideValues: _hideValues,
@@ -610,21 +772,25 @@ class _FinanceTabState extends State<FinanceTab> {
                       label: 'Entradas',
                       value: _displayMoney(totalIncome),
                       icon: Icons.call_received_rounded,
+                      accent: const Color(0xFF9CFF3F),
                     ),
                     _HeroMetricData(
                       label: 'Saídas',
                       value: _displayMoney(totalExpense),
                       icon: Icons.call_made_rounded,
+                      accent: const Color(0xFFFF5D73),
                     ),
                     _HeroMetricData(
                       label: 'Débito',
                       value: _displayMoney(totalDebit),
                       icon: Icons.account_balance_wallet_outlined,
+                      accent: const Color(0xFF39D0FF),
                     ),
                     _HeroMetricData(
                       label: 'Crédito',
                       value: _displayMoney(totalCredit),
                       icon: Icons.credit_card_rounded,
+                      accent: const Color(0xFFFFB347),
                     ),
                   ],
                 ),
@@ -635,64 +801,6 @@ class _FinanceTabState extends State<FinanceTab> {
                 ),
                 const SizedBox(height: 12),
                 if (_currentSection == 0) ...[
-                  if (_showQuickModules)
-                    _GlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Módulos do financeiro',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Cada parte mais forte fica em um lugar próprio.',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.70),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              _QuickJumpCard(
-                                title: 'Planejamento',
-                                subtitle:
-                                    'Distribuição da renda e metas do mês',
-                                icon: Icons.edit_note_rounded,
-                                accentA: const Color(0xFF27C5E8),
-                                accentB: const Color(0xFF1A7F9C),
-                                onTap: () =>
-                                    setState(() => _currentSection = 1),
-                              ),
-                              _QuickJumpCard(
-                                title: 'Investimentos',
-                                subtitle: 'Patrimônio, rendimento e meta',
-                                icon: Icons.trending_up_rounded,
-                                accentA: const Color(0xFF7B61FF),
-                                accentB: const Color(0xFF4327A8),
-                                onTap: () =>
-                                    setState(() => _currentSection = 2),
-                              ),
-                              _QuickJumpCard(
-                                title: 'Controle',
-                                subtitle: 'Filtros, histórico e recorrências',
-                                icon: Icons.tune_rounded,
-                                accentA: const Color(0xFFF2B13C),
-                                accentB: const Color(0xFFB86A0F),
-                                onTap: () =>
-                                    setState(() => _currentSection = 3),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (_showQuickModules) const SizedBox(height: 12),
                   if (_showPlanningPreview)
                     _GlassCard(
                       child: Column(
@@ -702,7 +810,7 @@ class _FinanceTabState extends State<FinanceTab> {
                             children: [
                               const Expanded(
                                 child: Text(
-                                  'Distribuição consciente da renda',
+                                  'Resumo do mês',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w800,
@@ -718,7 +826,7 @@ class _FinanceTabState extends State<FinanceTab> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Preview rápido. O detalhado fica em Planejar.',
+                            'Modelo ${_selectedPlanningPreset().label} • base para organizar sem complicar.',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.70),
                             ),
@@ -729,24 +837,26 @@ class _FinanceTabState extends State<FinanceTab> {
                             runSpacing: 12,
                             children: [
                               _MiniInfoCard(
-                                title: 'Renda planejada',
+                                title: 'Renda do mês',
                                 value: _displayMoney(planningSummary.income),
-                                accent: const Color(0xFF31D68A),
+                                accent: const Color(0xFF9CFF3F),
                               ),
                               _MiniInfoCard(
-                                title: 'Distribuído',
-                                value: _displayMoney(planningSummary.allocated),
-                                accent: const Color(0xFF28C7E8),
+                                title: 'Essenciais',
+                                value: _displayMoney(
+                                  planningSummary.essentials,
+                                ),
+                                accent: const Color(0xFF2DD4BF),
                               ),
                               _MiniInfoCard(
-                                title: 'Poupar / metas',
+                                title: 'Investir + reserva',
                                 value: _displayMoney(
                                   planningSummary.goalReserve,
                                 ),
                                 accent: const Color(0xFF7B61FF),
                               ),
                               _MiniInfoCard(
-                                title: 'Livre no mês',
+                                title: 'Livre',
                                 value: _displayMoney(planningSummary.free),
                                 accent: const Color(0xFFFFB347),
                               ),
@@ -762,7 +872,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Onde o dinheiro mais pesa',
+                            'Gastos por categoria',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
@@ -770,40 +880,39 @@ class _FinanceTabState extends State<FinanceTab> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Só o que importa agora, sem entulhar a home.',
+                            'Período: ${_store.selectedPeriod.label}. Toque em uma categoria para ver de onde saiu esse valor.',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.70),
                             ),
                           ),
                           const SizedBox(height: 14),
-                          if (categoryFocus.isEmpty)
+                          if (categoryItems.isEmpty)
                             const Text(
-                              'Ainda não há categorias fortes o suficiente neste período.',
+                              'Ainda não há gastos suficientes neste período.',
                             )
                           else
-                            ...categoryFocus.map(
-                              (item) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: _CategoryFocusTile(
-                                  title: item.label,
-                                  value: _displayMoney(item.amount),
-                                  ratio: item.ratio,
-                                  color: item.color,
-                                  icon: item.icon,
+                            ...categoryItems
+                                .take(6)
+                                .map(
+                                  (item) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _CategorySpendTile(
+                                      title: item.category.name,
+                                      subtitle:
+                                          '${item.transactionCount} lançamento${item.transactionCount == 1 ? '' : 's'}',
+                                      value: _displayMoney(item.amount),
+                                      ratio: item.ratio,
+                                      color: item.category.color,
+                                      icon: item.category.icon,
+                                      onTap: () =>
+                                          _openCategoryDetailSheet(item),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
                         ],
                       ),
                     ),
                   if (_showCategoryFocus) const SizedBox(height: 12),
-                  if (_store.categoryChartItems.isNotEmpty)
-                    ExpenseCategoryChart(
-                      items: _store.categoryChartItems.take(5).toList(),
-                      currencyFormatter: _displayMoney,
-                    ),
-                  if (_store.categoryChartItems.isNotEmpty)
-                    const SizedBox(height: 12),
                   if (_showRecentTransactions)
                     _GlassCard(
                       child: Column(
@@ -818,7 +927,7 @@ class _FinanceTabState extends State<FinanceTab> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Uma visão curta. O histórico completo fica em Controle.',
+                            'Visão rápida da atividade recente. O histórico completo fica em Controle.',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.70),
                             ),
@@ -866,7 +975,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'A ideia aqui é dar direção: quanto entra, para onde vai e quanto sobra para viver sem culpa.',
+                          'Escolha uma forma simples de dividir a renda e ajuste só o necessário.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.72),
                           ),
@@ -879,22 +988,22 @@ class _FinanceTabState extends State<FinanceTab> {
                             _MiniInfoCard(
                               title: 'Renda do mês',
                               value: _displayMoney(planningSummary.income),
-                              accent: const Color(0xFF31D68A),
+                              accent: const Color(0xFF9CFF3F),
                             ),
                             _MiniInfoCard(
                               title: 'Essenciais',
                               value: _displayMoney(planningSummary.essentials),
-                              accent: const Color(0xFF28C7E8),
+                              accent: const Color(0xFF2DD4BF),
                             ),
                             _MiniInfoCard(
-                              title: 'Flexível / lazer',
-                              value: _displayMoney(planningSummary.flexible),
-                              accent: const Color(0xFFFFB347),
-                            ),
-                            _MiniInfoCard(
-                              title: 'Metas / reserva',
+                              title: 'Investir + reserva',
                               value: _displayMoney(planningSummary.goalReserve),
                               accent: const Color(0xFF7B61FF),
+                            ),
+                            _MiniInfoCard(
+                              title: 'Livre',
+                              value: _displayMoney(planningSummary.free),
+                              accent: const Color(0xFFFFB347),
                             ),
                           ],
                         ),
@@ -913,7 +1022,102 @@ class _FinanceTabState extends State<FinanceTab> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Distribuição por área da vida',
+                          'Modelo de divisão',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: List.generate(_planningPresets.length, (
+                            index,
+                          ) {
+                            final preset = _planningPresets[index];
+                            final selected = index == _planningPresetIndex;
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                color: selected
+                                    ? const Color(0xFF32D96B).withOpacity(0.14)
+                                    : Colors.white.withOpacity(0.04),
+                                border: Border.all(
+                                  color: selected
+                                      ? const Color(0xFF32D96B)
+                                      : Colors.white.withOpacity(0.06),
+                                ),
+                              ),
+                              child: Text(
+                                preset.label,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: selected
+                                      ? const Color(0xFF9CFF3F)
+                                      : Colors.white.withOpacity(0.84),
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _MiniInfoCard(
+                                title: 'Essenciais',
+                                value:
+                                    '${_planningEssentialPercent.toStringAsFixed(0)}%',
+                                accent: const Color(0xFF2DD4BF),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _MiniInfoCard(
+                                title: 'Investir + reserva',
+                                value:
+                                    '${_planningFuturePercent.toStringAsFixed(0)}%',
+                                accent: const Color(0xFF7B61FF),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _MiniInfoCard(
+                                title: 'Livre',
+                                value:
+                                    '${_planningFreePercent.toStringAsFixed(0)}%',
+                                accent: const Color(0xFFFFB347),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _MiniInfoCard(
+                                title: 'Distribuído em categorias',
+                                value: _displayMoney(planningSummary.allocated),
+                                accent: const Color(0xFF28C7E8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _GlassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Distribuição sugerida por categoria',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
@@ -921,7 +1125,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Planejado x gasto no mês. Não precisa ser perfeito: serve para te orientar, não para te punir.',
+                          'Planejado x gasto no período atual. Toque em uma categoria na home para ver os lançamentos que montam esse valor.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.72),
                           ),
@@ -942,7 +1146,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         ),
                         if (_planningBreakdownItems().isEmpty)
                           const Text(
-                            'Defina valores no planejamento para enxergar a distribuição por área.',
+                            'Defina uma renda e aplique um modelo para o Vida sugerir a distribuição inicial.',
                           ),
                       ],
                     ),
@@ -972,7 +1176,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Área separada da renda pessoal. Serve para acompanhar patrimônio, rendimento e o caminho até uma meta.',
+                          'Área separada das finanças do mês. Aqui o foco é acompanhar aportes, juros e o caminho até sua meta.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.72),
                           ),
@@ -983,9 +1187,9 @@ class _FinanceTabState extends State<FinanceTab> {
                           runSpacing: 12,
                           children: [
                             _MiniInfoCard(
-                              title: 'Seu dinheiro aportado',
+                              title: 'Aportes acumulados',
                               value: _displayMoney(investmentData.principal),
-                              accent: const Color(0xFF31D68A),
+                              accent: const Color(0xFF9CFF3F),
                             ),
                             _MiniInfoCard(
                               title: 'Valor atual',
@@ -993,7 +1197,7 @@ class _FinanceTabState extends State<FinanceTab> {
                               accent: const Color(0xFF28C7E8),
                             ),
                             _MiniInfoCard(
-                              title: 'Rendimento',
+                              title: 'Só de juros',
                               value: _displayMoney(investmentData.earnings),
                               accent: const Color(0xFF7B61FF),
                             ),
@@ -1005,12 +1209,26 @@ class _FinanceTabState extends State<FinanceTab> {
                           ],
                         ),
                         const SizedBox(height: 16),
+                        _SplitAmountBar(
+                          leftLabel: 'Seu dinheiro',
+                          leftValue: _displayMoney(investmentData.principal),
+                          leftColor: const Color(0xFF32D96B),
+                          rightLabel: 'Juros',
+                          rightValue: _displayMoney(investmentData.earnings),
+                          rightColor: const Color(0xFF7B61FF),
+                          ratio: investmentData.currentValue <= 0
+                              ? 0
+                              : (investmentData.principal /
+                                        investmentData.currentValue)
+                                    .clamp(0.0, 1.0),
+                        ),
+                        const SizedBox(height: 16),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
                           children: [
                             ChoiceChip(
-                              label: const Text('Montante futuro'),
+                              label: const Text('Evolução'),
                               selected: _investmentMode == 0,
                               onSelected: (_) =>
                                   setState(() => _investmentMode = 0),
@@ -1026,51 +1244,24 @@ class _FinanceTabState extends State<FinanceTab> {
                         const SizedBox(height: 16),
                         if (_investmentMode == 0)
                           Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _ProjectionCard(
-                                      label: '1 ano',
-                                      value: _displayMoney(
-                                        investmentData.after1Year,
+                            children: investmentData.points
+                                .map(
+                                  (point) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _InvestmentMilestoneTile(
+                                      label: point.label,
+                                      total: _displayMoney(point.total),
+                                      principal: _displayMoney(
+                                        point.principalPortion,
                                       ),
+                                      earnings: _displayMoney(
+                                        point.earningsPortion,
+                                      ),
+                                      progress: point.totalRatio,
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _ProjectionCard(
-                                      label: '3 anos',
-                                      value: _displayMoney(
-                                        investmentData.after3Years,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _ProjectionCard(
-                                      label: '5 anos',
-                                      value: _displayMoney(
-                                        investmentData.after5Years,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _ProjectionCard(
-                                      label: '10 anos',
-                                      value: _displayMoney(
-                                        investmentData.after10Years,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                )
+                                .toList(),
                           )
                         else
                           _GoalTimeCard(
@@ -1084,6 +1275,13 @@ class _FinanceTabState extends State<FinanceTab> {
                             etaText: investmentData.etaText,
                             progress: investmentData.targetProgress,
                           ),
+                        const SizedBox(height: 14),
+                        _HintBand(
+                          title: 'Leitura simples',
+                          text:
+                              'A simulação considera aporte mensal e juros compostos. Serve para clarear o caminho, sem virar planilha chata.',
+                          icon: Icons.auto_graph_rounded,
+                        ),
                       ],
                     ),
                   ),
@@ -1101,10 +1299,17 @@ class _FinanceTabState extends State<FinanceTab> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Aqui fica a parte mais detalhada: filtros, período, recorrências, parcelas, tags e histórico completo.',
+                          'Aqui ficam os filtros e o histórico detalhado. A home fica leve; o controle pesado vem para cá.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.72),
                           ),
+                        ),
+                        const SizedBox(height: 14),
+                        _HintBand(
+                          title: 'O que você faz aqui',
+                          text:
+                              'Troca período, aplica filtro, revisa recorrências, vê tags e mexe no histórico completo dos lançamentos.',
+                          icon: Icons.tune_rounded,
                         ),
                         const SizedBox(height: 16),
                         const Text(
@@ -1219,7 +1424,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Toque para editar. O detalhamento mais pesado fica aqui para não poluir a home.',
+                          'Toque para editar. A parte pesada fica aqui para não poluir a home.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.72),
                           ),
@@ -1318,9 +1523,9 @@ class _FinanceTabState extends State<FinanceTab> {
       }
     }
 
-    final goalReserve = math.max(0.0, income - essentials - flexible);
+    final goalReserve = income * (_planningFuturePercent / 100);
     final allocated = essentials + flexible;
-    final free = math.max(0.0, income - allocated);
+    final free = math.max(0.0, income - allocated - goalReserve);
 
     return _PlanningSummary(
       income: income,
@@ -1333,20 +1538,7 @@ class _FinanceTabState extends State<FinanceTab> {
   }
 
   List<_PlanningBreakdownItem> _planningBreakdownItems() {
-    final spentByCategory = <String, double>{};
-    final now = DateTime.now();
-
-    for (final transaction in _store.transactions) {
-      if (transaction.isIncome) continue;
-      if (transaction.date.year != now.year ||
-          transaction.date.month != now.month)
-        continue;
-      spentByCategory.update(
-        transaction.category.id,
-        (value) => value + transaction.amount,
-        ifAbsent: () => transaction.amount,
-      );
-    }
+    final spentByCategory = _spentByCategoryForSelectedPeriod();
 
     final items = <_PlanningBreakdownItem>[];
     for (final category in _expenseCategories) {
@@ -1366,6 +1558,19 @@ class _FinanceTabState extends State<FinanceTab> {
     return items;
   }
 
+  Map<String, double> _spentByCategoryForSelectedPeriod() {
+    final spentByCategory = <String, double>{};
+    for (final transaction in _store.periodTransactions) {
+      if (transaction.isIncome) continue;
+      spentByCategory.update(
+        transaction.category.id,
+        (value) => value + transaction.amount,
+        ifAbsent: () => transaction.amount,
+      );
+    }
+    return spentByCategory;
+  }
+
   bool _isEssentialCategory(dynamic category) {
     final id = '${category.id}'.toLowerCase();
     final name = '${category.name}'.toLowerCase();
@@ -1381,48 +1586,172 @@ class _FinanceTabState extends State<FinanceTab> {
         name.contains('educa');
   }
 
+  List<_PlanningPreset> get _planningPresets => const [
+    _PlanningPreset(label: '60/30/10', essential: 60, future: 30, free: 10),
+    _PlanningPreset(label: '70/20/10', essential: 70, future: 20, free: 10),
+    _PlanningPreset(label: '50/30/20', essential: 50, future: 30, free: 20),
+    _PlanningPreset(label: '55/25/20', essential: 55, future: 25, free: 20),
+  ];
+
+  _PlanningPreset _selectedPlanningPreset() {
+    if (_planningPresetIndex >= 0 &&
+        _planningPresetIndex < _planningPresets.length) {
+      return _planningPresets[_planningPresetIndex];
+    }
+    return _planningPresets.first;
+  }
+
+  Map<String, double> _autoDistributePlan({
+    required double income,
+    required double essentialPercent,
+    required double freePercent,
+  }) {
+    final essentialsAmount = income * (essentialPercent / 100);
+    final freeAmount = income * (freePercent / 100);
+    final planned = <String, double>{};
+
+    void addAmount(String categoryId, double amount) {
+      planned.update(
+        categoryId,
+        (value) => value + amount,
+        ifAbsent: () => amount,
+      );
+    }
+
+    final essentialWeights = <String, double>{
+      'home': 0.30,
+      'food': 0.28,
+      'transport': 0.17,
+      'health': 0.12,
+      'education': 0.08,
+      'other_expense': 0.05,
+    };
+
+    final freeWeights = <String, double>{
+      'leisure': 0.45,
+      'shopping': 0.35,
+      'other_expense': 0.20,
+    };
+
+    essentialWeights.forEach((categoryId, ratio) {
+      addAmount(categoryId, essentialsAmount * ratio);
+    });
+
+    freeWeights.forEach((categoryId, ratio) {
+      addAmount(categoryId, freeAmount * ratio);
+    });
+
+    for (final category in _expenseCategories) {
+      planned.putIfAbsent(category.id, () => 0);
+    }
+
+    return planned;
+  }
+
   String _planningMessage(_PlanningSummary summary) {
     if (summary.income <= 0) {
-      return 'Comece preenchendo a renda planejada do mês para o Vida conseguir sugerir melhor o equilíbrio entre viver, poupar e cumprir metas.';
+      return 'Comece preenchendo a renda do mês. Depois escolha um modelo simples e ajuste só o que fizer sentido para sua realidade.';
     }
+
     final essentialsRatio = summary.income == 0
         ? 0
         : summary.essentials / summary.income;
-    final flexibleRatio = summary.income == 0
+    final futureRatio = summary.income == 0
         ? 0
-        : summary.flexible / summary.income;
+        : summary.goalReserve / summary.income;
+    final freeRatio = summary.income == 0 ? 0 : summary.free / summary.income;
 
     if (essentialsRatio > 0.7) {
-      return 'Seu mês está bem puxado nas partes essenciais. Talvez valha aliviar alguma categoria variável para sobrar mais respiro.';
+      return 'Seus essenciais estão bem altos. Vale revisar casa, alimentação e transporte para o mês respirar melhor.';
     }
-    if (flexibleRatio > 0.35) {
-      return 'O lado flexível está ocupando bastante espaço. Se tiver metas grandes, talvez seja um bom mês para apertar só um pouco.';
+    if (futureRatio < 0.15) {
+      return 'Sua parte de investir e reservar está baixa. Mesmo um valor pequeno fixo já ajuda a criar consistência.';
     }
-    if (summary.free > summary.income * 0.15) {
-      return 'Você ainda tem uma boa parte livre. Dá para usar isso como margem de segurança ou reforçar uma meta.';
+    if (freeRatio > 0.2) {
+      return 'Ainda sobra um espaço legal depois do planejamento. Você pode usar isso como margem de segurança ou reforçar metas.';
     }
-    return 'Seu planejamento está equilibrado: essenciais, conforto e metas convivendo de um jeito saudável.';
+    return 'Seu planejamento está com boa cara: vida prática coberta, parte para o futuro reservada e um respiro para viver o mês.';
   }
 
-  List<_CategoryFocusItem> _buildCategoryFocusItems() {
-    final items = _store.categoryChartItems.take(3).toList();
-    if (items.isEmpty) return const <_CategoryFocusItem>[];
-    final maxAmount = items.fold<double>(
+  List<_CategoryExpenseItem> _buildCategoryExpenseItems() {
+    final totals = <String, double>{};
+    final counts = <String, int>{};
+    final categories = <String, dynamic>{};
+
+    for (final transaction in _store.periodTransactions) {
+      if (transaction.isIncome) continue;
+      final category = transaction.category;
+      totals.update(
+        category.id,
+        (value) => value + transaction.amount,
+        ifAbsent: () => transaction.amount,
+      );
+      counts.update(category.id, (value) => value + 1, ifAbsent: () => 1);
+      categories[category.id] = category;
+    }
+
+    final maxAmount = totals.values.fold<double>(
       0,
-      (max, item) => item.amount > max ? item.amount : max,
+      (max, value) => value > max ? value : max,
     );
 
-    return items
-        .map(
-          (item) => _CategoryFocusItem(
-            label: item.label,
-            amount: item.amount,
-            ratio: maxAmount <= 0 ? 0 : item.amount / maxAmount,
-            color: item.color,
-            icon: item.icon,
+    final items = totals.entries.map((entry) {
+      final category = categories[entry.key]!;
+      return _CategoryExpenseItem(
+        category: category,
+        amount: entry.value,
+        transactionCount: counts[entry.key] ?? 0,
+        ratio: maxAmount <= 0 ? 0 : entry.value / maxAmount,
+      );
+    }).toList();
+
+    items.sort((a, b) => b.amount.compareTo(a.amount));
+    return items;
+  }
+
+  Future<void> _openCategoryDetailSheet(_CategoryExpenseItem item) async {
+    final transactions =
+        _store.periodTransactions
+            .where(
+              (transaction) =>
+                  !transaction.isIncome &&
+                  transaction.category.id == item.category.id,
+            )
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+
+    await _showLargeSheet(
+      title: item.category.name,
+      subtitle:
+          'Período: ${_store.selectedPeriod.label}. Aqui ficam os lançamentos que formam esse total.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CategorySpendTile(
+            title: item.category.name,
+            subtitle:
+                '${transactions.length} lançamento${transactions.length == 1 ? '' : 's'}',
+            value: _displayMoney(item.amount),
+            ratio: item.ratio,
+            color: item.category.color,
+            icon: item.category.icon,
           ),
-        )
-        .toList();
+          const SizedBox(height: 16),
+          if (transactions.isEmpty)
+            const Text('Nenhum lançamento encontrado nesta categoria.')
+          else
+            ...transactions.map(
+              (transaction) => _HistoryTransactionTile(
+                transaction: transaction,
+                subtitle: _buildTransactionSubtitle(transaction),
+                moneyFormatter: _displayMoney,
+                onEdit: () => _openEditTransactionPage(transaction),
+                onDelete: () => _confirmRemoveTransaction(transaction),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   List<_RecurringRule> _recurringRules() {
@@ -1467,19 +1796,32 @@ class _FinanceTabState extends State<FinanceTab> {
   }
 
   _InvestmentData _buildInvestmentData() {
-    double simulateFuture({required int months}) {
-      var value = _investedCurrentValue;
-      final monthlyRate = (_annualInterestRate / 100) / 12;
+    final monthlyRate = (_annualInterestRate / 100) / 12;
+
+    _InvestmentProjectionPoint simulatePoint({
+      required String label,
+      required int months,
+    }) {
+      var total = _investedCurrentValue;
+      var contributed = _investedPrincipal;
+
       for (var i = 0; i < months; i++) {
-        value = (value * (1 + monthlyRate)) + _monthlyInvestmentContribution;
+        total = (total * (1 + monthlyRate)) + _monthlyInvestmentContribution;
+        contributed += _monthlyInvestmentContribution;
       }
-      return value;
+
+      final earnings = total - contributed;
+      return _InvestmentProjectionPoint(
+        label: label,
+        total: total,
+        principalPortion: contributed,
+        earningsPortion: earnings,
+      );
     }
 
     int? estimateMonthsToTarget() {
       if (_investmentTarget <= 0) return null;
       if (_investedCurrentValue >= _investmentTarget) return 0;
-      final monthlyRate = (_annualInterestRate / 100) / 12;
       var value = _investedCurrentValue;
       for (var month = 1; month <= 1200; month++) {
         value = (value * (1 + monthlyRate)) + _monthlyInvestmentContribution;
@@ -1497,6 +1839,26 @@ class _FinanceTabState extends State<FinanceTab> {
         ? 0.0
         : (_investedCurrentValue / _investmentTarget).clamp(0.0, 1.0);
 
+    final points = <_InvestmentProjectionPoint>[
+      simulatePoint(label: '1 ano', months: 12),
+      simulatePoint(label: '2 anos', months: 24),
+      simulatePoint(label: '5 anos', months: 60),
+      simulatePoint(label: '10 anos', months: 120),
+    ];
+
+    final maxProjection = points.fold<double>(
+      _investedCurrentValue,
+      (max, point) => point.total > max ? point.total : max,
+    );
+
+    final normalizedPoints = points
+        .map(
+          (point) => point.copyWith(
+            totalRatio: maxProjection <= 0 ? 0 : point.total / maxProjection,
+          ),
+        )
+        .toList();
+
     return _InvestmentData(
       principal: _investedPrincipal,
       currentValue: _investedCurrentValue,
@@ -1506,12 +1868,9 @@ class _FinanceTabState extends State<FinanceTab> {
       monthlyContribution: _monthlyInvestmentContribution,
       annualRate: _annualInterestRate,
       target: _investmentTarget,
-      after1Year: simulateFuture(months: 12),
-      after3Years: simulateFuture(months: 36),
-      after5Years: simulateFuture(months: 60),
-      after10Years: simulateFuture(months: 120),
       etaText: _etaText(monthsToTarget),
       targetProgress: targetProgress,
+      points: normalizedPoints,
     );
   }
 
@@ -1540,7 +1899,6 @@ class _CompactFinanceHero extends StatelessWidget {
     required this.subtitle,
     required this.mainLabel,
     required this.mainValue,
-    required this.insight,
     required this.onTogglePrivacy,
     required this.onCustomize,
     required this.hideValues,
@@ -1551,7 +1909,6 @@ class _CompactFinanceHero extends StatelessWidget {
   final String subtitle;
   final String mainLabel;
   final String mainValue;
-  final String insight;
   final VoidCallback? onTogglePrivacy;
   final VoidCallback? onCustomize;
   final bool hideValues;
@@ -1560,19 +1917,19 @@ class _CompactFinanceHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF157E55), Color(0xFF0B3D31)],
+          colors: [Color(0xFF19885D), Color(0xFF08382D)],
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF157E55).withOpacity(0.22),
-            blurRadius: 28,
-            offset: const Offset(0, 12),
+            color: const Color(0xFF19885D).withOpacity(0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -1582,18 +1939,19 @@ class _CompactFinanceHero extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   color: Colors.white.withOpacity(0.14),
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet_outlined,
                   color: Colors.white,
+                  size: 20,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1601,19 +1959,22 @@ class _CompactFinanceHero extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       subtitle,
-                      style: TextStyle(color: Colors.white.withOpacity(0.78)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.white.withOpacity(0.76)),
                     ),
                   ],
                 ),
               ),
               IconButton(
+                visualDensity: VisualDensity.compact,
                 onPressed: onTogglePrivacy,
                 icon: Icon(
                   hideValues
@@ -1623,30 +1984,26 @@ class _CompactFinanceHero extends StatelessWidget {
                 ),
               ),
               IconButton(
+                visualDensity: VisualDensity.compact,
                 onPressed: onCustomize,
                 icon: const Icon(Icons.tune_rounded, color: Colors.white),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Text(
             mainLabel,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withOpacity(0.78),
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             mainValue,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 8),
-          Text(
-            insight,
-            style: TextStyle(color: Colors.white.withOpacity(0.82)),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final spacing = 10.0;
@@ -1676,11 +2033,13 @@ class _HeroMetricData {
     required this.label,
     required this.value,
     required this.icon,
+    required this.accent,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final Color accent;
 }
 
 class _HeroMetricCard extends StatelessWidget {
@@ -1691,14 +2050,22 @@ class _HeroMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: Colors.white.withOpacity(0.10),
+        color: Colors.white.withOpacity(0.09),
       ),
       child: Row(
         children: [
-          Icon(data.icon, color: Colors.white.withOpacity(0.90), size: 18),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: data.accent.withOpacity(0.16),
+            ),
+            child: Icon(data.icon, color: data.accent, size: 16),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -1719,7 +2086,10 @@ class _HeroMetricCard extends StatelessWidget {
                   data.value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: data.accent,
+                  ),
                 ),
               ],
             ),
@@ -1741,7 +2111,7 @@ class _FinanceSectionTabs extends StatelessWidget {
     const labels = ['Visão', 'Planejar', 'Investir', 'Controle'];
 
     return Container(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
         color: Colors.white.withOpacity(0.06),
@@ -1755,7 +2125,7 @@ class _FinanceSectionTabs extends StatelessWidget {
               onTap: () => onChanged(itemIndex),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 13),
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   color: selected
@@ -1914,11 +2284,17 @@ class _MiniInfoCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ],
         ),
@@ -2598,6 +2974,20 @@ class _PlanningSummary {
   final double free;
 }
 
+class _PlanningPreset {
+  const _PlanningPreset({
+    required this.label,
+    required this.essential,
+    required this.future,
+    required this.free,
+  });
+
+  final String label;
+  final double essential;
+  final double future;
+  final double free;
+}
+
 class _PlanningBreakdownItem {
   const _PlanningBreakdownItem({
     required this.category,
@@ -2615,20 +3005,18 @@ class _PlanningBreakdownItem {
   }
 }
 
-class _CategoryFocusItem {
-  const _CategoryFocusItem({
-    required this.label,
+class _CategoryExpenseItem {
+  const _CategoryExpenseItem({
+    required this.category,
     required this.amount,
+    required this.transactionCount,
     required this.ratio,
-    required this.color,
-    required this.icon,
   });
 
-  final String label;
+  final dynamic category;
   final double amount;
+  final int transactionCount;
   final double ratio;
-  final Color color;
-  final IconData icon;
 }
 
 class _RecurringRule {
@@ -2647,6 +3035,38 @@ class _RecurringRule {
   final bool isIncome;
 }
 
+class _InvestmentProjectionPoint {
+  const _InvestmentProjectionPoint({
+    required this.label,
+    required this.total,
+    required this.principalPortion,
+    required this.earningsPortion,
+    this.totalRatio = 0,
+  });
+
+  final String label;
+  final double total;
+  final double principalPortion;
+  final double earningsPortion;
+  final double totalRatio;
+
+  _InvestmentProjectionPoint copyWith({
+    String? label,
+    double? total,
+    double? principalPortion,
+    double? earningsPortion,
+    double? totalRatio,
+  }) {
+    return _InvestmentProjectionPoint(
+      label: label ?? this.label,
+      total: total ?? this.total,
+      principalPortion: principalPortion ?? this.principalPortion,
+      earningsPortion: earningsPortion ?? this.earningsPortion,
+      totalRatio: totalRatio ?? this.totalRatio,
+    );
+  }
+}
+
 class _InvestmentData {
   const _InvestmentData({
     required this.principal,
@@ -2656,12 +3076,9 @@ class _InvestmentData {
     required this.monthlyContribution,
     required this.annualRate,
     required this.target,
-    required this.after1Year,
-    required this.after3Years,
-    required this.after5Years,
-    required this.after10Years,
     required this.etaText,
     required this.targetProgress,
+    required this.points,
   });
 
   final double principal;
@@ -2671,12 +3088,296 @@ class _InvestmentData {
   final double monthlyContribution;
   final double annualRate;
   final double target;
-  final double after1Year;
-  final double after3Years;
-  final double after5Years;
-  final double after10Years;
   final String etaText;
   final double targetProgress;
+  final List<_InvestmentProjectionPoint> points;
+}
+
+class _CategorySpendTile extends StatelessWidget {
+  const _CategorySpendTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.ratio,
+    required this.color,
+    required this.icon,
+    this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String value;
+  final double ratio;
+  final Color color;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: Colors.white.withOpacity(0.04),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: color.withOpacity(0.16),
+                ),
+                child: Icon(icon, color: color, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.white.withOpacity(0.68)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (onTap != null) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white.withOpacity(0.60),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: ratio.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: color.withOpacity(0.14),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (onTap == null) return content;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: content,
+    );
+  }
+}
+
+class _SplitAmountBar extends StatelessWidget {
+  const _SplitAmountBar({
+    required this.leftLabel,
+    required this.leftValue,
+    required this.leftColor,
+    required this.rightLabel,
+    required this.rightValue,
+    required this.rightColor,
+    required this.ratio,
+  });
+
+  final String leftLabel;
+  final String leftValue;
+  final Color leftColor;
+  final String rightLabel;
+  final String rightValue;
+  final Color rightColor;
+  final double ratio;
+
+  @override
+  Widget build(BuildContext context) {
+    final clamped = ratio.clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: Colors.white.withOpacity(0.04),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Composição atual',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: SizedBox(
+              height: 12,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (clamped * 1000).round().clamp(1, 999).toInt(),
+                    child: Container(color: leftColor),
+                  ),
+                  Expanded(
+                    flex: ((1 - clamped) * 1000).round().clamp(1, 999).toInt(),
+                    child: Container(color: rightColor),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _LegendValue(
+                  color: leftColor,
+                  label: leftLabel,
+                  value: leftValue,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _LegendValue(
+                  color: rightColor,
+                  label: rightLabel,
+                  value: rightValue,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendValue extends StatelessWidget {
+  const _LegendValue({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+
+  final Color color;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(color: Colors.white.withOpacity(0.70)),
+              ),
+              const SizedBox(height: 2),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InvestmentMilestoneTile extends StatelessWidget {
+  const _InvestmentMilestoneTile({
+    required this.label,
+    required this.total,
+    required this.principal,
+    required this.earnings,
+    required this.progress,
+  });
+
+  final String label;
+  final String total;
+  final String principal;
+  final String earnings;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: Colors.white.withOpacity(0.04),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+              const Spacer(),
+              Text(total, style: const TextStyle(fontWeight: FontWeight.w900)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: Colors.white.withOpacity(0.08),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFF32D96B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _LegendValue(
+                  color: const Color(0xFF32D96B),
+                  label: 'Seu dinheiro',
+                  value: principal,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _LegendValue(
+                  color: const Color(0xFF7B61FF),
+                  label: 'Juros',
+                  value: earnings,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 Color _panelColor(ThemeData theme) {
