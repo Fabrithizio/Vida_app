@@ -420,18 +420,65 @@ class VoiceCommandRouter {
     );
   }
 
+  bool _containsAny(String text, Iterable<String> terms) {
+    for (final term in terms) {
+      if (text.contains(term)) return true;
+    }
+    return false;
+  }
+
+  bool _looksLikeAddVerb(String text) {
+    return _containsAny(text, const [
+      'coloca',
+      'colocar',
+      'adiciona',
+      'adicionar',
+      'adicione',
+      'adione',
+      'bota',
+      'botar',
+      'poe',
+      'põe',
+      'ponha',
+      'anota',
+      'anotar',
+      'inclui',
+      'incluir',
+    ]);
+  }
+
+  String _cleanLooseCommandWords(String text) {
+    var value = text;
+    value = value.replaceAll(
+      RegExp(
+        r'\b(r|rs|reais?|real|conto|contos|horas?)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    value = value.replaceAll(
+      RegExp(
+        r'\b(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|agenda|agendar|marca|marcar|evento|compromisso|lista|compras?|afazeres?|tarefas?)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    value = value.replaceAll(
+      RegExp(
+        r'\b(na|no|nas|nos|pra|para|pro|de|da|do|em|as|às|a|e)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return value;
+  }
+
   bool _looksLikeShoppingAdd(String text) {
-    final hasVerb =
-        text.contains('coloca') ||
-        text.contains('adiciona') ||
-        text.contains('adicionar') ||
-        text.contains('bota') ||
-        text.contains('botar') ||
-        text.contains('poe') ||
-        text.contains('põe') ||
-        text.contains('anota');
+    final hasVerb = _looksLikeAddVerb(text);
     final hasContext =
         text.contains('lista') ||
+        text.contains('compra') ||
         text.contains('compras') ||
         text.contains('mercado');
     return hasVerb && hasContext;
@@ -442,7 +489,7 @@ class VoiceCommandRouter {
 
     text = text.replaceFirst(
       RegExp(
-        r'^\s*(coloca|colocar|adiciona|adicionar|bota|botar|poe|põe|anota|anotar)\s+',
+        r'^\s*(coloca|colocar|adiciona|adicionar|adicione|adione|bota|botar|poe|põe|ponha|anota|anotar|inclui|incluir)\s+',
         caseSensitive: false,
       ),
       '',
@@ -496,7 +543,7 @@ class VoiceCommandRouter {
     final byConnector = normalized.split(RegExp(r'\s+e\s+'));
     if (byConnector.length > 1) {
       for (final piece in byConnector) {
-        yield piece;
+        yield* _expandShoppingSegment(piece);
       }
       return;
     }
@@ -557,7 +604,7 @@ class VoiceCommandRouter {
     var text = raw.trim();
     text = text.replaceAll(
       RegExp(
-        r'^(coloca|colocar|adiciona|adicionar|bota|botar|poe|põe|anota|anotar)\s+',
+        r'^(coloca|colocar|adiciona|adicionar|adicione|adione|bota|botar|poe|põe|ponha|anota|anotar|inclui|incluir)\s+',
         caseSensitive: false,
       ),
       '',
@@ -598,6 +645,8 @@ class VoiceCommandRouter {
   bool _looksLikeHomeTask(String text) {
     return text.contains('tarefa da casa') ||
         text.contains('tarefas da casa') ||
+        text.contains('lista de afazeres') ||
+        text.contains('lista de tarefas') ||
         text.contains('afazer') ||
         text.contains('afazeres') ||
         text.contains('a fazer') ||
@@ -615,7 +664,7 @@ class VoiceCommandRouter {
     var text = original.trim();
     text = text.replaceFirst(
       RegExp(
-        r'^\s*(adiciona|adicionar|coloca|colocar|bota|botar|anota|anotar)\s+',
+        r'^\s*(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|inclui|incluir)\s+',
         caseSensitive: false,
       ),
       '',
@@ -623,7 +672,14 @@ class VoiceCommandRouter {
 
     text = text.replaceAll(
       RegExp(
-        r'\b(nas|na|nos|no|pra|para|em)\s+(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|casa)\b',
+        r'\b(a\s+)?lista\s+de\s+(afazeres|tarefas?)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(
+        r'\b(nas|na|nos|no|pra|para|em)\s+(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|lista\s+de\s+afazeres|lista\s+de\s+tarefas|casa)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -636,23 +692,8 @@ class VoiceCommandRouter {
       ' ',
     );
 
-    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    text = text.replaceAll(
-      RegExp(r'^(na|no|nas|nos|pra|para|em|de)\s+', caseSensitive: false),
-      '',
-    );
-    text = text.replaceAll(
-      RegExp(r'\s+(na|no|nas|nos|pra|para|em|de)$', caseSensitive: false),
-      '',
-    );
-
+    text = _cleanLooseCommandWords(text);
     if (text.isEmpty) return '';
-    if (RegExp(
-      r'^(adiciona|adicionar|coloca|colocar|bota|botar|anota|anotar)$',
-      caseSensitive: false,
-    ).hasMatch(text)) {
-      return '';
-    }
     return _capitalize(text);
   }
 
@@ -865,10 +906,17 @@ class VoiceCommandRouter {
     var text = original.trim();
     text = text.replaceAll(
       RegExp(
-        r'^(agenda|agendar|marca|marcar|cria\s+evento|evento|compromisso)\s+',
+        r'^(agenda|agendar|marca|marcar|cria\s+evento|criar\s+evento|adiciona\s+evento|adicionar\s+evento|evento|compromisso)\s+',
         caseSensitive: false,
       ),
       '',
+    );
+    text = text.replaceAll(
+      RegExp(
+        r'\b(na\s+agenda|no\s+calendario|no\s+calendário|no\s+meu\s+dia)\b',
+        caseSensitive: false,
+      ),
+      ' ',
     );
     text = text.replaceAll(
       RegExp(
@@ -887,10 +935,14 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(RegExp(r'\bhoras?\b', caseSensitive: false), ' ');
     text = text.replaceAll(
-      RegExp(r'\b(das|da|de|as|às|até|ate)\b', caseSensitive: false),
+      RegExp(
+        r'\b(das|da|de|as|às|até|ate|para|pra|na|no|em)\b',
+        caseSensitive: false,
+      ),
       ' ',
     );
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    text = _cleanLooseCommandWords(text);
     if (text.isEmpty) return '';
     return _capitalize(text);
   }
@@ -1379,37 +1431,56 @@ class VoiceCommandRouter {
   }
 
   String? _extractExpenseItemTitle(String original) {
-    var text = _normalize(original);
+    var text = original.trim();
 
     text = text.replaceAll(
       RegExp(
-        r'^(gastei|gastar|paguei|pagar|comprei|comprar|lancei|lancar|adiciona\s+gasto|adicionar\s+gasto|corrige\s+o\s+ultimo|corrigir\s+o\s+ultimo|o\s+ultimo\s+foi)\s+',
+        r'^(gastei|gastar|paguei|pagar|comprei|comprar|lancei|lancar|adicione?\s+gasto|adicionar\s+gasto|corrige\s+o\s+ultimo|corrigir\s+o\s+ultimo|o\s+ultimo\s+foi)\s+',
+        caseSensitive: false,
       ),
       '',
     );
-    text = text.replaceAll(RegExp(r'(?:r\$\s*)?\d[\d\s\.,]*\d|\d'), ' ');
-    text = text.replaceAll(RegExp(r'\b(real|reais|conto|contos)\b'), ' ');
-    text = text.replaceAll(RegExp(r'\b\d+\s*x\b'), ' ');
+    text = text.replaceAll(RegExp(r'r\$\s*', caseSensitive: false), ' ');
+    text = text.replaceAll(
+      RegExp(r'\b(?:rs|reais?|real|conto|contos)\b', caseSensitive: false),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b\d+[\d\s\.,]*\b'), ' ');
+    text = text.replaceAll(RegExp(r'\b\d+\s*x\b', caseSensitive: false), ' ');
     text = text.replaceAll(
       RegExp(
         r'\b(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
+        caseSensitive: false,
       ),
       ' ',
     );
-    text = text.replaceAll(RegExp(r'\b(hoje|amanha|amanhã|ontem)\b'), ' ');
+    text = text.replaceAll(
+      RegExp(
+        r'\b(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(r'\b(hoje|amanha|amanhã|ontem)\b', caseSensitive: false),
+      ' ',
+    );
     text = text.replaceAll(
       RegExp(
         r'\b(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
+        caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    text = text.replaceAll(RegExp(r'^(de|da|do|na|no|em)\s+'), '');
-    text = text.replaceAll(RegExp(r'\s+(de|da|do|na|no|em)$'), '');
+    text = _cleanLooseCommandWords(text);
 
     if (text.isEmpty) return null;
-    if ({'gasto', 'despesa', 'saida', 'saída'}.contains(text)) return null;
+    final normalized = _normalize(text);
+    if ({'gasto', 'despesa', 'saida', 'saída', 'compra'}.contains(normalized)) {
+      return null;
+    }
     return _capitalize(text);
   }
 

@@ -54,6 +54,7 @@ class FinanceHeroCard extends StatelessWidget {
     required this.onTogglePrivacy,
     required this.hideValues,
     required this.metrics,
+    this.onLeadingTap,
   });
 
   final String title;
@@ -63,6 +64,7 @@ class FinanceHeroCard extends StatelessWidget {
   final VoidCallback? onTogglePrivacy;
   final bool hideValues;
   final List<FinanceHeroMetric> metrics;
+  final VoidCallback? onLeadingTap;
 
   @override
   Widget build(BuildContext context) {
@@ -88,14 +90,18 @@ class FinanceHeroCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: Colors.white.withOpacity(0.12),
+              GestureDetector(
+                onTap: onLeadingTap,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.white.withOpacity(0.12),
+                  ),
+                  child: const Icon(Icons.account_balance_wallet_outlined),
                 ),
-                child: const Icon(Icons.account_balance_wallet_outlined),
               ),
               const SizedBox(width: 12),
               Expanded(

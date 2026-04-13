@@ -18,7 +18,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/local/finance_seed_data.dart';
 import '../../data/models/finance_category.dart';
+import '../../data/models/finance_entry_type.dart';
+import '../../data/models/finance_transaction_source.dart';
 import '../../data/models/finance_period_type.dart';
 import '../../data/models/finance_transaction.dart';
 import '../stores/finance_store.dart';
@@ -303,6 +306,271 @@ class _FinanceTabState extends State<FinanceTab> {
     await prefs.setBool('$_prefsPrefix:finance_hide_values', next);
     if (!mounted) return;
     setState(() => _hideValues = next);
+  }
+
+  Future<void> _applyAdjustmentTransaction({
+    required String title,
+    required double amount,
+    required bool isIncome,
+    required FinanceEntryType entryType,
+    required String categoryId,
+    String? note,
+  }) async {
+    if (amount.abs() < 0.009) return;
+    final category = FinanceSeedData.getCategoryById(categoryId);
+    final tx = FinanceTransaction(
+      id: 'tx_adjust_${DateTime.now().microsecondsSinceEpoch}_${title.hashCode}',
+      title: title,
+      amount: amount,
+      date: DateTime.now(),
+      category: category,
+      entryType: entryType,
+      source: FinanceTransactionSource.manual,
+      isIncome: isIncome,
+      note: note ?? 'Ajuste manual do resumo financeiro',
+    );
+    await _store.addTransaction(tx);
+  }
+
+  Future<void> _openQuickAdjustSheet() async {
+    final incomeController = TextEditingController(
+      text: moneyField(_store.totalIncome),
+    );
+    final expenseController = TextEditingController(
+      text: moneyField(_store.totalExpense),
+    );
+    final debitController = TextEditingController(
+      text: moneyField(_store.totalDebitExpense),
+    );
+    final creditController = TextEditingController(
+      text: moneyField(_store.totalCreditExpense),
+    );
+    final balanceController = TextEditingController(
+      text: moneyField(_store.balance),
+    );
+    var applyExpenseAsCredit = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return FinanceSheetFrame(
+              title: 'Ajustar valores do resumo',
+              subtitle:
+                  'Quando algo ficar diferente do real, você pode corrigir o período atual sem mexer lançamento por lançamento.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const FinanceSoftInfoCard(
+                    title: 'Como funciona',
+                    text:
+                        'O app cria lançamentos de correção do período atual. Saldo usa entrada ou débito de ajuste. Se você mexer em débito e crédito, o campo de saídas totais vira só referência.',
+                    icon: Icons.info_outline_rounded,
+                  ),
+                  const SizedBox(height: 16),
+                  FinanceTextField(
+                    controller: balanceController,
+                    label: 'Saldo disponível',
+                    prefixText: 'R\$ ',
+                    icon: Icons.account_balance_wallet_outlined,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FinanceTextField(
+                    controller: incomeController,
+                    label: 'Entradas do período',
+                    prefixText: 'R\$ ',
+                    icon: Icons.call_received_rounded,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FinanceTextField(
+                    controller: expenseController,
+                    label: 'Saídas do período',
+                    prefixText: 'R\$ ',
+                    icon: Icons.call_made_rounded,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: debitController,
+                          label: 'Débito',
+                          prefixText: 'R\$ ',
+                          icon: Icons.account_balance_wallet_outlined,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: creditController,
+                          label: 'Crédito',
+                          prefixText: 'R\$ ',
+                          icon: Icons.credit_card_outlined,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Saída extra em débito'),
+                        selected: !applyExpenseAsCredit,
+                        onSelected: (_) =>
+                            setSheetState(() => applyExpenseAsCredit = false),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Saída extra em crédito'),
+                        selected: applyExpenseAsCredit,
+                        onSelected: (_) =>
+                            setSheetState(() => applyExpenseAsCredit = true),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final targetIncome = parseMoney(incomeController.text);
+                        final targetExpense = parseMoney(
+                          expenseController.text,
+                        );
+                        final targetDebit = parseMoney(debitController.text);
+                        final targetCredit = parseMoney(creditController.text);
+                        final targetBalance = parseMoney(
+                          balanceController.text,
+                        );
+
+                        final incomeDelta = targetIncome - _store.totalIncome;
+                        final debitDelta =
+                            targetDebit - _store.totalDebitExpense;
+                        final creditDelta =
+                            targetCredit - _store.totalCreditExpense;
+
+                        final changedDebitOrCredit =
+                            debitDelta.abs() > 0.009 ||
+                            creditDelta.abs() > 0.009;
+
+                        final expenseDelta = changedDebitOrCredit
+                            ? 0.0
+                            : (targetExpense - _store.totalExpense);
+
+                        if (incomeDelta.abs() < 0.009 &&
+                            debitDelta.abs() < 0.009 &&
+                            creditDelta.abs() < 0.009 &&
+                            expenseDelta.abs() < 0.009 &&
+                            (targetBalance - _store.balance).abs() < 0.009) {
+                          if (context.mounted) Navigator.of(context).pop();
+                          return;
+                        }
+
+                        if (incomeDelta.abs() > 0.009) {
+                          await _applyAdjustmentTransaction(
+                            title: 'Ajuste manual de entradas',
+                            amount: incomeDelta,
+                            isIncome: true,
+                            entryType: FinanceEntryType.transferIn,
+                            categoryId: 'other_income',
+                          );
+                        }
+
+                        if (changedDebitOrCredit) {
+                          if (debitDelta.abs() > 0.009) {
+                            await _applyAdjustmentTransaction(
+                              title: 'Ajuste manual de débito',
+                              amount: debitDelta,
+                              isIncome: false,
+                              entryType: FinanceEntryType.debit,
+                              categoryId: 'other_expense',
+                            );
+                          }
+                          if (creditDelta.abs() > 0.009) {
+                            await _applyAdjustmentTransaction(
+                              title: 'Ajuste manual de crédito',
+                              amount: creditDelta,
+                              isIncome: false,
+                              entryType: FinanceEntryType.credit,
+                              categoryId: 'debt_credit_card',
+                            );
+                          }
+                        } else if (expenseDelta.abs() > 0.009) {
+                          await _applyAdjustmentTransaction(
+                            title: applyExpenseAsCredit
+                                ? 'Ajuste manual de saídas (crédito)'
+                                : 'Ajuste manual de saídas (débito)',
+                            amount: expenseDelta,
+                            isIncome: false,
+                            entryType: applyExpenseAsCredit
+                                ? FinanceEntryType.credit
+                                : FinanceEntryType.debit,
+                            categoryId: 'other_expense',
+                          );
+                        }
+
+                        await _store.load();
+                        final balanceDelta = targetBalance - _store.balance;
+                        if (balanceDelta.abs() > 0.009) {
+                          if (balanceDelta > 0) {
+                            await _applyAdjustmentTransaction(
+                              title: 'Ajuste manual de saldo',
+                              amount: balanceDelta,
+                              isIncome: true,
+                              entryType: FinanceEntryType.transferIn,
+                              categoryId: 'other_income',
+                            );
+                          } else {
+                            await _applyAdjustmentTransaction(
+                              title: 'Ajuste manual de saldo',
+                              amount: balanceDelta.abs(),
+                              isIncome: false,
+                              entryType: FinanceEntryType.debit,
+                              categoryId: 'other_expense',
+                            );
+                          }
+                        }
+
+                        if (!mounted) return;
+                        Navigator.of(context).pop();
+                        await _refreshAll();
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Resumo financeiro ajustado.'),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.tune_rounded),
+                      label: const Text('Salvar ajustes'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _openAddTransactionPage() async {
@@ -2668,6 +2936,7 @@ class _FinanceTabState extends State<FinanceTab> {
                   ),
                   hideValues: _hideValues,
                   onTogglePrivacy: _loadingPrefs ? null : _togglePrivacy,
+                  onLeadingTap: _openQuickAdjustSheet,
                   metrics: [
                     FinanceHeroMetric(
                       label: 'Entradas',
