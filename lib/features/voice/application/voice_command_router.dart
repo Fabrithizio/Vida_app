@@ -2,10 +2,15 @@
 // FILE: lib/features/voice/application/voice_command_router.dart
 //
 // O que faz:
-// - entende comandos por voz para compras, tarefas da casa, agenda e finanças
-// - aceita fala mais natural e tenta limpar "sujeira" do reconhecimento
-// - confirma lançamentos financeiros antes de salvar
-// - permite corrigir/remover o último lançamento financeiro por voz
+// - entende comandos por voz para compras, agenda, tarefas da casa e finanças
+// - melhora a limpeza da frase antes de interpretar o comando
+// - reduz erros comuns de fala natural, conectivos soltos e palavras sobrando
+// - deixa o fluxo compatível com o store atual do app, sem depender de internet
+//
+// Ideia desta versão:
+// - manter o speech_to_text atual por enquanto
+// - trocar o "cérebro" por um parser mais robusto
+// - facilitar futuras melhorias sem mexer no restante do app
 // ============================================================================
 
 import 'package:vida_app/data/models/timeline_block.dart';
@@ -78,9 +83,6 @@ class VoiceCommandRouter {
     final financeUpdate = await _tryFinanceUpdate(original, normalized);
     if (financeUpdate != null) return financeUpdate;
 
-    final financeCreate = await _tryFinanceCreate(original, normalized);
-    if (financeCreate != null) return financeCreate;
-
     final shoppingResult = await _tryShoppingAdd(original, normalized);
     if (shoppingResult != null) return shoppingResult;
 
@@ -89,6 +91,9 @@ class VoiceCommandRouter {
 
     final eventResult = await _tryEventAdd(original, normalized);
     if (eventResult != null) return eventResult;
+
+    final financeCreate = await _tryFinanceCreate(original, normalized);
+    if (financeCreate != null) return financeCreate;
 
     return const VoiceCommandResult(
       message:
@@ -115,6 +120,7 @@ class VoiceCommandRouter {
     if (items.length == 1) {
       return VoiceCommandResult(message: 'Adicionei ${items.first} na lista.');
     }
+
     return VoiceCommandResult(
       message: 'Adicionei ${items.length} itens na lista.',
     );
@@ -292,15 +298,15 @@ class VoiceCommandRouter {
     String original,
     String normalized,
   ) async {
-    if (!(normalized.contains('ultimo') || normalized.contains('ultim'))) {
-      return null;
-    }
-    if (!(normalized.contains('corrig') ||
+    final mentionsLast =
+        normalized.contains('ultimo') || normalized.contains('ultim');
+    final wantsChange =
+        normalized.contains('corrig') ||
         normalized.contains('alter') ||
         normalized.contains('mud') ||
-        normalized.contains('edita'))) {
-      return null;
-    }
+        normalized.contains('edita');
+
+    if (!mentionsLast || !wantsChange) return null;
 
     final store = await _financeStore();
     if (store.transactions.isEmpty) {
@@ -376,9 +382,13 @@ class VoiceCommandRouter {
     String normalized,
   ) async {
     if (!((normalized.contains('remove') ||
-            normalized.contains('apaga') ||
-            normalized.contains('exclui')) &&
-        (normalized.contains('ultimo') || normalized.contains('ultim')))) {
+                normalized.contains('apaga') ||
+                normalized.contains('exclui')) &&
+            (normalized.contains('ultimo') || normalized.contains('ultim'))) &&
+        !((normalized.contains('remove') ||
+                normalized.contains('apaga') ||
+                normalized.contains('exclui')) &&
+            normalized.contains('lancamento'))) {
       return null;
     }
 
@@ -418,10 +428,12 @@ class VoiceCommandRouter {
         text.contains('bota') ||
         text.contains('botar') ||
         text.contains('poe') ||
-        text.contains('poe') ||
         text.contains('põe') ||
         text.contains('anota');
-    final hasContext = text.contains('lista') || text.contains('compras');
+    final hasContext =
+        text.contains('lista') ||
+        text.contains('compras') ||
+        text.contains('mercado');
     return hasVerb && hasContext;
   }
 
@@ -437,12 +449,8 @@ class VoiceCommandRouter {
     );
 
     text = text.replaceAll(
-      RegExp(r'\b(a|a\s+)?lista\s+de\s+compras?\b', caseSensitive: false),
-      ' ',
-    );
-    text = text.replaceAll(
       RegExp(
-        r'\b(lista\s+de\s+compras?|lista|compras?|mercado)\b',
+        r'\b(a\s+)?lista\s+de\s+compras?\b|\blista\b|\bcompras?\b|\bmercado\b',
         caseSensitive: false,
       ),
       ' ',
@@ -452,22 +460,26 @@ class VoiceCommandRouter {
       ' ',
     );
     text = text.replaceAll(
-      RegExp(r'\s+(e|mais)\s+', caseSensitive: false),
+      RegExp(r'\s+e\s+mais\s+', caseSensitive: false),
       ',',
     );
+    text = text.replaceAll(RegExp(r'\s+mais\s+', caseSensitive: false), ',');
     text = text.replaceAll(';', ',');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
-    final rawParts = text
-        .split(',')
-        .expand(_expandShoppingSegment)
+    final parts = <String>[];
+    for (final segment in text.split(',')) {
+      parts.addAll(_expandShoppingSegment(segment));
+    }
+
+    final cleaned = parts
         .map(_sanitizeShoppingItem)
         .where((e) => e.isNotEmpty)
         .toList();
 
     final seen = <String>{};
     final unique = <String>[];
-    for (final item in rawParts) {
+    for (final item in cleaned) {
       final key = _normalize(item);
       if (key.isEmpty || seen.contains(key)) continue;
       seen.add(key);
@@ -480,7 +492,16 @@ class VoiceCommandRouter {
     final text = raw.trim();
     if (text.isEmpty) return;
 
-    final words = text
+    final normalized = _normalize(text);
+    final byConnector = normalized.split(RegExp(r'\s+e\s+'));
+    if (byConnector.length > 1) {
+      for (final piece in byConnector) {
+        yield piece;
+      }
+      return;
+    }
+
+    final words = normalized
         .split(RegExp(r'\s+'))
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
@@ -492,15 +513,13 @@ class VoiceCommandRouter {
       'do',
       'das',
       'dos',
-      'em',
-      'para',
-      'pra',
       'com',
       'sem',
       'integral',
       'light',
       'zero',
       'po',
+      'poo',
       'pó',
       'natural',
       'desnatado',
@@ -512,12 +531,17 @@ class VoiceCommandRouter {
       'cabelo',
       'dente',
       'papel',
+      'sanitario',
+      'sanitário',
+      'em',
     };
 
+    final hasQuantity = words.any((w) => RegExp(r'^\d+[a-z]*$').hasMatch(w));
     final shouldSplitIntoSingles =
         words.length >= 2 &&
         words.length <= 5 &&
-        !words.any((w) => joinerWords.contains(_normalize(w)));
+        !hasQuantity &&
+        !words.any(joinerWords.contains);
 
     if (shouldSplitIntoSingles) {
       for (final word in words) {
@@ -526,7 +550,7 @@ class VoiceCommandRouter {
       return;
     }
 
-    yield text;
+    yield normalized;
   }
 
   String _sanitizeShoppingItem(String raw) {
@@ -545,7 +569,6 @@ class VoiceCommandRouter {
       ),
       '',
     );
-    text = text.replaceAll(RegExp(r'^r\s+', caseSensitive: false), '');
     text = text.replaceAll(
       RegExp(
         r'^(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma)\s+',
@@ -561,10 +584,14 @@ class VoiceCommandRouter {
       '',
     );
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (text.length == 1 && {'a', 'e', 'o'}.contains(text.toLowerCase())) {
+
+    final lower = text.toLowerCase();
+    if (text.isEmpty) return '';
+    if (text.length == 1 && {'a', 'e', 'o'}.contains(lower)) return '';
+    if ({'de', 'do', 'da', 'na', 'no', 'pra', 'para'}.contains(lower)) {
       return '';
     }
-    if (text.isEmpty) return '';
+
     return _capitalize(text);
   }
 
@@ -614,12 +641,10 @@ class VoiceCommandRouter {
       RegExp(r'^(na|no|nas|nos|pra|para|em|de)\s+', caseSensitive: false),
       '',
     );
-    text = text
-        .replaceAll(
-          RegExp(r'\s+(na|no|nas|nos|pra|para|em|de)$', caseSensitive: false),
-          '',
-        )
-        .trim();
+    text = text.replaceAll(
+      RegExp(r'\s+(na|no|nas|nos|pra|para|em|de)$', caseSensitive: false),
+      '',
+    );
 
     if (text.isEmpty) return '';
     if (RegExp(
@@ -669,15 +694,28 @@ class VoiceCommandRouter {
   }
 
   bool _looksLikeEvent(String text) {
-    return text.contains('agenda') ||
+    final hasSchedulingVerb =
+        text.contains('agenda') ||
         text.contains('agendar') ||
         text.contains('marca ') ||
         text.contains('marcar') ||
+        text.contains('evento') ||
+        text.contains('compromisso');
+    final hasDate = _extractDate(text) != null;
+    final hasTime = _extractTimeRange(text) != null;
+    final hasTypicalTitle =
+        text.contains('treino') ||
         text.contains('reuniao') ||
         text.contains('reunião') ||
         text.contains('consulta') ||
-        text.contains('compromisso') ||
-        text.contains('evento');
+        text.contains('dentista') ||
+        text.contains('medico') ||
+        text.contains('médico') ||
+        text.contains('academia') ||
+        text.contains('prova') ||
+        text.contains('aula');
+
+    return hasSchedulingVerb || (hasDate && hasTime && hasTypicalTitle);
   }
 
   TimelineBlockType _timelineTypeFromText(String text) {
@@ -759,14 +797,35 @@ class VoiceCommandRouter {
   }
 
   _TimeRange? _extractTimeRange(String text) {
-    final full = RegExp(
-      r'(?:das\s+|da\s+)?(\d{1,2})(?::|h)?(\d{0,2})\s*(?:ate|até|as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})',
-    ).firstMatch(text);
-    if (full != null) {
-      final sh = int.tryParse(full.group(1)!);
-      final sm = _parseMinute(full.group(2));
-      final eh = int.tryParse(full.group(3)!);
-      final em = _parseMinute(full.group(4));
+    final fullPatterns = [
+      RegExp(
+        r'(?:das\s+|da\s+|de\s+)?(\d{1,2})(?::|h)?(\d{0,2})\s*(?:ate|até|as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})',
+      ),
+      RegExp(r'\b(\d{1,2}):(\d{2})\s*(?:ate|até|-|a)\s*(\d{1,2}):(\d{2})\b'),
+      RegExp(
+        r'\b(\d{1,2})\s*h(?:oras?)?\s*(?:ate|até|a)\s*(\d{1,2})\s*h(?:oras?)?\b',
+      ),
+    ];
+
+    for (final pattern in fullPatterns) {
+      final full = pattern.firstMatch(text);
+      if (full == null) continue;
+
+      int? sh;
+      int sm = 0;
+      int? eh;
+      int em = 0;
+
+      if (full.groupCount >= 4) {
+        sh = int.tryParse(full.group(1)!);
+        sm = _parseMinute(full.group(2));
+        eh = int.tryParse(full.group(3)!);
+        em = _parseMinute(full.group(4));
+      } else if (full.groupCount == 2) {
+        sh = int.tryParse(full.group(1)!);
+        eh = int.tryParse(full.group(2)!);
+      }
+
       if (sh != null && eh != null) {
         return _TimeRange(
           startHour: sh,
@@ -806,7 +865,7 @@ class VoiceCommandRouter {
     var text = original.trim();
     text = text.replaceAll(
       RegExp(
-        r'^(agenda|agendar|marca|marcar|cria evento|evento|compromisso)\s+',
+        r'^(agenda|agendar|marca|marcar|cria\s+evento|evento|compromisso)\s+',
         caseSensitive: false,
       ),
       '',
@@ -821,32 +880,54 @@ class VoiceCommandRouter {
     text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(
       RegExp(
-        r'(?:das\s+|da\s+)?\d{1,2}(?::\d{1,2}|h\d{0,2}|h)?\s*(?:ate|até|as|às|a)?\s*\d{0,2}(?::\d{1,2}|h\d{0,2}|h)?',
+        r'(?:das\s+|da\s+|de\s+)?\d{1,2}(?::\d{1,2}|h\d{0,2}|h)?\s*(?:ate|até|as|às|a)?\s*\d{0,2}(?::\d{1,2}|h\d{0,2}|h)?',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(RegExp(r'\bhoras?\b', caseSensitive: false), ' ');
+    text = text.replaceAll(
+      RegExp(r'\b(das|da|de|as|às|até|ate)\b', caseSensitive: false),
+      ' ',
+    );
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.isEmpty) return '';
     return _capitalize(text);
   }
 
   bool _looksLikeFinance(String text) {
-    return text.contains('gastei') ||
+    final hasMoney = _extractAmount(text) != null;
+    final hasFinanceVerb =
+        text.contains('gastei') ||
         text.contains('recebi') ||
         text.contains('ganhei') ||
         text.contains('salario') ||
         text.contains('salário') ||
         text.contains('paguei') ||
         text.contains('comprei') ||
+        text.contains('investi') ||
+        text.contains('depositei') ||
+        text.contains('caiu');
+    final hasPaymentContext =
         text.contains('pix') ||
         text.contains('debito') ||
         text.contains('débito') ||
         text.contains('credito') ||
         text.contains('crédito') ||
+        text.contains('cartao') ||
+        text.contains('cartão') ||
+        text.contains('boleto') ||
+        text.contains('dinheiro') ||
+        text.contains('reais') ||
         text.contains('real') ||
-        text.contains('reais');
+        text.contains('conto') ||
+        text.contains('contos');
+
+    return hasMoney &&
+        (hasFinanceVerb ||
+            hasPaymentContext ||
+            _categoryFromTextOrNull(text, isIncome: false) != null ||
+            _looksLikeIncome(text));
   }
 
   bool _looksLikeIncome(String text) {
@@ -856,11 +937,23 @@ class VoiceCommandRouter {
         text.contains('salário') ||
         text.contains('pagamento') ||
         text.contains('entrada') ||
-        text.contains('caiu');
+        text.contains('caiu') ||
+        text.contains('depositaram') ||
+        text.contains('deposito');
   }
 
   double? _extractAmount(String text) {
     final source = text.toLowerCase();
+
+    final contos = RegExp(
+      r'\b(\d+(?:[\.,]\d+)?)\s*contos?\b',
+    ).firstMatch(source);
+    if (contos != null) {
+      final raw = contos.group(1)!;
+      final normalized = _normalizeAmountString(raw);
+      final value = double.tryParse(normalized);
+      if (value != null && value > 0) return value;
+    }
 
     final moneyContext = RegExp(
       r'(?:r\$\s*)?(\d[\d\s\.,]*\d|\d)\s*(reais|real)?',
@@ -972,7 +1065,10 @@ class VoiceCommandRouter {
           consumed++;
           continue;
         }
-        if (token == 'reais' || token == 'real') {
+        if (token == 'reais' ||
+            token == 'real' ||
+            token == 'contos' ||
+            token == 'conto') {
           consumed++;
           break;
         }
@@ -1065,58 +1161,180 @@ class VoiceCommandRouter {
     String text, {
     required bool isIncome,
   }) {
+    final normalized = _normalize(text);
+
     if (isIncome) {
-      if (text.contains('salario') ||
-          text.contains('salário') ||
-          text.contains('pagamento')) {
+      if (normalized.contains('salario') ||
+          normalized.contains('salário') ||
+          normalized.contains('pagamento')) {
         return FinanceSeedData.getCategoryById('salary');
       }
-      if (text.contains('recebi') ||
-          text.contains('ganhei') ||
-          text.contains('entrada')) {
+      if (normalized.contains('recebi') ||
+          normalized.contains('ganhei') ||
+          normalized.contains('entrada') ||
+          normalized.contains('deposito') ||
+          normalized.contains('depositaram')) {
         return FinanceSeedData.getCategoryById('other_income');
       }
       return null;
     }
 
-    final map = <String, String>{
-      'gasolina': 'transport',
-      'combust': 'transport',
-      'uber': 'transport',
-      'onibus': 'transport',
-      'ônibus': 'transport',
-      'mercado': 'food',
-      'comida': 'food',
-      'ifood': 'food',
-      'restaurante': 'food',
-      'agua': 'home',
-      'água': 'home',
-      'internet': 'home',
-      'aluguel': 'home',
-      'energia': 'home',
-      'farmacia': 'health',
-      'farmácia': 'health',
-      'medico': 'health',
-      'médico': 'health',
-      'remedio': 'health',
-      'remédio': 'health',
-      'roupa': 'shopping',
-      'presente': 'shopping',
-      'compras': 'shopping',
-      'shopping': 'shopping',
-      'cinema': 'leisure',
-      'lazer': 'leisure',
-      'jogo': 'leisure',
-      'faculdade': 'education',
-      'curso': 'education',
-      'escola': 'education',
+    final keywordMap = <String, String>{
+      'gasolina': 'transport_fuel',
+      'combustivel': 'transport_fuel',
+      'combustível': 'transport_fuel',
+      'uber': 'transport_ride',
+      '99': 'transport_ride',
+      'onibus': 'transport_public',
+      'ônibus': 'transport_public',
+      'metro': 'transport_public',
+      'metrô': 'transport_public',
+      'trem': 'transport_public',
+      'passagem': 'transport_public',
+      'estacionamento': 'transport_parking',
+      'pedagio': 'transport_toll',
+      'pedágio': 'transport_toll',
+      'ipva': 'transport_ipva',
+      'mercado': 'food_market',
+      'supermercado': 'food_market',
+      'acougue': 'food_butcher',
+      'açougue': 'food_butcher',
+      'peixaria': 'food_butcher',
+      'hortifruti': 'food_hortifruti',
+      'fruta': 'food_hortifruti',
+      'frutas': 'food_hortifruti',
+      'verdura': 'food_hortifruti',
+      'verduras': 'food_hortifruti',
+      'legume': 'food_hortifruti',
+      'padaria': 'food_bakery',
+      'pao': 'food_bakery',
+      'pão': 'food_bakery',
+      'restaurante': 'leisure_restaurants',
+      'sushi': 'leisure_restaurants',
+      'lanche': 'leisure_restaurants',
+      'ifood': 'leisure_delivery',
+      'delivery': 'leisure_delivery',
+      'agua': 'utility_water',
+      'água': 'utility_water',
+      'esgoto': 'utility_water',
+      'luz': 'utility_energy',
+      'energia': 'utility_energy',
+      'gas': 'utility_gas',
+      'gás': 'utility_gas',
+      'internet': 'utility_internet',
+      'wifi': 'utility_internet',
+      'wi fi': 'utility_internet',
+      'celular': 'utility_phone',
+      'telefone': 'utility_phone',
+      'aluguel': 'house_rent',
+      'prestacao': 'house_rent',
+      'prestação': 'house_rent',
+      'financiamento': 'house_rent',
+      'condominio': 'house_condo',
+      'condomínio': 'house_condo',
+      'iptu': 'house_iptu',
+      'movel': 'house_furniture',
+      'móvel': 'house_furniture',
+      'decoracao': 'house_furniture',
+      'decoração': 'house_furniture',
+      'farmacia': 'health_medicine',
+      'farmácia': 'health_medicine',
+      'remedio': 'health_medicine',
+      'remédio': 'health_medicine',
+      'medicamento': 'health_medicine',
+      'consulta': 'health_consult',
+      'medico': 'health_consult',
+      'médico': 'health_consult',
+      'dentista': 'health_dentist',
+      'terapia': 'health_therapy',
+      'psicologo': 'health_therapy',
+      'psicólogo': 'health_therapy',
+      'academia': 'health_fitness',
+      'suplemento': 'health_fitness',
+      'higiene': 'health_hygiene',
+      'roupa': 'shopping_clothes',
+      'calcado': 'shopping_clothes',
+      'calçado': 'shopping_clothes',
+      'barbeiro': 'personal_beauty',
+      'cabeleireiro': 'personal_beauty',
+      'skincare': 'shopping_beauty',
+      'cosmetico': 'shopping_beauty',
+      'cosmético': 'shopping_beauty',
+      'faculdade': 'education_school',
+      'escola': 'education_school',
+      'curso': 'education_courses',
+      'livro': 'education_books',
+      'material': 'education_books',
+      'netflix': 'subscription_video',
+      'disney': 'subscription_video',
+      'spotify': 'subscription_music',
+      'deezer': 'subscription_music',
+      'chatgpt': 'subscription_chatgpt',
+      'game pass': 'subscription_games',
+      'ps plus': 'subscription_games',
+      'skin': 'gaming_credits',
+      'credito de jogo': 'gaming_credits',
+      'crédito de jogo': 'gaming_credits',
+      'pet': 'pet_food',
+      'racao': 'pet_food',
+      'ração': 'pet_food',
+      'veterinario': 'pet_vet',
+      'veterinário': 'pet_vet',
+      'banho e tosa': 'pet_care',
+      'cartao': 'debt_credit_card',
+      'cartão': 'debt_credit_card',
+      'fatura': 'debt_credit_card',
+      'emprestimo': 'debt_loan',
+      'empréstimo': 'debt_loan',
+      'juros': 'debt_loan',
+      'tarifa': 'bank_fees',
+      'taxa': 'finance_taxes',
+      'imposto': 'finance_taxes',
+      'seguro': 'finance_other_insurance',
+      'reserva': 'future_emergency',
+      'caixinha': 'future_caixinha',
+      'acoes': 'future_stocks',
+      'ações': 'future_stocks',
+      'fii': 'future_stocks',
+      'cripto': 'future_crypto',
+      'bitcoin': 'future_crypto',
+      'viagem': 'leisure_travel',
+      'cinema': 'leisure_cinema',
+      'show': 'leisure_cinema',
+      'presente': 'leisure_gifts',
+      'hobbie': 'leisure_hobby',
+      'hobby': 'leisure_hobby',
+      'pc': 'shopping_hardware',
+      'hardware': 'shopping_hardware',
+      'eletronico': 'tech_devices',
+      'eletrônico': 'tech_devices',
+      'manutencao tech': 'tech_maintenance',
+      'manutenção tech': 'tech_maintenance',
+      'familia': 'family_support',
+      'família': 'family_support',
+      'filho': 'family_children',
+      'criança': 'family_children',
+      'crianca': 'family_children',
     };
 
-    for (final entry in map.entries) {
-      if (text.contains(entry.key)) {
+    for (final entry in keywordMap.entries) {
+      if (normalized.contains(_normalize(entry.key))) {
         return FinanceSeedData.getCategoryById(entry.value);
       }
     }
+
+    final categories = FinanceSeedData.categories
+        .where((item) => item.isIncomeCategory == false)
+        .toList();
+
+    for (final category in categories) {
+      final name = _normalize(category.name);
+      final tokens = name.split(' ').where((e) => e.length >= 4);
+      if (tokens.any(normalized.contains)) {
+        return category;
+      }
+    }
+
     return null;
   }
 
@@ -1131,34 +1349,47 @@ class VoiceCommandRouter {
         return 'Salário';
       }
       if (normalized.contains('pagamento')) return 'Pagamento';
+      if (normalized.contains('pix')) return 'Pix recebido';
       return 'Entrada';
     }
 
     final explicit = _extractExpenseItemTitle(original);
     if (explicit != null && explicit.isNotEmpty) return explicit;
 
-    if (normalized.contains('gasolina') || normalized.contains('combust')) {
-      return 'Gasolina';
+    final fallbackTitles = <String, String>{
+      'gasolina': 'Gasolina',
+      'mercado': 'Mercado',
+      'internet': 'Internet',
+      'aluguel': 'Aluguel',
+      'ifood': 'Delivery',
+      'delivery': 'Delivery',
+      'uber': 'Uber',
+      'farmacia': 'Farmácia',
+      'farmácia': 'Farmácia',
+      'fatura': 'Fatura do cartão',
+    };
+
+    for (final entry in fallbackTitles.entries) {
+      if (normalized.contains(_normalize(entry.key))) {
+        return entry.value;
+      }
     }
-    if (normalized.contains('mercado')) return 'Mercado';
-    if (normalized.contains('internet')) return 'Internet';
-    if (normalized.contains('aluguel')) return 'Aluguel';
-    if (normalized.contains('ifood') || normalized.contains('restaurante')) {
-      return 'Alimentação';
-    }
+
     return category.name;
   }
 
   String? _extractExpenseItemTitle(String original) {
     var text = _normalize(original);
+
     text = text.replaceAll(
       RegExp(
-        r'^(gastei|gastar|paguei|pagar|comprei|comprar|lancei|lancar|adiciona gasto|adicionar gasto)\s+',
+        r'^(gastei|gastar|paguei|pagar|comprei|comprar|lancei|lancar|adiciona\s+gasto|adicionar\s+gasto|corrige\s+o\s+ultimo|corrigir\s+o\s+ultimo|o\s+ultimo\s+foi)\s+',
       ),
       '',
     );
     text = text.replaceAll(RegExp(r'(?:r\$\s*)?\d[\d\s\.,]*\d|\d'), ' ');
-    text = text.replaceAll(RegExp(r'\b(real|reais)\b'), ' ');
+    text = text.replaceAll(RegExp(r'\b(real|reais|conto|contos)\b'), ' ');
+    text = text.replaceAll(RegExp(r'\b\d+\s*x\b'), ' ');
     text = text.replaceAll(
       RegExp(
         r'\b(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
@@ -1166,8 +1397,19 @@ class VoiceCommandRouter {
       ' ',
     );
     text = text.replaceAll(RegExp(r'\b(hoje|amanha|amanhã|ontem)\b'), ' ');
+    text = text.replaceAll(
+      RegExp(
+        r'\b(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
+      ),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    text = text.replaceAll(RegExp(r'^(de|da|do|na|no|em)\s+'), '');
+    text = text.replaceAll(RegExp(r'\s+(de|da|do|na|no|em)$'), '');
+
     if (text.isEmpty) return null;
+    if ({'gasto', 'despesa', 'saida', 'saída'}.contains(text)) return null;
     return _capitalize(text);
   }
 
@@ -1178,9 +1420,6 @@ class VoiceCommandRouter {
   ) {
     final extracted = _extractExpenseItemTitle(original);
     if (extracted != null && extracted.isNotEmpty) return extracted;
-    if (normalized.contains('gasolina')) return 'Gasolina';
-    if (normalized.contains('mercado')) return 'Mercado';
-    if (normalized.contains('internet')) return 'Internet';
     if (normalized.contains('salario') || normalized.contains('salário')) {
       return 'Salário';
     }
@@ -1234,10 +1473,12 @@ class VoiceCommandRouter {
     for (var i = 0; i < from.length; i++) {
       value = value.replaceAll(from[i], to[i]);
     }
+
     value = value
-        .replaceAll(RegExp(r'[^a-z0-9/,:\s]'), ' ')
+        .replaceAll(RegExp(r'[^a-z0-9/,:\sx]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+
     return value;
   }
 
@@ -1245,13 +1486,12 @@ class VoiceCommandRouter {
     final value = text.trim();
     if (value.isEmpty) return value;
     final words = value.split(RegExp(r'\s+'));
-    final result = words
+    return words
         .map((word) {
           if (word.isEmpty) return word;
           return word[0].toUpperCase() + word.substring(1).toLowerCase();
         })
         .join(' ');
-    return result;
   }
 }
 
