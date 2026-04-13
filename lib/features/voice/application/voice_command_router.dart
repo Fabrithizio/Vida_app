@@ -7,10 +7,11 @@
 // - reduz erros comuns de fala natural, conectivos soltos e palavras sobrando
 // - deixa o fluxo compatível com o store atual do app, sem depender de internet
 //
-// Ideia desta versão:
-// - manter o speech_to_text atual por enquanto
-// - trocar o "cérebro" por um parser mais robusto
-// - facilitar futuras melhorias sem mexer no restante do app
+// Melhorias desta versão:
+// - agenda entende melhor horários humanos como “3 da madrugada” e “10 da manhã”
+// - ativa repetição por voz com frases como “todos os dias” e “segunda a sexta”
+// - limpa melhor os títulos da timeline, da lista de compras e das tarefas da casa
+// - separa melhor itens falados juntos na lista de compras, como “banana maçã e uva”
 // ============================================================================
 
 import 'package:vida_app/data/models/timeline_block.dart';
@@ -161,7 +162,15 @@ class VoiceCommandRouter {
   ) async {
     if (!_looksLikeEvent(normalized)) return null;
 
-    final date = _extractDate(normalized);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tentativeDate = _extractDate(normalized);
+    final repeat = _extractRepeatRule(
+      normalized,
+      referenceDate: tentativeDate ?? today,
+    );
+    final date = tentativeDate ?? (repeat != null ? today : null);
+
     if (date == null) {
       return const VoiceCommandResult(
         message:
@@ -195,13 +204,18 @@ class VoiceCommandRouter {
       timeRange.startHour,
       timeRange.startMinute,
     );
-    final end = DateTime(
+
+    var end = DateTime(
       date.year,
       date.month,
       date.day,
       timeRange.endHour,
       timeRange.endMinute,
     );
+
+    if (!end.isAfter(start)) {
+      end = end.add(const Duration(days: 1));
+    }
 
     final event = TimelineBlock(
       id: 'voice_${DateTime.now().microsecondsSinceEpoch}',
@@ -211,6 +225,8 @@ class VoiceCommandRouter {
       end: end,
       notes: 'Criado por voz',
       reminderMinutes: 10,
+      repeatType: repeat?.type ?? TimelineRepeatType.none,
+      repeatWeekdays: repeat?.weekdays ?? const <int>[],
     );
 
     if (timeline.hasConflict(event)) {
@@ -222,9 +238,11 @@ class VoiceCommandRouter {
     }
 
     await timeline.add(event);
+
+    final repeatText = repeat == null ? '' : ' ${repeat.confirmationText}';
     return VoiceCommandResult(
       message:
-          'Evento "$title" criado para ${_formatDate(date)} às ${_formatTime(start)}.',
+          'Evento "$title" criado para ${_formatDate(date)} às ${_formatTime(start)}.$repeatText',
     );
   }
 
@@ -540,7 +558,7 @@ class VoiceCommandRouter {
     if (text.isEmpty) return;
 
     final normalized = _normalize(text);
-    final byConnector = normalized.split(RegExp(r'\s+e\s+'));
+    final byConnector = normalized.split(RegExp(r'\s+(?:e|mais|junto com)\s+'));
     if (byConnector.length > 1) {
       for (final piece in byConnector) {
         yield* _expandShoppingSegment(piece);
@@ -583,18 +601,127 @@ class VoiceCommandRouter {
       'em',
     };
 
+    const descriptorWords = {
+      'prata',
+      'nanica',
+      'verde',
+      'gala',
+      'fuji',
+      'grande',
+      'pequena',
+      'pequeno',
+      'maduro',
+      'madura',
+      'fresco',
+      'fresca',
+      'moida',
+      'moída',
+      'integral',
+      'desnatado',
+      'desnatada',
+      'semidesnatado',
+      'semidesnatada',
+      'branco',
+      'branca',
+      'preto',
+      'preta',
+    };
+
+    const standaloneFoodWords = {
+      'banana',
+      'maca',
+      'maçã',
+      'uva',
+      'pera',
+      'manga',
+      'abacaxi',
+      'laranja',
+      'limao',
+      'limão',
+      'morango',
+      'pao',
+      'pão',
+      'leite',
+      'ovo',
+      'ovos',
+      'cafe',
+      'café',
+      'arroz',
+      'feijao',
+      'feijão',
+      'queijo',
+      'presunto',
+      'frango',
+      'carne',
+      'peixe',
+      'iogurte',
+      'agua',
+      'água',
+      'suco',
+      'sabao',
+      'sabão',
+      'detergente',
+      'amaciante',
+      'papel',
+      'shampoo',
+      'condicionador',
+    };
+
     final hasQuantity = words.any((w) => RegExp(r'^\d+[a-z]*$').hasMatch(w));
     final shouldSplitIntoSingles =
         words.length >= 2 &&
-        words.length <= 5 &&
+        words.length <= 6 &&
         !hasQuantity &&
         !words.any(joinerWords.contains);
 
     if (shouldSplitIntoSingles) {
-      for (final word in words) {
-        yield word;
+      final items = <String>[];
+      var current = <String>[];
+
+      bool isStandaloneNoun(String word) {
+        return standaloneFoodWords.contains(word);
       }
-      return;
+
+      for (var i = 0; i < words.length; i++) {
+        final word = words[i];
+        final next = i + 1 < words.length ? words[i + 1] : null;
+
+        if (current.isEmpty) {
+          current.add(word);
+          continue;
+        }
+
+        final currentBase = current.first;
+        final currentIsStandalone = isStandaloneNoun(currentBase);
+        final nextIsDescriptor = next != null && descriptorWords.contains(next);
+
+        if (descriptorWords.contains(word) ||
+            joinerWords.contains(word) ||
+            (currentIsStandalone && nextIsDescriptor)) {
+          current.add(word);
+          continue;
+        }
+
+        final wordIsStandalone = isStandaloneNoun(word);
+        if (currentIsStandalone && wordIsStandalone) {
+          items.add(current.join(' '));
+          current = [word];
+          continue;
+        }
+
+        current.add(word);
+      }
+
+      if (current.isNotEmpty) {
+        items.add(current.join(' '));
+      }
+
+      if (items.length > 1) {
+        for (final item in items) {
+          yield item;
+        }
+        return;
+      }
     }
 
     yield normalized;
@@ -618,14 +745,14 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(
       RegExp(
-        r'^(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma)\s+',
+        r'^(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma|e)\s+',
         caseSensitive: false,
       ),
       '',
     );
     text = text.replaceAll(
       RegExp(
-        r'\s+(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma)$',
+        r'\s+(na|no|de|do|da|pra|para|pro|o|a|os|as|um|uma|e)$',
         caseSensitive: false,
       ),
       '',
@@ -635,7 +762,18 @@ class VoiceCommandRouter {
     final lower = text.toLowerCase();
     if (text.isEmpty) return '';
     if (text.length == 1 && {'a', 'e', 'o'}.contains(lower)) return '';
-    if ({'de', 'do', 'da', 'na', 'no', 'pra', 'para'}.contains(lower)) {
+    if ({
+      'de',
+      'do',
+      'da',
+      'na',
+      'no',
+      'pra',
+      'para',
+      'lista',
+      'compra',
+      'compras',
+    }.contains(lower)) {
       return '';
     }
 
@@ -686,13 +824,21 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa)\b',
+        r'\b(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|lista\s+de\s+afazeres|lista\s+de\s+tarefas)\b',
         caseSensitive: false,
       ),
       ' ',
     );
+    text = text.replaceAll(
+      RegExp(
+        r'^(eu\s+quero\s+|quero\s+|preciso\s+|pode\s+|por\s+favor\s+)',
+        caseSensitive: false,
+      ),
+      '',
+    );
 
     text = _cleanLooseCommandWords(text);
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.isEmpty) return '';
     return _capitalize(text);
   }
@@ -741,9 +887,15 @@ class VoiceCommandRouter {
         text.contains('marca ') ||
         text.contains('marcar') ||
         text.contains('evento') ||
-        text.contains('compromisso');
+        text.contains('compromisso') ||
+        text.contains('programa') ||
+        text.contains('programar') ||
+        text.contains('adiciona') ||
+        text.contains('adicionar');
     final hasDate = _extractDate(text) != null;
     final hasTime = _extractTimeRange(text) != null;
+    final hasRepeat =
+        _extractRepeatRule(text, referenceDate: DateTime.now()) != null;
     final hasTypicalTitle =
         text.contains('treino') ||
         text.contains('reuniao') ||
@@ -754,9 +906,15 @@ class VoiceCommandRouter {
         text.contains('médico') ||
         text.contains('academia') ||
         text.contains('prova') ||
-        text.contains('aula');
+        text.contains('aula') ||
+        text.contains('descanso') ||
+        text.contains('sono') ||
+        text.contains('trabalho');
 
-    return hasSchedulingVerb || (hasDate && hasTime && hasTypicalTitle);
+    return hasSchedulingVerb ||
+        (hasDate && hasTime) ||
+        (hasRepeat && hasTime && hasTypicalTitle) ||
+        (hasTime && hasTypicalTitle);
   }
 
   TimelineBlockType _timelineTypeFromText(String text) {
@@ -789,7 +947,7 @@ class VoiceCommandRouter {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    if (text.contains('hoje')) return today;
+    if (text.contains('hoje') || text.contains('de hoje')) return today;
     if (text.contains('depois de amanha') ||
         text.contains('depois de amanhã')) {
       return today.add(const Duration(days: 2));
@@ -826,10 +984,17 @@ class VoiceCommandRouter {
       'domingo': DateTime.sunday,
     };
 
+    bool asksCurrentWeek(String value) =>
+        value.contains('nessa ') ||
+        value.contains('nesta ') ||
+        value.contains('essa ') ||
+        value.contains('esta ');
+
     for (final entry in weekdays.entries) {
       if (text.contains(entry.key)) {
         final diff = (entry.value - today.weekday + 7) % 7;
-        final days = diff == 0 ? 7 : diff;
+        if (diff == 0) return today;
+        final days = asksCurrentWeek(text) ? diff : (diff == 0 ? 7 : diff);
         return today.add(Duration(days: days));
       }
     }
@@ -838,58 +1003,48 @@ class VoiceCommandRouter {
   }
 
   _TimeRange? _extractTimeRange(String text) {
+    final normalized = _normalizeTimeText(text);
+    final timePhrase =
+        r'(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)';
+
     final fullPatterns = [
       RegExp(
-        r'(?:das\s+|da\s+|de\s+)?(\d{1,2})(?::|h)?(\d{0,2})\s*(?:ate|até|as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})',
+        '(?:das?\\s+|de\\s+)?($timePhrase)\\s+(?:ate|as|a)\\s+($timePhrase)',
       ),
-      RegExp(r'\b(\d{1,2}):(\d{2})\s*(?:ate|até|-|a)\s*(\d{1,2}):(\d{2})\b'),
-      RegExp(
-        r'\b(\d{1,2})\s*h(?:oras?)?\s*(?:ate|até|a)\s*(\d{1,2})\s*h(?:oras?)?\b',
-      ),
+      RegExp('\\b($timePhrase)\\s*[-]\\s*($timePhrase)\\b'),
     ];
 
     for (final pattern in fullPatterns) {
-      final full = pattern.firstMatch(text);
+      final full = pattern.firstMatch(normalized);
       if (full == null) continue;
-
-      int? sh;
-      int sm = 0;
-      int? eh;
-      int em = 0;
-
-      if (full.groupCount >= 4) {
-        sh = int.tryParse(full.group(1)!);
-        sm = _parseMinute(full.group(2));
-        eh = int.tryParse(full.group(3)!);
-        em = _parseMinute(full.group(4));
-      } else if (full.groupCount == 2) {
-        sh = int.tryParse(full.group(1)!);
-        eh = int.tryParse(full.group(2)!);
-      }
-
-      if (sh != null && eh != null) {
+      final start = _parseTimePhrase(full.group(1)!);
+      final end = _parseTimePhrase(full.group(2)!);
+      if (start != null && end != null) {
         return _TimeRange(
-          startHour: sh,
-          startMinute: sm,
-          endHour: eh,
-          endMinute: em,
+          startHour: start.hour,
+          startMinute: start.minute,
+          endHour: end.hour,
+          endMinute: end.minute,
         );
       }
     }
 
-    final single =
-        RegExp(r'(?:as|às|a)\s*(\d{1,2})(?::|h)?(\d{0,2})').firstMatch(text) ??
-        RegExp(r'\b(\d{1,2})\s*h(?:oras?)?\b').firstMatch(text);
-    if (single != null) {
-      final sh = int.tryParse(single.group(1)!);
-      final sm = _parseMinute(single.groupCount >= 2 ? single.group(2) : null);
-      if (sh != null) {
-        final endHour = (sh + 1) % 24;
+    final singlePatterns = [
+      RegExp('(?:as|a)\\s+($timePhrase)'),
+      RegExp('\\b($timePhrase)\\b'),
+    ];
+
+    for (final pattern in singlePatterns) {
+      final single = pattern.firstMatch(normalized);
+      if (single == null) continue;
+      final parsed = _parseTimePhrase(single.group(1)!);
+      if (parsed != null) {
+        final endHour = (parsed.hour + 1) % 24;
         return _TimeRange(
-          startHour: sh,
-          startMinute: sm,
+          startHour: parsed.hour,
+          startMinute: parsed.minute,
           endHour: endHour,
-          endMinute: sm,
+          endMinute: parsed.minute,
         );
       }
     }
@@ -902,25 +1057,182 @@ class VoiceCommandRouter {
     return int.tryParse(raw) ?? 0;
   }
 
+  String _normalizeTimeText(String text) {
+    var value = _normalize(text);
+    value = value.replaceAll('meio dia', '12:00');
+    value = value.replaceAll('meia noite', '00:00');
+    value = value.replaceAllMapped(
+      RegExp(r'\b(\d{1,2})\s*e\s*meia\b'),
+      (m) => '${m.group(1)}:30',
+    );
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  _ParsedTimePoint? _parseTimePhrase(String raw) {
+    final text = _normalizeTimeText(raw);
+
+    if (text.contains('12:00')) {
+      return const _ParsedTimePoint(hour: 12, minute: 0);
+    }
+    if (text.contains('00:00')) {
+      return const _ParsedTimePoint(hour: 0, minute: 0);
+    }
+
+    int? hour;
+    int minute = 0;
+
+    final hhmm = RegExp(r'\b(\d{1,2}):(\d{1,2})\b').firstMatch(text);
+    if (hhmm != null) {
+      hour = int.tryParse(hhmm.group(1)!);
+      minute = int.tryParse(hhmm.group(2)!) ?? 0;
+    } else {
+      final hWithMinutes = RegExp(
+        r'\b(\d{1,2})\s*h\s*(\d{1,2})\b',
+      ).firstMatch(text);
+      if (hWithMinutes != null) {
+        hour = int.tryParse(hWithMinutes.group(1)!);
+        minute = int.tryParse(hWithMinutes.group(2)!) ?? 0;
+      } else {
+        final hOnly = RegExp(r'\b(\d{1,2})\b').firstMatch(text);
+        if (hOnly != null) {
+          hour = int.tryParse(hOnly.group(1)!);
+          if (text.contains('e meia')) minute = 30;
+        }
+      }
+    }
+
+    if (hour == null) return null;
+
+    if (text.contains('madrugada')) {
+      if (hour == 12) hour = 0;
+    } else if (text.contains('manha')) {
+      if (hour == 12) hour = 0;
+    } else if (text.contains('tarde')) {
+      if (hour < 12) hour += 12;
+    } else if (text.contains('noite')) {
+      if (hour < 12) hour += 12;
+      if (hour == 24) hour = 0;
+    }
+
+    hour = hour.clamp(0, 23);
+    minute = minute.clamp(0, 59);
+    return _ParsedTimePoint(hour: hour, minute: minute);
+  }
+
+  _RepeatRule? _extractRepeatRule(
+    String text, {
+    required DateTime referenceDate,
+  }) {
+    final normalized = _normalize(text);
+
+    if (normalized.contains('todos os dias') ||
+        normalized.contains('todo dia') ||
+        normalized.contains('diariamente') ||
+        normalized.contains('repetir diariamente') ||
+        normalized.contains('repete diariamente') ||
+        normalized.contains('repetir todo dia') ||
+        normalized.contains('repete todo dia') ||
+        normalized.contains('repita diariamente')) {
+      return const _RepeatRule(
+        type: TimelineRepeatType.daily,
+        confirmationText: 'Vai repetir todos os dias.',
+      );
+    }
+
+    if (normalized.contains('toda semana') ||
+        normalized.contains('semanalmente') ||
+        normalized.contains('repetir semanalmente') ||
+        normalized.contains('repete semanalmente')) {
+      return const _RepeatRule(
+        type: TimelineRepeatType.weekly,
+        confirmationText: 'Vai repetir toda semana.',
+      );
+    }
+
+    if (normalized.contains('segunda a sexta') ||
+        normalized.contains('segunda ate sexta') ||
+        normalized.contains('de segunda a sexta')) {
+      return const _RepeatRule(
+        type: TimelineRepeatType.customWeekdays,
+        weekdays: <int>[
+          DateTime.monday,
+          DateTime.tuesday,
+          DateTime.wednesday,
+          DateTime.thursday,
+          DateTime.friday,
+        ],
+        confirmationText: 'Vai repetir de segunda a sexta.',
+      );
+    }
+
+    final weekdayMap = <String, int>{
+      'segunda': DateTime.monday,
+      'terca': DateTime.tuesday,
+      'terça': DateTime.tuesday,
+      'quarta': DateTime.wednesday,
+      'quinta': DateTime.thursday,
+      'sexta': DateTime.friday,
+      'sabado': DateTime.saturday,
+      'sábado': DateTime.saturday,
+      'domingo': DateTime.sunday,
+    };
+
+    final weekdays = <int>{};
+    for (final entry in weekdayMap.entries) {
+      if (normalized.contains('toda ${entry.key}') ||
+          normalized.contains('todo ${entry.key}') ||
+          normalized.contains('cada ${entry.key}') ||
+          normalized.contains('repetir ${entry.key}') ||
+          normalized.contains('repete ${entry.key}')) {
+        weekdays.add(entry.value);
+      }
+    }
+
+    if (weekdays.length == 1) {
+      return const _RepeatRule(
+        type: TimelineRepeatType.weekly,
+        confirmationText: 'Vai repetir toda semana.',
+      );
+    }
+
+    if (weekdays.length > 1) {
+      final ordered = weekdays.toList()..sort();
+      return _RepeatRule(
+        type: TimelineRepeatType.customWeekdays,
+        weekdays: ordered,
+        confirmationText: 'Vai repetir em dias da semana definidos.',
+      );
+    }
+
+    return null;
+  }
+
   String _extractEventTitle(String original) {
     var text = original.trim();
     text = text.replaceAll(
       RegExp(
-        r'^(agenda|agendar|marca|marcar|cria\s+evento|criar\s+evento|adiciona\s+evento|adicionar\s+evento|evento|compromisso)\s+',
+        r'^(agenda|agendar|marca|marcar|cria\s+evento|criar\s+evento|adiciona\s+evento|adicionar\s+evento|evento|compromisso|programa|programar|adiciona|adicionar)\s+',
         caseSensitive: false,
       ),
       '',
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(na\s+agenda|no\s+calendario|no\s+calendário|no\s+meu\s+dia)\b',
+        r'\b(na\s+agenda|no\s+calendario|no\s+calendário|no\s+meu\s+dia|na\s+timeline)\b',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(amanha|amanhã|hoje|ontem|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
+        r'\b(repetir\s+diariamente|repete\s+diariamente|todos\s+os\s+dias|todo\s+dia|diariamente|toda\s+semana|semanalmente|segunda\s+a\s+sexta|de\s+segunda\s+a\s+sexta|toda\s+segunda|toda\s+terca|toda\s+terça|toda\s+quarta|toda\s+quinta|toda\s+sexta|toda\s+sabado|toda\s+sábado|todo\s+domingo)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(
+        r'\b(de\s+)?(amanha|amanhã|hoje|ontem|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -928,12 +1240,18 @@ class VoiceCommandRouter {
     text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(
       RegExp(
-        r'(?:das\s+|da\s+|de\s+)?\d{1,2}(?::\d{1,2}|h\d{0,2}|h)?\s*(?:ate|até|as|às|a)?\s*\d{0,2}(?::\d{1,2}|h\d{0,2}|h)?',
+        r'(?:das?\s+|de\s+)?(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)\s+(?:ate|até|as|às|a)\s+(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)',
         caseSensitive: false,
       ),
       ' ',
     );
-    text = text.replaceAll(RegExp(r'\bhoras?\b', caseSensitive: false), ' ');
+    text = text.replaceAll(
+      RegExp(
+        r'\b(?:as|a)\s+(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
     text = text.replaceAll(
       RegExp(
         r'\b(das|da|de|as|às|até|ate|para|pra|na|no|em)\b',
@@ -943,6 +1261,8 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = _cleanLooseCommandWords(text);
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
     if (text.isEmpty) return '';
     return _capitalize(text);
   }
@@ -1564,6 +1884,25 @@ class VoiceCommandRouter {
         })
         .join(' ');
   }
+}
+
+class _ParsedTimePoint {
+  const _ParsedTimePoint({required this.hour, required this.minute});
+
+  final int hour;
+  final int minute;
+}
+
+class _RepeatRule {
+  const _RepeatRule({
+    required this.type,
+    this.weekdays = const <int>[],
+    required this.confirmationText,
+  });
+
+  final TimelineRepeatType type;
+  final List<int> weekdays;
+  final String confirmationText;
 }
 
 class _TimeRange {
