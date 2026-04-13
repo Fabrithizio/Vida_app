@@ -462,6 +462,63 @@ class FinanceSeedData {
       colorValue: 0xFF5E35B1,
       isIncomeCategory: false,
     ),
+
+    const FinanceCategory(
+      id: 'food_cleaning',
+      name: 'Higiene e Limpeza',
+      iconKey: 'food',
+      colorValue: 0xFF8BC34A,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'personal_beauty',
+      name: 'Cabeleireiro ou Barbeiro',
+      iconKey: 'shopping',
+      colorValue: 0xFF8E24AA,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'tech_devices',
+      name: 'Eletrônicos',
+      iconKey: 'shopping',
+      colorValue: 0xFF3949AB,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'tech_maintenance',
+      name: 'Manutenção Tech',
+      iconKey: 'shopping',
+      colorValue: 0xFF5C6BC0,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'finance_taxes',
+      name: 'Impostos e Taxas',
+      iconKey: 'expense',
+      colorValue: 0xFF6D4C41,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'finance_other_insurance',
+      name: 'Seguros',
+      iconKey: 'expense',
+      colorValue: 0xFF546E7A,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'family_children',
+      name: 'Custos com Filhos',
+      iconKey: 'home',
+      colorValue: 0xFF7CB342,
+      isIncomeCategory: false,
+    ),
+    const FinanceCategory(
+      id: 'family_support',
+      name: 'Apoio à Família',
+      iconKey: 'home',
+      colorValue: 0xFF43A047,
+      isIncomeCategory: false,
+    ),
   ];
 
   static FinanceCategory getCategoryById(String id) {

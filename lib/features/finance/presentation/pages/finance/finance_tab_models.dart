@@ -1,17 +1,19 @@
 // ============================================================================
 // FILE: lib/features/finance/presentation/pages/finance/finance_tab_models.dart
 //
-// Modelos leves usados apenas pela UI da tela de Finanças.
+// Modelos leves usados pela UI da tela de Finanças.
 //
 // O que este arquivo faz:
-// - Guarda os modelos visuais do Financeiro 2.0.
-// - Evita deixar o finance_tab.dart cheio de classes pequenas.
-// - Mantém os dados da tela separados da lógica do store principal.
+// - Guarda modelos visuais e de apoio do Financeiro 2.0.
+// - Deixa o finance_tab.dart mais limpo.
+// - Inclui o tipo de balde do planejamento (essenciais, futuro, livre).
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
 import '../../../data/models/finance_category.dart';
+
+enum FinancePlanningBucketKind { essential, future, free }
 
 class FinancePlanningPreset {
   const FinancePlanningPreset({
