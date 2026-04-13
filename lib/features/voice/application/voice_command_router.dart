@@ -1209,6 +1209,7 @@ class VoiceCommandRouter {
 
   String _extractEventTitle(String original) {
     var text = original.trim();
+
     text = text.replaceAll(
       RegExp(
         r'^(agenda|agendar|marca|marcar|cria\s+evento|criar\s+evento|adiciona\s+evento|adicionar\s+evento|evento|compromisso|programa|programar|adiciona|adicionar)\s+',
@@ -1216,6 +1217,7 @@ class VoiceCommandRouter {
       ),
       '',
     );
+
     text = text.replaceAll(
       RegExp(
         r'\b(na\s+agenda|no\s+calendario|no\s+calendário|no\s+meu\s+dia|na\s+timeline)\b',
@@ -1223,6 +1225,7 @@ class VoiceCommandRouter {
       ),
       ' ',
     );
+
     text = text.replaceAll(
       RegExp(
         r'\b(repetir\s+diariamente|repete\s+diariamente|todos\s+os\s+dias|todo\s+dia|diariamente|toda\s+semana|semanalmente|segunda\s+a\s+sexta|de\s+segunda\s+a\s+sexta|toda\s+segunda|toda\s+terca|toda\s+terça|toda\s+quarta|toda\s+quinta|toda\s+sexta|toda\s+sabado|toda\s+sábado|todo\s+domingo)\b',
@@ -1230,6 +1233,7 @@ class VoiceCommandRouter {
       ),
       ' ',
     );
+
     text = text.replaceAll(
       RegExp(
         r'\b(de\s+)?(amanha|amanhã|hoje|ontem|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
@@ -1237,21 +1241,30 @@ class VoiceCommandRouter {
       ),
       ' ',
     );
+
     text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
+
+    const timePhrase =
+        r'(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+(?:da\s+)?(?:manha|madrugada|tarde|noite))?)';
+
+    // intervalos: "das 3 da madrugada às 10 da manhã"
     text = text.replaceAll(
       RegExp(
-        r'(?:das?\s+|de\s+)?(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)\s+(?:ate|até|as|às|a)\s+(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)',
+        '(?:das?\\s+|de\\s+)?$timePhrase\\s+(?:ate|até|as|às|a)\\s+$timePhrase',
         caseSensitive: false,
       ),
       ' ',
     );
+
+    // início simples: "às 7", "as 7 horas da manhã"
     text = text.replaceAll(
-      RegExp(
-        r'\b(?:as|a)\s+(?:meio dia|meia noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+da\s+(?:manha|madrugada|tarde|noite))?)',
-        caseSensitive: false,
-      ),
+      RegExp('\\b(?:as|a|de)\\s+$timePhrase', caseSensitive: false),
       ' ',
     );
+
+    // final solto: "festa 7 horas manhã" -> remove o pedaço do horário no fim
+    text = _stripTrailingTimeGarbage(text);
+
     text = text.replaceAll(
       RegExp(
         r'\b(das|da|de|as|às|até|ate|para|pra|na|no|em)\b',
@@ -1259,12 +1272,44 @@ class VoiceCommandRouter {
       ),
       ' ',
     );
+
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = _cleanLooseCommandWords(text);
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     if (text.isEmpty) return '';
     return _capitalize(text);
+  }
+
+  String _stripTrailingTimeGarbage(String input) {
+    var text = input.trim();
+
+    final trailingPatterns = <RegExp>[
+      // 7, 7h, 7 horas, 7:30, 7 e meia, 7 horas da manhã
+      RegExp(
+        r'\s+\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+(?:da\s+)?(?:manha|madrugada|tarde|noite))?\s*$',
+        caseSensitive: false,
+      ),
+      // sobra isolada: manhã / madrugada / tarde / noite
+      RegExp(r'\s+(?:manha|madrugada|tarde|noite)\s*$', caseSensitive: false),
+    ];
+
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final pattern in trailingPatterns) {
+        final next = text
+            .replaceAll(pattern, ' ')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (next != text) {
+          text = next;
+          changed = true;
+        }
+      }
+    }
+
+    return text;
   }
 
   bool _looksLikeFinance(String text) {
