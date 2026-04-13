@@ -174,9 +174,7 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
                     itemCount: data.marketQuotes.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
-                      return _MarketCard(
-                        quote: data.marketQuotes[index] as AlwaysOnMarketQuote,
-                      );
+                      return _MarketCard(quote: data.marketQuotes[index]);
                     },
                   ),
                 ),
@@ -194,7 +192,7 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
                   runSpacing: 8,
                   children: [
                     ...data.settings.activePresetIds.map((item) {
-                      final value = item as String;
+                      final value = item;
                       final preset = AlwaysOnPresets.byId(value);
                       return _TagChip(
                         icon: preset?.icon ?? Icons.radar_rounded,
@@ -202,15 +200,13 @@ class _AlwaysOnTabState extends State<AlwaysOnTab>
                       );
                     }),
                     ...data.settings.customTopics.map(
-                      (item) => _TagChip(
-                        icon: Icons.interests_rounded,
-                        label: item as String,
-                      ),
+                      (item) =>
+                          _TagChip(icon: Icons.interests_rounded, label: item),
                     ),
                     ...data.settings.trackedTickers.map(
                       (item) => _TagChip(
                         icon: Icons.candlestick_chart_rounded,
-                        label: (item as String).toUpperCase(),
+                        label: item.toUpperCase(),
                       ),
                     ),
                   ],

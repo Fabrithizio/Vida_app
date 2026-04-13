@@ -48,6 +48,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   late DateTime _selectedDate;
 
   bool _showAdvanced = false;
+  bool _showAllCategories = false;
   bool _isRecurring = false;
   int _recurringDay = 5;
   int _installmentTotal = 1;
@@ -106,6 +107,47 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     return widget.store.categories
         .where((item) => item.isIncomeCategory == isIncome)
         .toList();
+  }
+
+  static const Set<String> _primaryExpenseCategoryIds = {
+    'food_market',
+    'transport_fuel',
+    'transport_public',
+    'health_plan',
+    'house_rent',
+    'utility_energy',
+    'utility_water',
+    'utility_internet',
+    'debt_credit_card',
+    'future_emergency',
+    'future_stocks',
+    'leisure_restaurants',
+    'leisure_delivery',
+    'shopping_clothes',
+    'subscription_video',
+    'other_expense',
+    'food',
+    'transport',
+    'health',
+    'home',
+    'education',
+    'leisure',
+    'shopping',
+  };
+
+  List<FinanceCategory> _visibleCategories({required bool isIncome}) {
+    final all = _filteredCategories(isIncome: isIncome);
+    if (isIncome || _showAllCategories) return all;
+
+    final primary = all
+        .where((item) => _primaryExpenseCategoryIds.contains(item.id))
+        .toList();
+
+    if (primary.isEmpty) return all;
+    if (_category != null && !primary.any((item) => item.id == _category!.id)) {
+      primary.add(_category!);
+    }
+    return primary;
   }
 
   Future<void> _pickDate() async {
@@ -285,7 +327,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   @override
   Widget build(BuildContext context) {
-    final categories = _filteredCategories(isIncome: _isIncome);
+    final allCategories = _filteredCategories(isIncome: _isIncome);
+    final categories = _visibleCategories(isIncome: _isIncome);
     final canEditInstallments = !(widget.isEditing && _installmentTotal > 1);
 
     return Scaffold(
@@ -305,6 +348,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               final nextIsIncome = value.first;
               setState(() {
                 _isIncome = nextIsIncome;
+                _showAllCategories = false;
                 _category = _defaultCategory(isIncome: nextIsIncome);
                 if (_isIncome) {
                   _entryType = FinanceEntryType.transferIn;
@@ -351,9 +395,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<FinanceCategory>(
-            initialValue: categories.contains(_category)
-                ? _category
-                : _defaultCategory(isIncome: _isIncome),
+            initialValue: categories.any((item) => item.id == _category?.id)
+                ? categories.firstWhere((item) => item.id == _category?.id)
+                : (_category != null &&
+                          allCategories.any((item) => item.id == _category?.id)
+                      ? allCategories.firstWhere(
+                          (item) => item.id == _category?.id,
+                        )
+                      : _defaultCategory(isIncome: _isIncome)),
             decoration: const InputDecoration(
               labelText: 'Categoria',
               border: OutlineInputBorder(),
@@ -372,6 +421,27 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               });
             },
           ),
+          if (!_isIncome && allCategories.length > categories.length)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showAllCategories = !_showAllCategories;
+                  });
+                },
+                icon: Icon(
+                  _showAllCategories
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                ),
+                label: Text(
+                  _showAllCategories
+                      ? 'Mostrar menos categorias'
+                      : 'Mais categorias',
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           DropdownButtonFormField<FinanceEntryType>(
             initialValue: _entryType,
