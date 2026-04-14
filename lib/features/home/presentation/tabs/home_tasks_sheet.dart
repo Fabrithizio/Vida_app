@@ -1,3 +1,13 @@
+// ============================================================================
+// FILE: lib/features/home/presentation/tabs/home_tasks_sheet.dart
+//
+// O que este arquivo faz:
+// - mostra a aba/modal de Casa & Organização
+// - adiciona um botão visível de voltar/fechar dentro do próprio app
+// - mantém resumo, adição, filtros e edição das tarefas da casa
+// - preserva o comportamento atual do store sem mexer na lógica de dados
+// ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/features/home_tasks/home_tasks_store.dart';
 
@@ -39,7 +49,6 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
       area: _area,
       notes: _notesController.text,
     );
-
     _titleController.clear();
     _notesController.clear();
     _focusNode.requestFocus();
@@ -57,12 +66,14 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) {
-        final bottom = MediaQuery.of(context).viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-          child: StatefulBuilder(
-            builder: (context, setModal) {
-              return SingleChildScrollView(
+        return StatefulBuilder(
+          builder: (context, setModal) {
+            final bottom = MediaQuery.of(context).viewInsets.bottom;
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -76,6 +87,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                     const SizedBox(height: 14),
                     TextField(
                       controller: title,
+                      scrollPadding: const EdgeInsets.only(bottom: 180),
                       decoration: const InputDecoration(
                         labelText: 'Título',
                         border: OutlineInputBorder(),
@@ -86,6 +98,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                       controller: notes,
                       minLines: 2,
                       maxLines: 4,
+                      scrollPadding: const EdgeInsets.only(bottom: 180),
                       decoration: const InputDecoration(
                         labelText: 'Observação',
                         border: OutlineInputBorder(),
@@ -100,7 +113,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                       ),
                       items: HomeTaskEffort.values
                           .map(
-                            (e) => DropdownMenuItem(
+                            (e) => DropdownMenuItem<HomeTaskEffort>(
                               value: e,
                               child: Text(homeTaskEffortLabel(e)),
                             ),
@@ -120,7 +133,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                       ),
                       items: HomeTaskCategory.values
                           .map(
-                            (e) => DropdownMenuItem(
+                            (e) => DropdownMenuItem<HomeTaskCategory>(
                               value: e,
                               child: Text(homeTaskCategoryLabel(e)),
                             ),
@@ -140,7 +153,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                       ),
                       items: HomeTaskArea.values
                           .map(
-                            (e) => DropdownMenuItem(
+                            (e) => DropdownMenuItem<HomeTaskArea>(
                               value: e,
                               child: Text(homeTaskAreaLabel(e)),
                             ),
@@ -186,9 +199,9 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                     ),
                   ],
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -234,6 +247,61 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
     }
   }
 
+  Widget _buildHeader() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: 'Voltar',
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Casa & Organização',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${widget.store.pendingCount} pendente(s) • ${widget.store.doneCount} concluída(s)',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Opções',
+              onSelected: (value) async {
+                if (value == 'clear_done') {
+                  await widget.store.clearDone();
+                }
+                if (value == 'reset_seed') {
+                  await widget.store.resetAndSeedAgain();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'clear_done',
+                  child: Text('Limpar concluídas'),
+                ),
+                PopupMenuItem(
+                  value: 'reset_seed',
+                  child: Text('Restaurar lista base'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAddSection() {
     return Card(
       child: Padding(
@@ -256,6 +324,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
               focusNode: _focusNode,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _add(),
+              scrollPadding: const EdgeInsets.only(bottom: 180),
               decoration: const InputDecoration(
                 labelText: 'O que precisa ser feito?',
                 hintText: 'Ex: limpar fogão, trocar torneira...',
@@ -267,6 +336,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
               controller: _notesController,
               minLines: 2,
               maxLines: 4,
+              scrollPadding: const EdgeInsets.only(bottom: 180),
               decoration: const InputDecoration(
                 labelText: 'Observação (opcional)',
                 hintText: 'Ex: verificar vazamento perto da pia',
@@ -282,7 +352,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
               ),
               items: HomeTaskEffort.values
                   .map(
-                    (e) => DropdownMenuItem(
+                    (e) => DropdownMenuItem<HomeTaskEffort>(
                       value: e,
                       child: Text(homeTaskEffortLabel(e)),
                     ),
@@ -302,7 +372,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
               ),
               items: HomeTaskCategory.values
                   .map(
-                    (e) => DropdownMenuItem(
+                    (e) => DropdownMenuItem<HomeTaskCategory>(
                       value: e,
                       child: Text(homeTaskCategoryLabel(e)),
                     ),
@@ -322,7 +392,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
               ),
               items: HomeTaskArea.values
                   .map(
-                    (e) => DropdownMenuItem(
+                    (e) => DropdownMenuItem<HomeTaskArea>(
                       value: e,
                       child: Text(homeTaskAreaLabel(e)),
                     ),
@@ -359,9 +429,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
             FilterChip(
               label: const Text('Mostrar concluídas'),
               selected: _showDone,
-              onSelected: (value) {
-                setState(() => _showDone = value);
-              },
+              onSelected: (value) => setState(() => _showDone = value),
             ),
             ...HomeTaskEffort.values.map(
               (effort) => ChoiceChip(
@@ -391,60 +459,8 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
     );
   }
 
-  Widget _buildSummary() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            const Icon(Icons.home_repair_service_outlined),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Casa & Organização',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${widget.store.pendingCount} pendente(s) • '
-                    '${widget.store.doneCount} concluída(s)',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-            PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'clear_done') {
-                  await widget.store.clearDone();
-                }
-                if (value == 'reset_seed') {
-                  await widget.store.resetAndSeedAgain();
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'clear_done',
-                  child: Text('Limpar concluídas'),
-                ),
-                PopupMenuItem(
-                  value: 'reset_seed',
-                  child: Text('Restaurar lista base'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildTaskTile(HomeTaskItem item) {
     final effortColor = _effortColor(item.effort);
-
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Checkbox(
@@ -496,8 +512,9 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
       padding: EdgeInsets.only(bottom: bottom),
       child: AnimatedBuilder(
         animation: widget.store,
@@ -517,7 +534,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                     shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                     children: [
-                      _buildSummary(),
+                      _buildHeader(),
                       const SizedBox(height: 10),
                       _buildAddSection(),
                       const SizedBox(height: 10),
@@ -537,7 +554,6 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                         ...orderedAreas.map((area) {
                           final list = groups[area]!;
                           final pending = list.where((e) => !e.done).length;
-
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Card(
@@ -598,13 +614,12 @@ class _MiniTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tagColor = color ?? Colors.white70;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: tagColor.withValues(alpha: 0.10),
+        color: tagColor.withOpacity(0.10),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tagColor.withValues(alpha: 0.22)),
+        border: Border.all(color: tagColor.withOpacity(0.22)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

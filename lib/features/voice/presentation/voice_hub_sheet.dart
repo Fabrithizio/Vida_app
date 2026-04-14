@@ -1,12 +1,15 @@
 // ============================================================================
 // FILE: lib/features/voice/presentation/voice_hub_sheet.dart
 //
-// O que faz:
-// - abre o assistente de voz do app
-// - começa a ouvir e processa sozinho quando o usuário para de falar
-// - mostra confirmação quando o comando precisa de confirmação
-// - agora permite editar o comando no ato e reinterpretar sem falar de novo
+// O que este arquivo faz:
+// - abre o assistente de voz e processa o comando falado
+// - mostra confirmação quando o comando pede revisão
+// - permite editar o texto antes de reinterpretar
+// - agora protege a UI contra o teclado cobrindo o campo de edição
 // ============================================================================
+
+import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
@@ -25,6 +28,8 @@ class VoiceHubSheet extends StatefulWidget {
 class _VoiceHubSheetState extends State<VoiceHubSheet> {
   final SpeechToText _speech = SpeechToText();
   final TextEditingController _editController = TextEditingController();
+  final FocusNode _editFocusNode = FocusNode();
+  Timer? _autoProcessTimer;
 
   bool _available = false;
   bool _listening = false;
@@ -58,23 +63,35 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
     );
     if (!mounted) return;
     setState(() {});
+    if (_available) {
+      await _start(auto: true);
+    }
   }
 
   void _onSpeechStatus(String status) {
     if (!mounted) return;
     final done = status == 'done' || status == 'notListening';
     if (done && _listening && !_processing && !_processedThisCycle) {
-      _stopAndHandle(fromStatus: true);
+      _scheduleAutoProcess();
     }
   }
 
-  Future<void> _start() async {
+  Future<void> _start({bool auto = false}) async {
+    _autoProcessTimer?.cancel();
     if (!_available) {
       setState(() {
         _resultMessage =
             'Microfone indisponível.\nVeja a permissão e tente de novo.';
       });
       return;
+    }
+
+    if (_speech.isListening) {
+      await _speech.stop();
+    }
+
+    if (mounted) {
+      FocusScope.of(context).unfocus();
     }
 
     setState(() {
@@ -84,18 +101,20 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       _partial = '';
       _finalText = '';
       _lastWords = '';
-      _resultMessage = null;
-      _pendingConfirmation = null;
-      _editController.clear();
+      if (!auto) {
+        _resultMessage = null;
+        _pendingConfirmation = null;
+        _editController.clear();
+      }
     });
 
     await _speech.listen(
       localeId: 'pt_BR',
       listenMode: ListenMode.dictation,
       partialResults: true,
-      listenOptions: SpeechListenOptions(cancelOnError: true),
-      pauseFor: const Duration(seconds: 2),
-      listenFor: const Duration(seconds: 20),
+      cancelOnError: true,
+      pauseFor: const Duration(seconds: 3),
+      listenFor: const Duration(seconds: 30),
       onResult: _onSpeechResult,
     );
   }
@@ -110,29 +129,43 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
         _partial = result.recognizedWords;
       }
     });
+
+    _autoProcessTimer?.cancel();
+    if (result.finalResult) {
+      _scheduleAutoProcess(delay: const Duration(milliseconds: 450));
+    }
+  }
+
+  void _scheduleAutoProcess({
+    Duration delay = const Duration(milliseconds: 900),
+  }) {
+    _autoProcessTimer?.cancel();
+    _autoProcessTimer = Timer(delay, () {
+      if (!mounted) return;
+      _stopAndHandle(fromStatus: true);
+    });
   }
 
   Future<void> _stopAndHandle({bool fromStatus = false}) async {
     if (_processing || _processedThisCycle) return;
     _processedThisCycle = true;
-    _processing = true;
+    _autoProcessTimer?.cancel();
 
-    if (!fromStatus) {
+    if (!fromStatus && _speech.isListening) {
       await _speech.stop();
     }
 
     final transcript = _pickBestTranscript();
 
-    if (mounted) {
-      setState(() {
-        _listening = false;
-        _processing = false;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _listening = false;
+      _processing = true;
+    });
 
     if (transcript.isEmpty) {
-      if (!mounted) return;
       setState(() {
+        _processing = false;
         _resultMessage = 'Não consegui pegar sua fala.\nTente de novo.';
       });
       return;
@@ -144,19 +177,26 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   Future<void> _handleTranscript(String transcript) async {
     final res = await widget.router.handle(transcript);
     if (!mounted) return;
+
     setState(() {
+      _processing = false;
       _resultMessage = res.message;
       _pendingConfirmation = res.requiresConfirmation ? res : null;
-      _editController.text = res.editableTranscript?.trim().isNotEmpty == true
-          ? res.editableTranscript!.trim()
-          : transcript.trim();
+      _editController.text = transcript.trim();
       _editController.selection = TextSelection.fromPosition(
         TextPosition(offset: _editController.text.length),
       );
     });
 
+    if (res.requiresConfirmation) {
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      if (mounted) {
+        _editFocusNode.requestFocus();
+      }
+    }
+
     if (res.handled && !res.requiresConfirmation) {
-      await Future.delayed(const Duration(milliseconds: 850));
+      await Future.delayed(const Duration(milliseconds: 700));
       if (mounted) Navigator.of(context).pop();
     }
   }
@@ -164,6 +204,7 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
   Future<void> _confirmPending() async {
     final pending = _pendingConfirmation;
     if (pending?.onConfirm == null) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _processing = true;
     });
@@ -174,22 +215,8 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       _pendingConfirmation = null;
       _resultMessage = res.message;
     });
-    await Future.delayed(const Duration(milliseconds: 850));
+    await Future.delayed(const Duration(milliseconds: 700));
     if (mounted) Navigator.of(context).pop();
-  }
-
-  Future<void> _reprocessEdited() async {
-    final edited = _editController.text.trim();
-    if (edited.isEmpty) return;
-    setState(() {
-      _processing = true;
-      _pendingConfirmation = null;
-    });
-    await _handleTranscript(edited);
-    if (!mounted) return;
-    setState(() {
-      _processing = false;
-    });
   }
 
   Future<void> _cancelPending() async {
@@ -198,12 +225,25 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
       setState(() => _pendingConfirmation = null);
       return;
     }
+    FocusScope.of(context).unfocus();
     final res = await pending!.onCancel!();
     if (!mounted) return;
     setState(() {
       _pendingConfirmation = null;
       _resultMessage = res.message;
     });
+  }
+
+  Future<void> _reprocessEdited() async {
+    final edited = _editController.text.trim();
+    if (edited.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _processing = true;
+      _pendingConfirmation = null;
+      _resultMessage = 'Reinterpretando comando...';
+    });
+    await _handleTranscript(edited);
   }
 
   String _pickBestTranscript() {
@@ -216,8 +256,10 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
 
   @override
   void dispose() {
+    _autoProcessTimer?.cancel();
     _speech.stop();
     _editController.dispose();
+    _editFocusNode.dispose();
     super.dispose();
   }
 
@@ -237,112 +279,152 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
         : 'Assistente de voz';
     final heardText = _pickBestTranscript();
     final contentText = heardText.isNotEmpty ? heardText : hint;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final maxHeight = math.min(
+      MediaQuery.of(context).size.height * 0.88,
+      680.0,
+    );
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(_listening ? Icons.mic : Icons.mic_none),
-              title: Text(title),
-              subtitle: Text(
-                _available
-                    ? 'pt-BR • toque para tentar de novo'
-                    : 'Reconhecimento indisponível',
-              ),
-              trailing: IconButton(
-                tooltip: 'Fechar',
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SafeArea(
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.fromLTRB(16, 10, 16, 16 + bottomInset),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Material(
+              color: Colors.transparent,
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(contentText),
-                    if (_resultMessage != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        _resultMessage!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.secondary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(_listening ? Icons.mic : Icons.mic_none),
+                      title: Text(title),
+                      subtitle: Text(
+                        _available
+                            ? (_listening
+                                  ? 'pt-BR • pode falar normalmente'
+                                  : 'pt-BR • toque para tentar de novo')
+                            : 'Reconhecimento indisponível',
                       ),
-                    ],
-                    if (_pendingConfirmation != null) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _editController,
-                        minLines: 1,
-                        maxLines: 3,
-                        enabled: !_processing,
-                        decoration: const InputDecoration(
-                          labelText: 'Ajuste o comando se quiser',
-                          hintText:
-                              'Ex.: adicionar banana, uva e pera na lista',
-                        ),
+                      trailing: IconButton(
+                        tooltip: 'Fechar',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _processing ? null : _confirmPending,
-                              icon: const Icon(Icons.check),
-                              label: Text(
-                                _pendingConfirmation!.confirmLabel ??
-                                    'Confirmar',
+                    ),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(contentText),
+                            if (_resultMessage != null) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                _resultMessage!,
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.secondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
+                            ],
+                            if (_pendingConfirmation != null) ...[
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _editController,
+                                focusNode: _editFocusNode,
+                                minLines: 1,
+                                maxLines: 4,
+                                enabled: !_processing,
+                                scrollPadding: const EdgeInsets.only(
+                                  bottom: 220,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Ajuste o comando se quiser',
+                                  hintText:
+                                      'Ex.: adicionar banana, uva e pera na lista',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      onPressed: _processing
+                                          ? null
+                                          : _confirmPending,
+                                      icon: const Icon(Icons.check),
+                                      label: Text(
+                                        _pendingConfirmation!.confirmLabel ??
+                                            'Confirmar',
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: _processing
+                                          ? null
+                                          : _cancelPending,
+                                      icon: const Icon(Icons.close),
+                                      label: Text(
+                                        _pendingConfirmation!.cancelLabel ??
+                                            'Cancelar',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: _processing
+                                      ? null
+                                      : _reprocessEdited,
+                                  icon: const Icon(Icons.edit_rounded),
+                                  label: const Text('Editar e reinterpretar'),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _processing
+                                ? null
+                                : (_listening
+                                      ? () => _stopAndHandle()
+                                      : () => _start()),
+                            icon: Icon(_listening ? Icons.stop : Icons.refresh),
+                            label: Text(
+                              _listening ? 'Parar agora' : 'Tentar de novo',
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _processing ? null : _cancelPending,
-                              icon: const Icon(Icons.close),
-                              label: Text(
-                                _pendingConfirmation!.cancelLabel ?? 'Cancelar',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: _processing ? null : _reprocessEdited,
-                          icon: const Icon(Icons.edit_rounded),
-                          label: const Text('Editar e reinterpretar'),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _listening
-                        ? () => _stopAndHandle()
-                        : (_processing ? null : _start),
-                    icon: Icon(_listening ? Icons.stop : Icons.refresh_rounded),
-                    label: Text(_listening ? 'Parar agora' : 'Tentar de novo'),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
