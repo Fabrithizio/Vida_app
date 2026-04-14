@@ -3,15 +3,17 @@
 //
 // O que faz:
 // - entende comandos por voz para compras, agenda, tarefas da casa e finanças
-// - melhora a limpeza da frase antes de interpretar o comando
-// - reduz erros comuns de fala natural, conectivos soltos e palavras sobrando
-// - deixa o fluxo compatível com o store atual do app, sem depender de internet
+// - trata a fala em camadas: normalização, extração de slots e geração de texto
+// - evita salvar o transcript cru como título sempre que possível
+// - mantém o fluxo compatível com os stores atuais do app, sem depender de internet
 //
 // Melhorias desta versão:
-// - agenda entende melhor horários humanos como “3 da madrugada” e “10 da manhã”
-// - ativa repetição por voz com frases como “todos os dias” e “segunda a sexta”
-// - limpa melhor os títulos da timeline, da lista de compras e das tarefas da casa
-// - separa melhor itens falados juntos na lista de compras, como “banana maçã e uva”
+// - agenda usa extração de slots e corta tempo/data/repetição antes de formar o título
+// - tarefas da casa aceitam mais formas de falar, como afazeres / para fazer / pra fazer
+// - compras separam melhor itens falados juntos, como “banana uva e pera”
+// - compras com múltiplos itens passam por confirmação, para o usuário corrigir se quiser
+// - confirmações ficam compatíveis com edição no painel do assistente
+// - pequenas correções fonéticas ajudam a limpar palavras comuns do uso real
 // ============================================================================
 
 import 'package:vida_app/data/models/timeline_block.dart';
@@ -32,6 +34,7 @@ class VoiceCommandResult {
     this.requiresConfirmation = false,
     this.confirmLabel,
     this.cancelLabel,
+    this.editableTranscript,
     this.onConfirm,
     this.onCancel,
   });
@@ -41,6 +44,7 @@ class VoiceCommandResult {
   final bool requiresConfirmation;
   final String? confirmLabel;
   final String? cancelLabel;
+  final String? editableTranscript;
   final Future<VoiceCommandResult> Function()? onConfirm;
   final Future<VoiceCommandResult> Function()? onCancel;
 }
@@ -76,7 +80,7 @@ class VoiceCommandRouter {
       );
     }
 
-    final normalized = _normalize(original);
+    final normalized = _normalize(_applyGlobalSpeechFixes(original));
 
     final financeRemove = await _tryFinanceRemove(original, normalized);
     if (financeRemove != null) return financeRemove;
@@ -109,7 +113,7 @@ class VoiceCommandRouter {
   ) async {
     if (!_looksLikeShoppingAdd(normalized)) return null;
 
-    final items = _sanitizeShoppingItems(_extractShoppingItems(original));
+    final items = _extractShoppingItems(original);
     if (items.isEmpty) {
       return const VoiceCommandResult(
         message: 'Fale os itens depois de “coloca na lista…”.',
@@ -117,38 +121,29 @@ class VoiceCommandRouter {
       );
     }
 
-    final shouldConfirm =
-        items.length > 1 ||
-        items.any((item) => _shoppingItemConfidence(item) < 0.75);
-    if (shouldConfirm) {
-      final preview = _joinHumanList(items);
+    final summary = items.join(', ');
+
+    if (items.length > 1) {
       return VoiceCommandResult(
-        message: 'Entendi estes itens: $preview. Confirmar?',
+        message: 'Entendi estes itens: $summary.\nConfirmar?',
         handled: false,
         requiresConfirmation: true,
         confirmLabel: 'Adicionar',
         cancelLabel: 'Cancelar',
+        editableTranscript: original,
         onConfirm: () async {
           await shopping.addMany(items);
           return VoiceCommandResult(
-            message: items.length == 1
-                ? 'Adicionei ${items.first} na lista.'
-                : 'Adicionei ${items.length} itens na lista.',
+            message: 'Adicionei ${items.length} itens na lista.',
           );
         },
         onCancel: () async =>
-            const VoiceCommandResult(message: 'Ok, não adicionei nada.'),
+            const VoiceCommandResult(message: 'Ok, não adicionei os itens.'),
       );
     }
 
     await shopping.addMany(items);
-    if (items.length == 1) {
-      return VoiceCommandResult(message: 'Adicionei ${items.first} na lista.');
-    }
-
-    return VoiceCommandResult(
-      message: 'Adicionei ${items.length} itens na lista.',
-    );
+    return VoiceCommandResult(message: 'Adicionei ${items.first} na lista.');
   }
 
   Future<VoiceCommandResult?> _tryHomeTaskAdd(
@@ -162,39 +157,33 @@ class VoiceCommandRouter {
     if (title.isEmpty) {
       return const VoiceCommandResult(
         message:
-            'Para tarefas da casa, fale o que você quer adicionar. Ex.: “adiciona lavar banheiro nas tarefas da casa”.',
+            'Para tarefas da casa, fale o que você quer adicionar. Ex.: “adiciona lavar banheiro nos afazeres”.',
         handled: false,
       );
     }
 
-    final taskConfidence = _taskTitleConfidence(title);
     final taskText = _normalize(title);
-    final addTask = () async {
-      await homeTasks!.add(
-        title: title,
-        effort: _homeTaskEffortFromText(taskText),
-        category: _homeTaskCategoryFromText(taskText),
-        area: _homeTaskAreaFromText(taskText),
-      );
-      return VoiceCommandResult(
-        message: 'Adicionei "$title" nas tarefas da casa.',
-      );
-    };
-
-    if (taskConfidence < 0.75) {
-      return VoiceCommandResult(
-        message: 'Entendi esta tarefa: "$title". Confirmar?',
-        handled: false,
-        requiresConfirmation: true,
-        confirmLabel: 'Adicionar',
-        cancelLabel: 'Cancelar',
-        onConfirm: addTask,
-        onCancel: () async =>
-            const VoiceCommandResult(message: 'Ok, não adicionei nada.'),
-      );
-    }
-
-    return await addTask();
+    return VoiceCommandResult(
+      message: 'Entendi esta tarefa:\nTítulo: $title\n\nConfirmar?',
+      handled: false,
+      requiresConfirmation: true,
+      confirmLabel: 'Criar',
+      cancelLabel: 'Cancelar',
+      editableTranscript: original,
+      onConfirm: () async {
+        await homeTasks!.add(
+          title: title,
+          effort: _homeTaskEffortFromText(taskText),
+          category: _homeTaskCategoryFromText(taskText),
+          area: _homeTaskAreaFromText(taskText),
+        );
+        return VoiceCommandResult(
+          message: 'Adicionei "$title" nas tarefas da casa.',
+        );
+      },
+      onCancel: () async =>
+          const VoiceCommandResult(message: 'Ok, não criei a tarefa.'),
+    );
   }
 
   Future<VoiceCommandResult?> _tryEventAdd(
@@ -237,7 +226,6 @@ class VoiceCommandRouter {
         handled: false,
       );
     }
-    final eventConfidence = _eventTitleConfidence(title);
 
     final start = DateTime(
       date.year,
@@ -259,42 +247,51 @@ class VoiceCommandRouter {
       end = end.add(const Duration(days: 1));
     }
 
-    final event = TimelineBlock(
-      id: 'voice_${DateTime.now().microsecondsSinceEpoch}',
-      type: _timelineTypeFromText(_normalize(title)),
-      title: title,
-      start: start,
-      end: end,
-      notes: 'Criado por voz',
-      reminderMinutes: 10,
-      repeatType: repeat?.type ?? TimelineRepeatType.none,
-      repeatWeekdays: repeat?.weekdays ?? const <int>[],
-    );
-
-    if (timeline.hasConflict(event)) {
-      return const VoiceCommandResult(
-        message:
-            'Esse horário bate com outro compromisso. Ajuste a fala e tente de novo.',
-        handled: false,
-      );
+    final preview = StringBuffer()
+      ..writeln('Entendi este evento:')
+      ..writeln('Título: $title')
+      ..writeln('Data: ${_formatDate(date)}')
+      ..writeln('Início: ${_formatTime(start)}')
+      ..writeln('Fim: ${_formatTime(end)}');
+    if (repeat != null) {
+      preview.writeln('Repetição: ${repeat.confirmationText}');
     }
+    preview.writeln('\nConfirmar?');
 
-    final repeatText = repeat == null ? '' : ' ${repeat.confirmationText}';
-    final confirmText = eventConfidence < 0.80
-        ? 'Entendi este evento:\nTítulo: $title\nData: ${_formatDate(date)}\nInício: ${_formatTime(start)}\nFim: ${_formatTime(end)}.$repeatText\n\nConfirmar?'
-        : 'Entendi: evento "$title" em ${_formatDate(date)} das ${_formatTime(start)} às ${_formatTime(end)}.$repeatText Confirmar?';
     return VoiceCommandResult(
-      message: confirmText,
+      message: preview.toString(),
       handled: false,
       requiresConfirmation: true,
       confirmLabel: 'Criar',
       cancelLabel: 'Cancelar',
+      editableTranscript: original,
       onConfirm: () async {
+        final event = TimelineBlock(
+          id: 'voice_${DateTime.now().microsecondsSinceEpoch}',
+          type: _timelineTypeFromText(_normalize(title)),
+          title: title,
+          start: start,
+          end: end,
+          notes: 'Criado por voz',
+          reminderMinutes: 10,
+          repeatType: repeat?.type ?? TimelineRepeatType.none,
+          repeatWeekdays: repeat?.weekdays ?? const <int>[],
+        );
+
+        if (timeline.hasConflict(event)) {
+          return const VoiceCommandResult(
+            message:
+                'Esse horário bate com outro compromisso. Ajuste a fala e tente de novo.',
+            handled: false,
+          );
+        }
+
         await timeline.add(event);
-        final repeatDone = repeat == null ? '' : ' ${repeat.confirmationText}';
+
+        final repeatText = repeat == null ? '' : ' ${repeat.confirmationText}';
         return VoiceCommandResult(
           message:
-              'Evento "$title" criado para ${_formatDate(date)} às ${_formatTime(start)}.$repeatDone',
+              'Evento "$title" criado para ${_formatDate(date)} às ${_formatTime(start)}.$repeatText',
         );
       },
       onCancel: () async =>
@@ -338,11 +335,12 @@ class VoiceCommandRouter {
     );
 
     return VoiceCommandResult(
-      message: 'Entendi: $summary. Confirmar?',
+      message: 'Entendi: $summary.\nConfirmar?',
       handled: false,
       requiresConfirmation: true,
       confirmLabel: 'Confirmar',
       cancelLabel: 'Cancelar',
+      editableTranscript: original,
       onConfirm: () async {
         final store = await _financeStore();
         final tx = FinanceTransaction(
@@ -435,11 +433,12 @@ class VoiceCommandRouter {
 
     return VoiceCommandResult(
       message:
-          'Entendi: atualizar o último lançamento para $summary. Confirmar?',
+          'Entendi: atualizar o último lançamento para $summary.\nConfirmar?',
       handled: false,
       requiresConfirmation: true,
       confirmLabel: 'Atualizar',
       cancelLabel: 'Cancelar',
+      editableTranscript: original,
       onConfirm: () async {
         await store.updateTransaction(updated);
         return const VoiceCommandResult(
@@ -480,11 +479,12 @@ class VoiceCommandRouter {
 
     return VoiceCommandResult(
       message:
-          'Entendi: remover o último lançamento "${last.title}" no valor de ${_formatMoney(last.amount)}. Confirmar?',
+          'Entendi: remover o último lançamento "${last.title}" no valor de ${_formatMoney(last.amount)}.\nConfirmar?',
       handled: false,
       requiresConfirmation: true,
       confirmLabel: 'Remover',
       cancelLabel: 'Cancelar',
+      editableTranscript: original,
       onConfirm: () async {
         await store.removeTransaction(last.id);
         return const VoiceCommandResult(message: 'Último lançamento removido.');
@@ -492,6 +492,21 @@ class VoiceCommandRouter {
       onCancel: () async =>
           const VoiceCommandResult(message: 'Ok, não removi nada.'),
     );
+  }
+
+  String _applyGlobalSpeechFixes(String text) {
+    var value = text;
+    final fixes = <Pattern, String>{
+      RegExp(r'\bmadruagada\b', caseSensitive: false): 'madrugada',
+      RegExp(r'\badione\b', caseSensitive: false): 'adicione',
+      RegExp(r'\bmança\b', caseSensitive: false): 'maçã',
+      RegExp(r'\bfes\b', caseSensitive: false): 'festa',
+      RegExp(r'\bconserta tv\b', caseSensitive: false): 'consertar tv',
+    };
+    fixes.forEach((pattern, replacement) {
+      value = value.replaceAll(pattern, replacement);
+    });
+    return value;
   }
 
   bool _containsAny(String text, Iterable<String> terms) {
@@ -518,6 +533,7 @@ class VoiceCommandRouter {
       'anotar',
       'inclui',
       'incluir',
+      'add',
     ]);
   }
 
@@ -532,7 +548,7 @@ class VoiceCommandRouter {
     );
     value = value.replaceAll(
       RegExp(
-        r'\b(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|agenda|agendar|marca|marcar|evento|compromisso|lista|compras?|afazeres?|tarefas?)\b',
+        r'\b(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|agenda|agendar|marca|marcar|evento|eventos|compromisso|compromissos|lista|compras?|afazeres?|tarefas?|fazeres?)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -559,11 +575,11 @@ class VoiceCommandRouter {
   }
 
   List<String> _extractShoppingItems(String original) {
-    var text = original.trim();
+    var text = _applyGlobalSpeechFixes(original).trim();
 
     text = text.replaceFirst(
       RegExp(
-        r'^\s*(coloca|colocar|adiciona|adicionar|adicione|adione|bota|botar|poe|põe|ponha|anota|anotar|inclui|incluir)\s+',
+        r'^\s*(coloca|colocar|adiciona|adicionar|adicione|adione|bota|botar|poe|põe|ponha|anota|anotar|inclui|incluir|add)\s+',
         caseSensitive: false,
       ),
       '',
@@ -613,8 +629,10 @@ class VoiceCommandRouter {
     final text = raw.trim();
     if (text.isEmpty) return;
 
-    final normalized = _normalize(text);
-    final byConnector = normalized.split(RegExp(r'\s+(?:e|mais|junto com)\s+'));
+    final normalized = _normalize(_applyGlobalSpeechFixes(text));
+    final byConnector = normalized.split(
+      RegExp(r'\s+(?:e|mais|junto com|alem de|além de)\s+'),
+    );
     if (byConnector.length > 1) {
       for (final piece in byConnector) {
         yield* _expandShoppingSegment(piece);
@@ -640,10 +658,10 @@ class VoiceCommandRouter {
       'light',
       'zero',
       'po',
-      'poo',
       'pó',
       'natural',
       'desnatado',
+      'desnatada',
       'limpeza',
       'louca',
       'louça',
@@ -655,6 +673,10 @@ class VoiceCommandRouter {
       'sanitario',
       'sanitário',
       'em',
+      'caixa',
+      'pacote',
+      'lata',
+      'garrafa',
     };
 
     const descriptorWords = {
@@ -681,6 +703,14 @@ class VoiceCommandRouter {
       'branca',
       'preto',
       'preta',
+      'italiano',
+      'frances',
+      'francês',
+      'mineral',
+      'sanitario',
+      'sanitário',
+      'liquido',
+      'líquido',
     };
 
     const standaloneFoodWords = {
@@ -726,7 +756,7 @@ class VoiceCommandRouter {
     final hasQuantity = words.any((w) => RegExp(r'^\d+[a-z]*$').hasMatch(w));
     final shouldSplitIntoSingles =
         words.length >= 2 &&
-        words.length <= 6 &&
+        words.length <= 8 &&
         !hasQuantity &&
         !words.any(joinerWords.contains);
 
@@ -751,9 +781,12 @@ class VoiceCommandRouter {
         final currentIsStandalone = isStandaloneNoun(currentBase);
         final nextIsDescriptor = next != null && descriptorWords.contains(next);
 
-        if (descriptorWords.contains(word) ||
-            joinerWords.contains(word) ||
-            (currentIsStandalone && nextIsDescriptor)) {
+        if (descriptorWords.contains(word) || joinerWords.contains(word)) {
+          current.add(word);
+          continue;
+        }
+
+        if (currentIsStandalone && nextIsDescriptor) {
           current.add(word);
           continue;
         }
@@ -787,7 +820,7 @@ class VoiceCommandRouter {
     var text = raw.trim();
     text = text.replaceAll(
       RegExp(
-        r'^(coloca|colocar|adiciona|adicionar|adicione|adione|bota|botar|poe|põe|ponha|anota|anotar|inclui|incluir)\s+',
+        r'^(coloca|colocar|adiciona|adicionar|adicione|adione|bota|botar|poe|põe|ponha|anota|anotar|inclui|incluir|add)\s+',
         caseSensitive: false,
       ),
       '',
@@ -813,11 +846,9 @@ class VoiceCommandRouter {
       ),
       '',
     );
-    text = _stripTrailingGenericGarbage(text);
-    text = _repairFreeText(text, domain: _FreeTextDomain.shopping);
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
-    final lower = _normalize(text);
+    final lower = text.toLowerCase();
     if (text.isEmpty) return '';
     if (text.length == 1 && {'a', 'e', 'o'}.contains(lower)) return '';
     if ({
@@ -846,6 +877,10 @@ class VoiceCommandRouter {
         text.contains('afazer') ||
         text.contains('afazeres') ||
         text.contains('a fazer') ||
+        text.contains('pra fazer') ||
+        text.contains('para fazer') ||
+        text.contains('coisa pra fazer') ||
+        text.contains('coisa para fazer') ||
         text.contains('em casa') ||
         text.contains('lavar') ||
         text.contains('limpar') ||
@@ -857,10 +892,10 @@ class VoiceCommandRouter {
   }
 
   String _extractHomeTaskTitle(String original) {
-    var text = original.trim();
+    var text = _applyGlobalSpeechFixes(original).trim();
     text = text.replaceFirst(
       RegExp(
-        r'^\s*(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|inclui|incluir)\s+',
+        r'^\s*(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|inclui|incluir|add)\s+',
         caseSensitive: false,
       ),
       '',
@@ -875,14 +910,14 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(nas|na|nos|no|pra|para|em)\s+(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|lista\s+de\s+afazeres|lista\s+de\s+tarefas|casa)\b',
+        r'\b(nas|na|nos|no|pra|para|em)\s+(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|lista\s+de\s+afazeres|lista\s+de\s+tarefas|casa|coisas?\s+pra\s+fazer|coisas?\s+para\s+fazer)\b',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|lista\s+de\s+afazeres|lista\s+de\s+tarefas)\b',
+        r'\b(tarefas?\s+da\s+casa|afazeres?\s+da\s+casa|lista\s+de\s+afazeres|lista\s+de\s+tarefas|pra\s+fazer|para\s+fazer|coisas?\s+pra\s+fazer|coisas?\s+para\s+fazer)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -896,9 +931,9 @@ class VoiceCommandRouter {
     );
 
     text = _cleanLooseCommandWords(text);
-    text = _sanitizeTaskTitle(text);
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.isEmpty) return '';
-    return text;
+    return _capitalize(_preserveCommonCaps(text));
   }
 
   HomeTaskEffort _homeTaskEffortFromText(String text) {
@@ -945,6 +980,7 @@ class VoiceCommandRouter {
         text.contains('marca ') ||
         text.contains('marcar') ||
         text.contains('evento') ||
+        text.contains('eventos') ||
         text.contains('compromisso') ||
         text.contains('programa') ||
         text.contains('programar') ||
@@ -967,7 +1003,9 @@ class VoiceCommandRouter {
         text.contains('aula') ||
         text.contains('descanso') ||
         text.contains('sono') ||
-        text.contains('trabalho');
+        text.contains('trabalho') ||
+        text.contains('aniversario') ||
+        text.contains('aniversário');
 
     return hasSchedulingVerb ||
         (hasDate && hasTime) ||
@@ -1067,7 +1105,7 @@ class VoiceCommandRouter {
 
     final fullPatterns = [
       RegExp(
-        '(?:das?\\s+|de\\s+)?($timePhrase)\\s+(?:ate|as|a)\\s+($timePhrase)',
+        '(?:das?\\s+|de\\s+)?($timePhrase)\\s+(?:ate|até|as|às|a)\\s+($timePhrase)',
       ),
       RegExp('\\b($timePhrase)\\s*[-]\\s*($timePhrase)\\b'),
     ];
@@ -1088,7 +1126,7 @@ class VoiceCommandRouter {
     }
 
     final singlePatterns = [
-      RegExp('(?:as|a)\\s+($timePhrase)'),
+      RegExp('(?:as|às|a)\\s+($timePhrase)'),
       RegExp('\\b($timePhrase)\\b'),
     ];
 
@@ -1110,23 +1148,14 @@ class VoiceCommandRouter {
     return null;
   }
 
-  int _parseMinute(String? raw) {
-    if (raw == null || raw.isEmpty) return 0;
-    return int.tryParse(raw) ?? 0;
-  }
-
   String _normalizeTimeText(String text) {
-    var value = _normalize(text);
+    var value = _normalize(_applyGlobalSpeechFixes(text));
     value = value.replaceAll('meio dia', '12:00');
     value = value.replaceAll('meia noite', '00:00');
     value = value.replaceAllMapped(
       RegExp(r'\b(\d{1,2})\s*e\s*meia\b'),
       (m) => '${m.group(1)}:30',
     );
-    value = value
-        .replaceAll('hrs', 'h')
-        .replaceAll('horinha', 'hora')
-        .replaceAll('horinhas', 'horas');
     return value.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
@@ -1189,30 +1218,25 @@ class VoiceCommandRouter {
 
     if (normalized.contains('todos os dias') ||
         normalized.contains('todo dia') ||
-        normalized.contains('todo santo dia') ||
-        normalized.contains('todos dia') ||
         normalized.contains('diariamente') ||
         normalized.contains('repetir diariamente') ||
         normalized.contains('repete diariamente') ||
         normalized.contains('repetir todo dia') ||
         normalized.contains('repete todo dia') ||
-        normalized.contains('repita diariamente') ||
-        normalized.contains('repetir todos os dias') ||
-        normalized.contains('repete todos os dias')) {
+        normalized.contains('repita diariamente')) {
       return const _RepeatRule(
         type: TimelineRepeatType.daily,
-        confirmationText: 'Vai repetir todos os dias.',
+        confirmationText: 'todos os dias',
       );
     }
 
     if (normalized.contains('toda semana') ||
-        normalized.contains('todas as semanas') ||
         normalized.contains('semanalmente') ||
         normalized.contains('repetir semanalmente') ||
         normalized.contains('repete semanalmente')) {
       return const _RepeatRule(
         type: TimelineRepeatType.weekly,
-        confirmationText: 'Vai repetir toda semana.',
+        confirmationText: 'toda semana',
       );
     }
 
@@ -1228,7 +1252,7 @@ class VoiceCommandRouter {
           DateTime.thursday,
           DateTime.friday,
         ],
-        confirmationText: 'Vai repetir de segunda a sexta.',
+        confirmationText: 'segunda a sexta',
       );
     }
 
@@ -1250,9 +1274,7 @@ class VoiceCommandRouter {
           normalized.contains('todo ${entry.key}') ||
           normalized.contains('cada ${entry.key}') ||
           normalized.contains('repetir ${entry.key}') ||
-          normalized.contains('repete ${entry.key}') ||
-          normalized.contains('todo ${entry.key} feira') ||
-          normalized.contains('toda ${entry.key} feira')) {
+          normalized.contains('repete ${entry.key}')) {
         weekdays.add(entry.value);
       }
     }
@@ -1260,7 +1282,7 @@ class VoiceCommandRouter {
     if (weekdays.length == 1) {
       return const _RepeatRule(
         type: TimelineRepeatType.weekly,
-        confirmationText: 'Vai repetir toda semana.',
+        confirmationText: 'toda semana',
       );
     }
 
@@ -1269,7 +1291,7 @@ class VoiceCommandRouter {
       return _RepeatRule(
         type: TimelineRepeatType.customWeekdays,
         weekdays: ordered,
-        confirmationText: 'Vai repetir em dias da semana definidos.',
+        confirmationText: 'dias da semana definidos',
       );
     }
 
@@ -1277,15 +1299,43 @@ class VoiceCommandRouter {
   }
 
   String _extractEventTitle(String original) {
-    var text = original.trim();
+    var text = _applyGlobalSpeechFixes(original).trim();
 
-    text = text.replaceAll(
+    text = text.replaceFirst(
       RegExp(
-        r'^(agenda|agendar|marca|marcar|cria\s+evento|criar\s+evento|adiciona\s+evento|adicionar\s+evento|evento|compromisso|programa|programar|adiciona|adicionar)\s+',
+        r'^\s*(agenda|agendar|marca|marcar|cria\s+evento|criar\s+evento|adiciona\s+evento|adicionar\s+evento|evento|eventos|compromisso|compromissos|programa|programar|adiciona|adicionar)\s+',
         caseSensitive: false,
       ),
       '',
     );
+
+    // Corta tudo a partir do primeiro marcador forte de data / tempo / repetição.
+    final lower = text.toLowerCase();
+    final markers = <RegExp>[
+      RegExp(r'\b(das?|às?|as|a)\s+\d', caseSensitive: false),
+      RegExp(r'\b\d{1,2}\s*horas?\b', caseSensitive: false),
+      RegExp(r'\b\d{1,2}:\d{1,2}\b', caseSensitive: false),
+      RegExp(
+        r'\b(hoje|amanh[ãa]|ontem|segunda|ter[cç]a|quarta|quinta|sexta|s[áa]bado|domingo)\b',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'\b(todos os dias|todo dia|diariamente|toda semana|semanalmente|segunda a sexta|de segunda a sexta)\b',
+        caseSensitive: false,
+      ),
+    ];
+
+    int? cutIndex;
+    for (final marker in markers) {
+      final match = marker.firstMatch(lower);
+      if (match == null) continue;
+      cutIndex = cutIndex == null
+          ? match.start
+          : (match.start < cutIndex ? match.start : cutIndex);
+    }
+    if (cutIndex != null && cutIndex > 0) {
+      text = text.substring(0, cutIndex).trim();
+    }
 
     text = text.replaceAll(
       RegExp(
@@ -1295,402 +1345,64 @@ class VoiceCommandRouter {
       ' ',
     );
 
-    final cutPatterns = <RegExp>[
-      RegExp(
-        r'\b(repetir\s+diariamente|repete\s+diariamente|repetir\s+todos\s+os\s+dias|todos\s+os\s+dias|todo\s+dia|todo\s+santo\s+dia|diariamente|toda\s+semana|semanalmente|segunda\s+a\s+sexta|de\s+segunda\s+a\s+sexta|toda\s+segunda|toda\s+terca|toda\s+terça|toda\s+quarta|toda\s+quinta|toda\s+sexta|toda\s+sabado|toda\s+sábado|todo\s+domingo)\b',
-        caseSensitive: false,
-      ),
+    text = text.replaceAll(
       RegExp(
         r'\b(de\s+)?(amanha|amanhã|hoje|ontem|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
         caseSensitive: false,
       ),
-      RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b', caseSensitive: false),
-      RegExp(
-        r'\b(?:das?|de|às?|a\s+partir\s+das?)\s+(?:meio\s+dia|meia\s+noite|\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+(?:da\s+)?(?:manha|manhã|madruagada|madrugada|tarde|noite))?)',
-        caseSensitive: false,
-      ),
-      RegExp(
-        r'\b\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)(?:\s+e\s+meia)?(?:\s+(?:da\s+)?(?:manha|manhã|madruagada|madrugada|tarde|noite))?',
-        caseSensitive: false,
-      ),
-    ];
-
-    int cutIndex = text.length;
-    for (final pattern in cutPatterns) {
-      final match = pattern.firstMatch(text);
-      if (match != null && match.start < cutIndex) {
-        cutIndex = match.start;
-      }
-    }
-
-    if (cutIndex < text.length) {
-      text = text.substring(0, cutIndex);
-    }
-
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
+    text = _stripTrailingTimeGarbage(text);
+    text = _removeLeadingEventNouns(text);
     text = _cleanLooseCommandWords(text);
-    text = _sanitizeEventTitle(text);
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
     if (text.isEmpty) return '';
-    return text;
+    return _capitalize(_preserveCommonCaps(text));
   }
 
   String _stripTrailingTimeGarbage(String input) {
     var text = input.trim();
 
     final trailingPatterns = <RegExp>[
+      RegExp(r'\b\d{1,2}\s*:\s*\d{1,2}\b$', caseSensitive: false),
+      RegExp(r'\b\d{1,2}\s*horas?\b$', caseSensitive: false),
+      RegExp(r'\b\d{1,2}\b$', caseSensitive: false),
       RegExp(
-        r'\s+\d{1,2}(?::\d{1,2})?(?:\s*h(?:oras?)?|\s+horas?)?(?:\s+e\s+meia)?(?:\s+(?:da\s+)?(?:manha|manhã|madrugada|madruagada|tarde|noite))?\s*$',
+        r'\b(da\s+)?(manha|madrugada|tarde|noite)\b$',
         caseSensitive: false,
       ),
-      RegExp(
-        r'\s+(?:manha|manhã|madrugada|madruagada|tarde|noite)\s*$',
-        caseSensitive: false,
-      ),
+      RegExp(r'\b(e meia)\b$', caseSensitive: false),
+      RegExp(r'\b(das?|às?|as|a|ate|até|de)\b$', caseSensitive: false),
     ];
 
-    var changed = true;
+    bool changed = true;
     while (changed) {
       changed = false;
       for (final pattern in trailingPatterns) {
-        final next = text
-            .replaceAll(pattern, ' ')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-        if (next != text) {
-          text = next;
+        final match = pattern.firstMatch(text);
+        if (match != null && match.end == text.length) {
+          text = text.substring(0, match.start).trim();
           changed = true;
         }
       }
     }
 
-    return text;
+    return text.trim();
   }
 
-  String _stripTrailingGenericGarbage(String input) {
+  String _removeLeadingEventNouns(String input) {
     var text = input.trim();
-    text = text.replaceAll(
+    text = text.replaceFirst(
       RegExp(
-        r'\b(na|no|nas|nos|para|pra|pro|de|da|do|das|dos|em|as|às|a|e)$',
+        r'^(evento|eventos|compromisso|compromissos)\s+',
         caseSensitive: false,
       ),
       '',
     );
-    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return text;
+    return text.trim();
   }
-
-  String _repairFreeText(String input, {required _FreeTextDomain domain}) {
-    var text = _normalize(input);
-    if (text.isEmpty) return '';
-
-    const explicitFixes = <String, String>{
-      'fes': 'festa',
-      'feis': 'festa',
-      'mansa': 'maca',
-      'cafee': 'cafe',
-    };
-    explicitFixes.forEach((from, to) {
-      text = text.replaceAll(from, to);
-    });
-
-    final tokens = text
-        .split(RegExp(r'\s+'))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    final repaired = <String>[];
-    for (var i = 0; i < tokens.length; i++) {
-      var token = tokens[i];
-      if (domain == _FreeTextDomain.task && i == 0) {
-        token = _normalizeTaskVerbToken(token);
-      }
-      repaired.add(_bestVocabularyMatch(token, domain) ?? token);
-    }
-
-    return repaired.join(' ').trim();
-  }
-
-  String? _bestVocabularyMatch(String token, _FreeTextDomain domain) {
-    if (token.isEmpty) return null;
-    final vocabulary = switch (domain) {
-      _FreeTextDomain.event => _eventVocabulary,
-      _FreeTextDomain.task => _taskVocabulary,
-      _FreeTextDomain.shopping => _shoppingVocabulary,
-    };
-
-    if (vocabulary.contains(token)) return token;
-    if (token.length >= 6) return null;
-
-    String? best;
-    var bestDistance = 999;
-    for (final candidate in vocabulary) {
-      final distance = _levenshtein(token, candidate);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = candidate;
-      }
-    }
-
-    if (best == null) return null;
-    final maxAllowed = token.length <= 3 ? 2 : 1;
-    return bestDistance <= maxAllowed ? best : null;
-  }
-
-  int _levenshtein(String a, String b) {
-    final rows = List.generate(
-      a.length + 1,
-      (_) => List<int>.filled(b.length + 1, 0),
-    );
-    for (var i = 0; i <= a.length; i++) {
-      rows[i][0] = i;
-    }
-    for (var j = 0; j <= b.length; j++) {
-      rows[0][j] = j;
-    }
-    for (var i = 1; i <= a.length; i++) {
-      for (var j = 1; j <= b.length; j++) {
-        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
-        rows[i][j] = [
-          rows[i - 1][j] + 1,
-          rows[i][j - 1] + 1,
-          rows[i - 1][j - 1] + cost,
-        ].reduce((x, y) => x < y ? x : y);
-      }
-    }
-    return rows[a.length][b.length];
-  }
-
-  String _sanitizeEventTitle(String raw) {
-    var text = raw.trim();
-    text = _stripTrailingTimeGarbage(text);
-    text = _stripTrailingGenericGarbage(text);
-    text = _repairFreeText(text, domain: _FreeTextDomain.event);
-    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (text.isEmpty) return '';
-    return _capitalize(text);
-  }
-
-  String _sanitizeTaskTitle(String raw) {
-    var text = raw.trim();
-    text = _stripTrailingGenericGarbage(text);
-    text = _repairFreeText(text, domain: _FreeTextDomain.task);
-    text = _normalizeTaskVerbStyle(text);
-    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (text.isEmpty) return '';
-    return _capitalize(text);
-  }
-
-  List<String> _sanitizeShoppingItems(List<String> rawItems) {
-    final cleaned = rawItems
-        .map(_sanitizeShoppingItem)
-        .where((e) => e.isNotEmpty)
-        .toList();
-    final seen = <String>{};
-    final unique = <String>[];
-    for (final item in cleaned) {
-      final key = _normalize(item);
-      if (key.isEmpty || seen.contains(key)) continue;
-      seen.add(key);
-      unique.add(item);
-    }
-    return unique;
-  }
-
-  String _sanitizeFinanceTitle(String raw) {
-    var text = raw.trim();
-    text = _stripTrailingGenericGarbage(text);
-    text = _repairFreeText(text, domain: _FreeTextDomain.shopping);
-    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (text.isEmpty) return '';
-    return _capitalize(text);
-  }
-
-  double _eventTitleConfidence(String title) {
-    var score = 1.0;
-    final normalized = _normalize(title);
-    if (normalized.isEmpty) return 0.0;
-    if (normalized.contains(RegExp(r'\d'))) score -= 0.45;
-    if (_containsAny(normalized, const [
-      'agenda',
-      'agendar',
-      'evento',
-      'compromisso',
-      'manha',
-      'madrugada',
-      'tarde',
-      'noite',
-      'hoje',
-      'amanha',
-      'repetir',
-    ])) {
-      score -= 0.45;
-    }
-    final tokens = normalized
-        .split(RegExp(r'\s+'))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    if (tokens.any((t) => t.length == 1)) score -= 0.25;
-    if (tokens.length == 1) {
-      final token = tokens.first;
-      if (token.length <= 2) score -= 0.50;
-      if (token.length <= 3 && !_eventVocabulary.contains(token)) score -= 0.35;
-    }
-    return score.clamp(0.0, 1.0);
-  }
-
-  double _taskTitleConfidence(String title) {
-    var score = 1.0;
-    final normalized = _normalize(title);
-    if (normalized.isEmpty) return 0.0;
-    if (_containsAny(normalized, const [
-      'lista',
-      'afazeres',
-      'tarefas',
-      'adicionar',
-      'adicione',
-      'adione',
-    ])) {
-      score -= 0.45;
-    }
-    final tokens = normalized
-        .split(RegExp(r'\s+'))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    if (tokens.isEmpty) return 0.0;
-    if (tokens.any((t) => t.length == 1)) score -= 0.30;
-    return score.clamp(0.0, 1.0);
-  }
-
-  double _shoppingItemConfidence(String item) {
-    var score = 1.0;
-    final normalized = _normalize(item);
-    if (normalized.isEmpty) return 0.0;
-    if (_containsAny(normalized, const [
-      'lista',
-      'compras',
-      'adicionar',
-      'adicione',
-      'adione',
-    ])) {
-      score -= 0.45;
-    }
-    final tokens = normalized
-        .split(RegExp(r'\s+'))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    if (tokens.isEmpty) return 0.0;
-    if (tokens.any((t) => t.length == 1)) score -= 0.35;
-    if (tokens.length > 4) score -= 0.20;
-    return score.clamp(0.0, 1.0);
-  }
-
-  String _joinHumanList(List<String> items) {
-    if (items.isEmpty) return '';
-    if (items.length == 1) return items.first;
-    if (items.length == 2) return '${items.first} e ${items.last}';
-    return '${items.sublist(0, items.length - 1).join(', ')} e ${items.last}';
-  }
-
-  String _normalizeTaskVerbStyle(String text) {
-    final tokens = text
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((e) => e.isNotEmpty)
-        .toList();
-    if (tokens.isEmpty) return text.trim();
-    tokens[0] = _normalizeTaskVerbToken(_normalize(tokens[0]));
-    return tokens.join(' ');
-  }
-
-  String _normalizeTaskVerbToken(String token) {
-    const verbMap = <String, String>{
-      'conserta': 'consertar',
-      'lava': 'lavar',
-      'limpa': 'limpar',
-      'arruma': 'arrumar',
-      'organiza': 'organizar',
-      'varre': 'varrer',
-      'passa': 'passar',
-      'troca': 'trocar',
-      'guarda': 'guardar',
-      'compra': 'comprar',
-      'leva': 'levar',
-      'busca': 'buscar',
-      'paga': 'pagar',
-    };
-    return verbMap[token] ?? token;
-  }
-
-  static const Set<String> _eventVocabulary = {
-    'festa',
-    'treino',
-    'descanso',
-    'reuniao',
-    'consulta',
-    'dentista',
-    'medico',
-    'exame',
-    'trabalho',
-    'estudo',
-    'aula',
-    'prova',
-    'sono',
-    'dormir',
-    'mercado',
-    'almoco',
-    'jantar',
-    'cafe',
-  };
-
-  static const Set<String> _taskVocabulary = {
-    'lavar',
-    'limpar',
-    'organizar',
-    'arrumar',
-    'consertar',
-    'trocar',
-    'varrer',
-    'passar',
-    'guardar',
-    'comprar',
-    'pagar',
-    'levar',
-    'buscar',
-    'tv',
-    'banheiro',
-    'quarto',
-    'cozinha',
-    'sala',
-  };
-
-  static const Set<String> _shoppingVocabulary = {
-    'banana',
-    'maca',
-    'uva',
-    'pera',
-    'manga',
-    'abacaxi',
-    'laranja',
-    'limao',
-    'cafe',
-    'agua',
-    'pao',
-    'leite',
-    'ovos',
-    'ovo',
-    'arroz',
-    'feijao',
-    'queijo',
-    'presunto',
-    'frango',
-    'carne',
-    'peixe',
-    'iogurte',
-    'detergente',
-    'sabao',
-    'amaciante',
-    'shampoo',
-    'condicionador',
-  };
 
   bool _looksLikeFinance(String text) {
     final hasMoney = _extractAmount(text) != null;
@@ -1740,7 +1452,7 @@ class VoiceCommandRouter {
   }
 
   double? _extractAmount(String text) {
-    final source = text.toLowerCase();
+    final source = _applyGlobalSpeechFixes(text).toLowerCase();
 
     final contos = RegExp(
       r'\b(\d+(?:[\.,]\d+)?)\s*contos?\b',
@@ -1858,6 +1570,15 @@ class VoiceCommandRouter {
         }
         if (token == 'mil') {
           total += (current == 0 ? 1 : current) * 1000;
+          current = 0;
+          consumed++;
+          continue;
+        }
+        if (token == 'milhao' ||
+            token == 'milhão' ||
+            token == 'milhoes' ||
+            token == 'milhões') {
+          total += (current == 0 ? 1 : current) * 1000000;
           current = 0;
           consumed++;
           continue;
@@ -2112,6 +1833,7 @@ class VoiceCommandRouter {
       'filho': 'family_children',
       'criança': 'family_children',
       'crianca': 'family_children',
+      'carro': 'other_expense',
     };
 
     for (final entry in keywordMap.entries) {
@@ -2164,6 +1886,7 @@ class VoiceCommandRouter {
       'farmacia': 'Farmácia',
       'farmácia': 'Farmácia',
       'fatura': 'Fatura do cartão',
+      'carro': 'Carro',
     };
 
     for (final entry in fallbackTitles.entries) {
@@ -2176,7 +1899,7 @@ class VoiceCommandRouter {
   }
 
   String? _extractExpenseItemTitle(String original) {
-    var text = original.trim();
+    var text = _applyGlobalSpeechFixes(original).trim();
 
     text = text.replaceAll(
       RegExp(
@@ -2220,14 +1943,13 @@ class VoiceCommandRouter {
     text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = _cleanLooseCommandWords(text);
-    text = _sanitizeFinanceTitle(text);
 
     if (text.isEmpty) return null;
     final normalized = _normalize(text);
     if ({'gasto', 'despesa', 'saida', 'saída', 'compra'}.contains(normalized)) {
       return null;
     }
-    return text;
+    return _capitalize(_preserveCommonCaps(text));
   }
 
   String? _buildUpdateTitle(
@@ -2296,68 +2018,39 @@ class VoiceCommandRouter {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    const typoMap = <String, String>{
-      'madruagada': 'madrugada',
-      'manhaa': 'manha',
-      'adione': 'adicione',
-      'fes': 'festa',
-      'feis': 'festa',
-      'conserta tv': 'consertar tv',
-    };
-
-    typoMap.forEach((from, to) {
-      value = value.replaceAll(from, to);
-    });
-
     return value;
   }
 
   String _capitalize(String text) {
     final value = text.trim();
     if (value.isEmpty) return value;
-
-    const prettyMap = <String, String>{
-      'maca': 'Maçã',
-      'cafe': 'Café',
-      'agua': 'Água',
-      'pao': 'Pão',
-      'reuniao': 'Reunião',
-      'medico': 'Médico',
-      'farmacia': 'Farmácia',
-      'gas': 'Gás',
-      'onibus': 'Ônibus',
-      'metro': 'Metrô',
-      'consertar': 'Consertar',
-      'tv': 'TV',
-      'pc': 'PC',
-      'ps': 'PS',
-      'wifi': 'Wi‑Fi',
-      'pix': 'Pix',
-      'ipva': 'IPVA',
-      'iptu': 'IPTU',
-      'chatgpt': 'ChatGPT',
-      'fii': 'FII',
-      'fiis': 'FIIs',
-      'cdb': 'CDB',
-      'lci': 'LCI',
-      'lca': 'LCA',
-    };
-
     final words = value.split(RegExp(r'\s+'));
     return words
         .map((word) {
           if (word.isEmpty) return word;
-          final normalized = _normalize(word);
-          if (prettyMap.containsKey(normalized)) {
-            return prettyMap[normalized]!;
-          }
           return word[0].toUpperCase() + word.substring(1).toLowerCase();
         })
         .join(' ');
   }
-}
 
-enum _FreeTextDomain { event, task, shopping }
+  String _preserveCommonCaps(String text) {
+    return text
+        .replaceAllMapped(RegExp(r'\btv\b', caseSensitive: false), (_) => 'TV')
+        .replaceAllMapped(RegExp(r'\bpc\b', caseSensitive: false), (_) => 'PC')
+        .replaceAllMapped(
+          RegExp(r'\bwi[\s-]?fi\b', caseSensitive: false),
+          (_) => 'Wi-Fi',
+        )
+        .replaceAllMapped(
+          RegExp(r'\bipva\b', caseSensitive: false),
+          (_) => 'IPVA',
+        )
+        .replaceAllMapped(
+          RegExp(r'\biptu\b', caseSensitive: false),
+          (_) => 'IPTU',
+        );
+  }
+}
 
 class _ParsedTimePoint {
   const _ParsedTimePoint({required this.hour, required this.minute});
