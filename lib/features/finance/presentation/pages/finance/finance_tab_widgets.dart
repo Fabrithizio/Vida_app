@@ -3,10 +3,14 @@
 //
 // Widgets reutilizáveis da tela de Finanças.
 //
-// O que este arquivo faz:
+// Caminho no projeto:
+// - lib/features/finance/presentation/pages/finance/finance_tab_widgets.dart
+//
+// Como se conecta com o app:
 // - Agrupa hero, tabs, cards, chips, sheets e tiles de lançamento.
 // - Deixa o finance_tab.dart focado na lógica e no fluxo da tela.
 // - Mantém a identidade visual do financeiro em um lugar só.
+// - Corrige a exibição de valores grandes no topo sem alterar cores/layout base.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -15,6 +19,47 @@ import '../../../data/models/finance_filter_type.dart';
 import '../../../data/models/finance_period_type.dart';
 import '../../../data/models/finance_transaction.dart';
 import 'finance_tab_models.dart';
+
+
+String _compactMoneyText(String value) {
+  if (!value.trim().startsWith('R\$') && !value.trim().startsWith('-R\$')) {
+    return value;
+  }
+
+  if (value.contains('•••••')) {
+    return value;
+  }
+
+  final isNegative = value.trim().startsWith('-');
+  final normalized = value
+      .replaceAll('R\$', '')
+      .replaceAll('-', '')
+      .replaceAll(' ', '')
+      .replaceAll('.', '')
+      .replaceAll(',', '.');
+
+  final parsed = double.tryParse(normalized);
+  if (parsed == null) {
+    return value;
+  }
+
+  final absValue = parsed.abs();
+  final sign = isNegative ? '-' : '';
+
+  if (absValue >= 1000000000) {
+    return '${sign}R\$ ${(absValue / 1000000000).toStringAsFixed(1).replaceAll('.', ',')}B';
+  }
+
+  if (absValue >= 1000000) {
+    return '${sign}R\$ ${(absValue / 1000000).toStringAsFixed(1).replaceAll('.', ',')}M';
+  }
+
+  if (absValue >= 1000) {
+    return '${sign}R\$ ${(absValue / 1000).toStringAsFixed(1).replaceAll('.', ',')}K';
+  }
+
+  return value;
+}
 
 String _financeWidgetPeriodLabel(FinancePeriodType period) {
   switch (period) {
@@ -63,7 +108,7 @@ class FinanceHeroCard extends StatelessWidget {
   final String balanceValue;
   final VoidCallback? onTogglePrivacy;
   final bool hideValues;
-  final List<FinanceHeroMetric> metrics;
+  final List metrics;
   final VoidCallback? onLeadingTap;
 
   @override
@@ -148,12 +193,21 @@ class FinanceHeroCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            balanceValue,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              height: 1.05,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _compactMoneyText(balanceValue),
+                maxLines: 1,
+                softWrap: false,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -218,13 +272,20 @@ class FinanceMetricCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  metric.value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    alignment: Alignment.centerLeft,
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _compactMoneyText(metric.value),
+                      maxLines: 1,
+                      softWrap: false,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -258,8 +319,9 @@ class FinanceSectionTabs extends StatelessWidget {
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
-        children: List<Widget>.generate(_labels.length, (index) {
+        children: List.generate(_labels.length, (index) {
           final selected = currentIndex == index;
+
           return Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(18),
@@ -269,17 +331,13 @@ class FinanceSectionTabs extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  color: selected
-                      ? const Color(0xFF35D26F)
-                      : Colors.transparent,
+                  color: selected ? const Color(0xFF35D26F) : Colors.transparent,
                 ),
                 child: Text(
                   _labels[index],
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: selected
-                        ? Colors.black
-                        : Colors.white.withOpacity(0.72),
+                    color: selected ? Colors.black : Colors.white.withOpacity(0.72),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -342,7 +400,10 @@ class FinanceSectionCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                trailing!,
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -385,12 +446,21 @@ class FinanceValueBadge extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w900,
-              fontSize: 19,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _compactMoneyText(value),
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 19,
+                ),
+              ),
             ),
           ),
         ],
@@ -679,11 +749,21 @@ class FinanceCompactStatCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              alignment: Alignment.centerLeft,
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _compactMoneyText(value),
+                maxLines: 1,
+                softWrap: false,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -798,8 +878,8 @@ class FinanceTransactionTile extends StatelessWidget {
     final accent = transaction.isIncome
         ? const Color(0xFF9CFF3F)
         : (transaction.entryType.name.contains('credit')
-              ? const Color(0xFF6C63FF)
-              : const Color(0xFFFF5D73));
+            ? const Color(0xFF6C63FF)
+            : const Color(0xFFFF5D73));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

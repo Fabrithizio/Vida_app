@@ -1,15 +1,16 @@
 // ============================================================================
-// FILE: lib/features/finance/presentation/pages/finance/finance_tab_utils.dart
+// FILE: lib/shared/utils/currency_formatter.dart
 //
-// Utilitários visuais e de formatação da tela de Finanças.
+// Utilitário global de formatação e leitura de valores monetários.
 //
 // Caminho no projeto:
-// - lib/features/finance/presentation/pages/finance/finance_tab_utils.dart
+// - lib/shared/utils/currency_formatter.dart
 //
 // Como se conecta com o app:
-// - É usado pela tela de Finanças para formatar moeda, datas e campos numéricos.
-// - Mantém as mesmas funções antigas para não quebrar imports existentes.
-// - Usa a mesma regra do utilitário global de moeda do app.
+// - Pode ser importado por qualquer tela, serviço ou feature que precise lidar
+//   com dinheiro.
+// - Centraliza a regra de moeda para Finanças, Voz e futuras áreas do app.
+// - Mantém o padrão brasileiro: R$ 1.000.000,00.
 // ============================================================================
 
 String parseMoneyField(String raw) {
@@ -83,11 +84,4 @@ String formatCurrencyCompact(double value, {required bool hideValues}) {
   }
 
   return formatCurrency(value, hideValues: hideValues);
-}
-
-String formatShortDate(DateTime date) {
-  final d = date.day.toString().padLeft(2, '0');
-  final m = date.month.toString().padLeft(2, '0');
-
-  return '$d/$m/${date.year}';
 }
