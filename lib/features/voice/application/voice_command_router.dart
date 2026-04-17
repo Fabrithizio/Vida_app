@@ -1980,7 +1980,24 @@ class VoiceCommandRouter {
   }
 
   String _formatMoney(double value) {
-    return 'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
+    final negative = value < 0;
+    final absolute = value.abs();
+    final fixed = absolute.toStringAsFixed(2);
+    final parts = fixed.split('.');
+    final integerPart = parts.first;
+    final decimalPart = parts.length > 1 ? parts[1] : '00';
+
+    final buffer = StringBuffer();
+    for (var i = 0; i < integerPart.length; i++) {
+      final remaining = integerPart.length - i;
+      buffer.write(integerPart[i]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write('.');
+      }
+    }
+
+    final prefix = negative ? '-R\$ ' : 'R\$ ';
+    return '$prefix${buffer.toString()},$decimalPart';
   }
 
   String _formatDate(DateTime value) {
