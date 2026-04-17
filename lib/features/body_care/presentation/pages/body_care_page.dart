@@ -16,6 +16,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../body_care_service.dart';
+import '../widgets/body_progress_widgets.dart';
 
 class BodyCarePage extends StatefulWidget {
   const BodyCarePage({super.key, BodyCareService? service})
@@ -573,7 +574,14 @@ class _BodyCarePageState extends State<BodyCarePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(height: 180, child: _MomentumChart(points: _week)),
+          BodyProgressSection(
+            week: _week,
+            recent: _recent,
+            targetWeightKg: _profile.targetWeightKg,
+            latestWeightKg: _overview.latestWeightKg,
+            weeklyAverageFood: _overview.weeklyAverageFood,
+            weeklyAverageTraining: _overview.weeklyAverageTraining,
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
