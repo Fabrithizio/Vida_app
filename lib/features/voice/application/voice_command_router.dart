@@ -1453,6 +1453,15 @@ class VoiceCommandRouter {
 
   double? _extractAmount(String text) {
     final source = _applyGlobalSpeechFixes(text).toLowerCase();
+    final explicitCentavos = _extractExplicitCentavos(source);
+    final sourceWithoutCentavos = _removeExplicitCentavos(source);
+
+    final spokenFirst = _extractAmountFromWords(sourceWithoutCentavos);
+    if (_looksLikeSpokenAmount(sourceWithoutCentavos) &&
+        spokenFirst != null &&
+        spokenFirst > 0) {
+      return spokenFirst + explicitCentavos;
+    }
 
     final contos = RegExp(
       r'\b(\d+(?:[\.,]\d+)?)\s*contos?\b',
@@ -1461,7 +1470,7 @@ class VoiceCommandRouter {
       final raw = contos.group(1)!;
       final normalized = _normalizeAmountString(raw);
       final value = double.tryParse(normalized);
-      if (value != null && value > 0) return value;
+      if (value != null && value > 0) return value * 1000;
     }
 
     final moneyContext = RegExp(
@@ -1470,7 +1479,7 @@ class VoiceCommandRouter {
     );
 
     final matches = moneyContext
-        .allMatches(source)
+        .allMatches(sourceWithoutCentavos)
         .map((m) => m.group(1) ?? '')
         .where((m) => m.trim().isNotEmpty)
         .toList();
@@ -1480,22 +1489,74 @@ class VoiceCommandRouter {
       for (final raw in matches) {
         final normalized = _normalizeAmountString(raw);
         final value = double.tryParse(normalized);
-        if (value != null && value > 0) return value;
+        if (value != null && value > 0) return value + explicitCentavos;
       }
     }
 
-    return _extractAmountFromWords(source);
+    if (spokenFirst != null) return spokenFirst + explicitCentavos;
+    return explicitCentavos > 0 ? explicitCentavos : null;
+  }
+
+  double _extractExplicitCentavos(String text) {
+    final normalized = _applyGlobalSpeechFixes(text).toLowerCase();
+    final match = RegExp(
+      r'\b(?:e\s+)?((?:\d[\d\.,]*|um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento))\s+centavos?\b',
+      caseSensitive: false,
+    ).firstMatch(normalized);
+    if (match == null) return 0;
+
+    final raw = (match.group(1) ?? '').trim();
+    if (raw.isEmpty) return 0;
+
+    final numeric = _normalizeAmountString(raw);
+    final numberValue = double.tryParse(numeric);
+    if (numberValue != null) {
+      final cents = numberValue.round().clamp(0, 99);
+      return cents / 100.0;
+    }
+
+    final wordsValue = _extractAmountFromWords(raw);
+    if (wordsValue == null) return 0;
+    final cents = wordsValue.round().clamp(0, 99);
+    return cents / 100.0;
+  }
+
+  String _removeExplicitCentavos(String text) {
+    return text
+        .replaceAll(
+          RegExp(
+            r'\b(?:e\s+)?(?:\d[\d\.,]*|um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento)\s+centavos?\b',
+            caseSensitive: false,
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   double? _extractAmountFromWords(String text) {
-    final normalized = _normalize(text);
-    if (normalized.isEmpty) return null;
+    const from = 'áàâãäéèêëíìîïóòôõöúùûüç';
+    const to = 'aaaaaeeeeiiiiooooouuuuc';
 
-    final tokens = normalized.split(RegExp(r'\s+'));
+    var normalized = _applyGlobalSpeechFixes(text).toLowerCase();
+    for (var i = 0; i < from.length; i++) {
+      normalized = normalized.replaceAll(from[i], to[i]);
+    }
+
+    if (normalized.trim().isEmpty) return null;
+
+    final sanitized = normalized.replaceAll(RegExp(r'[^a-z0-9\s\.,]'), ' ');
+    final tokens = sanitized
+        .split(RegExp(r'\s+'))
+        .where((token) => token.trim().isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) return null;
+
     const units = {
       'zero': 0,
       'um': 1,
       'uma': 1,
+      'hum': 1,
       'dois': 2,
       'duas': 2,
       'tres': 3,
@@ -1540,65 +1601,142 @@ class VoiceCommandRouter {
       'oitocentos': 800,
       'novecentos': 900,
     };
+    const scales = {
+      'mil': 1000,
+      'milhao': 1000000,
+      'milhão': 1000000,
+      'milhoes': 1000000,
+      'milhões': 1000000,
+      'bilhao': 1000000000,
+      'bilhão': 1000000000,
+      'bilhoes': 1000000000,
+      'bilhões': 1000000000,
+    };
+    const stopWords = {
+      'real',
+      'reais',
+      'conto',
+      'contos',
+      'de',
+      'da',
+      'do',
+      'pra',
+      'para',
+      'no',
+      'na',
+      'em',
+    };
 
-    int? best;
+    double? bestValue;
+    var bestConsumed = 0;
+
     for (var i = 0; i < tokens.length; i++) {
-      var total = 0;
-      var current = 0;
+      var total = 0.0;
+      var current = 0.0;
       var consumed = 0;
+      var touchedNumber = false;
+      var pendingConnector = false;
 
       for (var j = i; j < tokens.length; j++) {
         final token = tokens[j];
+
         if (token == 'e') {
+          if (!touchedNumber) break;
+          pendingConnector = true;
           consumed++;
           continue;
         }
-        if (units.containsKey(token)) {
-          current += units[token]!;
-          consumed++;
-          continue;
-        }
-        if (tens.containsKey(token)) {
-          current += tens[token]!;
-          consumed++;
-          continue;
-        }
-        if (hundreds.containsKey(token)) {
-          current += hundreds[token]!;
-          consumed++;
-          continue;
-        }
-        if (token == 'mil') {
-          total += (current == 0 ? 1 : current) * 1000;
-          current = 0;
-          consumed++;
-          continue;
-        }
-        if (token == 'milhao' ||
-            token == 'milhão' ||
-            token == 'milhoes' ||
-            token == 'milhões') {
-          total += (current == 0 ? 1 : current) * 1000000;
-          current = 0;
-          consumed++;
-          continue;
-        }
-        if (token == 'reais' ||
-            token == 'real' ||
-            token == 'contos' ||
-            token == 'conto') {
+
+        if (stopWords.contains(token) && touchedNumber) {
           consumed++;
           break;
+        }
+
+        final numericTokenValue = _tryParseAmountToken(token);
+        if (numericTokenValue != null) {
+          current += numericTokenValue;
+          touchedNumber = true;
+          pendingConnector = false;
+          consumed++;
+          continue;
+        }
+
+        if (units.containsKey(token)) {
+          current += units[token]!.toDouble();
+          touchedNumber = true;
+          pendingConnector = false;
+          consumed++;
+          continue;
+        }
+
+        if (tens.containsKey(token)) {
+          current += tens[token]!.toDouble();
+          touchedNumber = true;
+          pendingConnector = false;
+          consumed++;
+          continue;
+        }
+
+        if (hundreds.containsKey(token)) {
+          current += hundreds[token]!.toDouble();
+          touchedNumber = true;
+          pendingConnector = false;
+          consumed++;
+          continue;
+        }
+
+        final scale = scales[token];
+        if (scale != null) {
+          final base = current == 0 ? 1.0 : current;
+          total += base * scale;
+          current = 0;
+          touchedNumber = true;
+          pendingConnector = false;
+          consumed++;
+          continue;
+        }
+
+        if (pendingConnector) {
+          consumed--;
         }
         break;
       }
 
       final value = total + current;
-      if (consumed > 0 && value > 0) {
-        best = value;
+      if (touchedNumber && value > 0) {
+        if (consumed > bestConsumed ||
+            (consumed == bestConsumed &&
+                (bestValue == null || value > bestValue))) {
+          bestConsumed = consumed;
+          bestValue = value;
+        }
       }
     }
-    return best?.toDouble();
+
+    return bestValue;
+  }
+
+  bool _looksLikeSpokenAmount(String text) {
+    final normalized = _normalize(text);
+    return RegExp(
+      r'\b(?:mil|milhao|milhão|milhoes|milhões|bilhao|bilhão|bilhoes|bilhões|cento|cem|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez)\b',
+      caseSensitive: false,
+    ).hasMatch(normalized);
+  }
+
+  double? _tryParseAmountToken(String token) {
+    final cleaned = token.trim();
+    if (cleaned.isEmpty) return null;
+
+    if (cleaned.contains(',') || cleaned.contains('.')) {
+      final normalized = _normalizeAmountString(cleaned);
+      final value = double.tryParse(normalized);
+      if (value != null) return value;
+    }
+
+    final digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return null;
+    return double.tryParse(digits);
   }
 
   String _normalizeAmountString(String raw) {
@@ -1910,37 +2048,45 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(RegExp(r'r\$\s*', caseSensitive: false), ' ');
     text = text.replaceAll(
-      RegExp(r'\b(?:rs|reais?|real|conto|contos)\b', caseSensitive: false),
+      RegExp(
+        r'(?:no\s+valor\s+de|valor\s+de|por)\s+(?:(?:[\d\.,]+)|(?:um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil|milhao|milhão|milhoes|milhões|bilhao|bilhão|bilhoes|bilhões|e))+',
+        caseSensitive: false,
+      ),
       ' ',
     );
-    text = text.replaceAll(RegExp(r'\b\d+[\d\s\.,]*\b'), ' ');
-    text = text.replaceAll(RegExp(r'\b\d+\s*x\b', caseSensitive: false), ' ');
+    text = _stripTrailingAmountPhrase(text);
+    text = text.replaceAll(
+      RegExp(r'(?:rs|reais?|real|conto|contos)', caseSensitive: false),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\d+[\d\s\.,]*'), ' ');
+    text = text.replaceAll(RegExp(r'\d+\s*x', caseSensitive: false), ' ');
     text = text.replaceAll(
       RegExp(
-        r'\b(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
+        r'(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
+        r'(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
-      RegExp(r'\b(hoje|amanha|amanhã|ontem)\b', caseSensitive: false),
+      RegExp(r'(hoje|amanha|amanhã|ontem)', caseSensitive: false),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'\b(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
+        r'(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)',
         caseSensitive: false,
       ),
       ' ',
     );
-    text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
+    text = text.replaceAll(RegExp(r'\d{1,2}/\d{1,2}(?:/\d{2,4})?'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = _cleanLooseCommandWords(text);
 
@@ -1950,6 +2096,115 @@ class VoiceCommandRouter {
       return null;
     }
     return _capitalize(_preserveCommonCaps(text));
+  }
+
+  String _stripTrailingAmountPhrase(String text) {
+    final compact = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.isEmpty) return compact;
+
+    final tokens = compact.split(' ');
+    if (tokens.length <= 1) return compact;
+
+    for (var start = 1; start < tokens.length; start++) {
+      final prefix = tokens.sublist(0, start).join(' ').trim();
+      final suffix = tokens.sublist(start).join(' ').trim();
+      if (prefix.isEmpty || suffix.isEmpty) continue;
+      if (!_looksLikeStandaloneAmountPhrase(suffix)) continue;
+
+      final amount = _extractAmount(suffix);
+      if (amount != null && amount > 0) {
+        return prefix;
+      }
+    }
+
+    return compact;
+  }
+
+  bool _looksLikeStandaloneAmountPhrase(String text) {
+    final normalized = _normalize(text);
+    if (normalized.isEmpty) return false;
+
+    final tokens = normalized
+        .split(RegExp(r'\s+'))
+        .where((token) => token.trim().isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) return false;
+
+    const allowedWords = {
+      'e',
+      'real',
+      'reais',
+      'conto',
+      'contos',
+      'centavo',
+      'centavos',
+      'um',
+      'uma',
+      'dois',
+      'duas',
+      'tres',
+      'quatro',
+      'cinco',
+      'seis',
+      'sete',
+      'oito',
+      'nove',
+      'dez',
+      'onze',
+      'doze',
+      'treze',
+      'catorze',
+      'quatorze',
+      'quinze',
+      'dezesseis',
+      'dezessete',
+      'dezoito',
+      'dezenove',
+      'vinte',
+      'trinta',
+      'quarenta',
+      'cinquenta',
+      'sessenta',
+      'setenta',
+      'oitenta',
+      'noventa',
+      'cem',
+      'cento',
+      'duzentos',
+      'trezentos',
+      'quatrocentos',
+      'quinhentos',
+      'seiscentos',
+      'setecentos',
+      'oitocentos',
+      'novecentos',
+      'mil',
+      'milhao',
+      'milhoes',
+      'bilhao',
+      'bilhoes',
+    };
+
+    var hasNumericSignal = false;
+    for (final token in tokens) {
+      final isDigits = RegExp(r'^\d[\d\.,]*$').hasMatch(token);
+      if (isDigits) {
+        hasNumericSignal = true;
+        continue;
+      }
+      if (!allowedWords.contains(token)) {
+        return false;
+      }
+      if (token == 'mil' ||
+          token == 'milhao' ||
+          token == 'milhoes' ||
+          token == 'bilhao' ||
+          token == 'bilhoes') {
+        hasNumericSignal = true;
+      }
+    }
+
+    return hasNumericSignal;
   }
 
   String? _buildUpdateTitle(
