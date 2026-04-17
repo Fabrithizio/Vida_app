@@ -581,6 +581,8 @@ class _BodyCarePageState extends State<BodyCarePage> {
             latestWeightKg: _overview.latestWeightKg,
             weeklyAverageFood: _overview.weeklyAverageFood,
             weeklyAverageTraining: _overview.weeklyAverageTraining,
+            referenceWeightLabel: _overview.referenceWeightLabel,
+            goalLabel: _overview.goalLabel,
           ),
           const SizedBox(height: 14),
           Row(
