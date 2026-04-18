@@ -31,6 +31,7 @@ import 'finance/finance_planning_catalog.dart';
 import 'finance/finance_tab_models.dart';
 import 'finance/finance_tab_utils.dart';
 import 'finance/finance_tab_widgets.dart';
+import '../widgets/planning_insights_section.dart';
 
 String _financePeriodLabel(FinancePeriodType period) {
   switch (period) {
@@ -2290,6 +2291,8 @@ class _FinanceTabState extends State<FinanceTab> {
             children: preview.take(6).map(_buildPlanPreviewTile).toList(),
           ),
         ),
+        const SizedBox(height: 14),
+        PlanningInsightsSection(store: _store),
       ],
     );
   }
