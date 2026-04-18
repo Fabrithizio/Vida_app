@@ -2137,28 +2137,180 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
-  Widget _buildPlanningSection() {
-    final summary = _buildPlanningSummary();
-    final preview = _buildPlanningBuckets();
+  List<_PlanningMonthTrackItem> _buildPlanningTrackItems() {
+    final values = _resolvedPlanValues();
     final activeCategories = _sortedPlanningCategories(
       _activePlanningCategoryIds.isEmpty
           ? _defaultActivePlanningIds()
           : _activePlanningCategoryIds,
     );
-    final lifeFlags = <String>[
-      if (_planningOwnHome) 'Casa própria',
-      if (_planningMealTicket) 'Vale alimentação',
-      if (_planningNoCar) 'Sem carro',
-      if (_planningFreeTransit) 'Passagem grátis',
-      if (_planningHasHealthPlan) 'Plano de saúde',
-    ];
+
+    final spentByCategory = <String, double>{};
+    for (final tx in _store.expenseTransactions) {
+      spentByCategory[tx.category.id] =
+          (spentByCategory[tx.category.id] ?? 0) + tx.amount;
+    }
+    for (final tx in _store.creditTransactions) {
+      spentByCategory[tx.category.id] =
+          (spentByCategory[tx.category.id] ?? 0) + tx.amount;
+    }
+
+    final items = activeCategories.map((category) {
+      final planned = values[category.id] ?? 0;
+      final spent = spentByCategory[category.id] ?? 0;
+      final remaining = planned - spent;
+      final progress = planned <= 0
+          ? (spent > 0 ? 1.0 : 0.0)
+          : (spent / planned).clamp(0.0, 1.4);
+
+      return _PlanningMonthTrackItem(
+        category: category,
+        planned: planned,
+        spent: spent,
+        remaining: remaining,
+        progress: progress,
+      );
+    }).toList();
+
+    items.sort((a, b) {
+      final aBase = a.planned > 0 ? a.planned : a.spent;
+      final bBase = b.planned > 0 ? b.planned : b.spent;
+      return bBase.compareTo(aBase);
+    });
+
+    return items;
+  }
+
+  Widget _buildPlanningTrackTile(_PlanningMonthTrackItem item) {
+    final overLimit = item.remaining < 0;
+    final accent = overLimit ? const Color(0xFFFF5D73) : item.category.color;
+    final plannedLabel = formatCurrency(item.planned, hideValues: _hideValues);
+    final spentLabel = formatCurrency(item.spent, hideValues: _hideValues);
+    final remainingLabel = formatCurrency(
+      item.remaining.abs(),
+      hideValues: _hideValues,
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF111A1A),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: item.category.color.withOpacity(0.18),
+                child: Icon(
+                  item.category.icon,
+                  color: item.category.color,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.category.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      overLimit ? 'Acima do planejado' : 'Dentro do planejado',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                spentLabel,
+                style: TextStyle(color: accent, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: item.progress > 1 ? 1 : item.progress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withOpacity(0.06),
+              valueColor: AlwaysStoppedAnimation<Color>(accent),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: FinanceCompactStatCard(
+                  title: 'Planejado',
+                  value: plannedLabel,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FinanceCompactStatCard(
+                  title: 'Gasto',
+                  value: spentLabel,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FinanceCompactStatCard(
+                  title: overLimit ? 'Passou' : 'Restante',
+                  value: remainingLabel,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlanningSection() {
+    final summary = _buildPlanningSummary();
+    final activeCategories = _sortedPlanningCategories(
+      _activePlanningCategoryIds.isEmpty
+          ? _defaultActivePlanningIds()
+          : _activePlanningCategoryIds,
+    );
+    final trackItems = _buildPlanningTrackItems();
+
+    final plannedIncome = summary['Renda planejada'] ?? 0;
+    final plannedEssentials = summary['Essenciais'] ?? 0;
+    final plannedFuture = summary['Investir + reserva'] ?? 0;
+    final plannedFree = summary['Livre'] ?? 0;
+
+    final actualIncome = _store.totalIncome;
+    final actualImmediate = _store.totalDebitExpense;
+    final actualCredit = _store.totalCreditExpense;
+    final monthCommitted = actualImmediate + actualCredit;
+    final plannedLeft = plannedIncome - monthCommitted;
+    final positiveLeft = plannedLeft >= 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FinanceSectionCard(
           title: 'Planejamento do mês',
-          subtitle: 'O app sugere, mas você adapta ao seu jeito de viver.',
+          subtitle:
+              'Aqui o plano vira acompanhamento real: quanto entrou, quanto saiu, quanto foi no crédito e quanto ainda cabe no mês.',
           trailing: TextButton.icon(
             onPressed: _openPlanningSheet,
             icon: const Icon(Icons.edit_outlined),
@@ -2172,7 +2324,7 @@ class _FinanceTabState extends State<FinanceTab> {
                     child: FinanceValueBadge(
                       label: 'Renda planejada',
                       value: formatCurrency(
-                        summary['Renda planejada'] ?? 0,
+                        plannedIncome,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF9CFF3F),
@@ -2181,12 +2333,12 @@ class _FinanceTabState extends State<FinanceTab> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: FinanceValueBadge(
-                      label: 'Essenciais',
+                      label: 'Entradas do mês',
                       value: formatCurrency(
-                        summary['Essenciais'] ?? 0,
+                        actualIncome,
                         hideValues: _hideValues,
                       ),
-                      color: const Color(0xFF28C76F),
+                      color: const Color(0xFF39D0FF),
                     ),
                   ),
                 ],
@@ -2196,103 +2348,120 @@ class _FinanceTabState extends State<FinanceTab> {
                 children: [
                   Expanded(
                     child: FinanceValueBadge(
-                      label: 'Investir + reserva',
+                      label: 'Saídas do mês',
                       value: formatCurrency(
-                        summary['Investir + reserva'] ?? 0,
+                        actualImmediate,
                         hideValues: _hideValues,
                       ),
-                      color: const Color(0xFF6C63FF),
+                      color: const Color(0xFFFF5D73),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: FinanceValueBadge(
-                      label: 'Livre',
+                      label: 'Crédito do mês',
                       value: formatCurrency(
-                        summary['Livre'] ?? 0,
+                        actualCredit,
                         hideValues: _hideValues,
                       ),
-                      color: const Color(0xFFFFB020),
+                      color: const Color(0xFF6C63FF),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
               FinanceValueBadge(
-                label: 'Sobra automática',
+                label: positiveLeft
+                    ? 'Ainda cabe no mês'
+                    : 'Mês acima do plano',
                 value: formatCurrency(
-                  summary['Sobra'] ?? 0,
+                  plannedLeft.abs(),
                   hideValues: _hideValues,
                 ),
-                color: const Color(0xFF39D0FF),
+                color: positiveLeft
+                    ? const Color(0xFF28C76F)
+                    : const Color(0xFFFFB020),
               ),
             ],
           ),
         ),
         const SizedBox(height: 14),
         FinanceSectionCard(
-          title: 'Seu perfil do mês',
-          subtitle: 'Esses atalhos mudam a divisão automática.',
+          title: 'Divisão do plano',
+          subtitle:
+              'Seu planejamento-base continua editável, mas o acompanhamento acontece mês a mês.',
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (lifeFlags.isEmpty)
-                Text(
-                  'Nenhum atalho ligado. Toque em Editar para marcar casa própria, vale alimentação, sem carro e outros.',
-                  style: TextStyle(color: Colors.white.withOpacity(0.72)),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: lifeFlags
-                      .map((label) => Chip(label: Text(label)))
-                      .toList(),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Essenciais',
+                      value: formatCurrency(
+                        plannedEssentials,
+                        hideValues: _hideValues,
+                      ),
+                      color: const Color(0xFF28C76F),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Investir + reserva',
+                      value: formatCurrency(
+                        plannedFuture,
+                        hideValues: _hideValues,
+                      ),
+                      color: const Color(0xFF6C63FF),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Livre',
+                      value: formatCurrency(
+                        plannedFree,
+                        hideValues: _hideValues,
+                      ),
+                      color: const Color(0xFFFFB020),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Categorias ativas',
+                      value: activeCategories.length.toString(),
+                      color: const Color(0xFF39D0FF),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
         const SizedBox(height: 14),
+        PlanningInsightsSection(store: _store),
+        const SizedBox(height: 14),
         FinanceSectionCard(
           title: 'Categorias ativas do plano',
-          subtitle: 'Só aparece forte aqui o que você realmente usa.',
+          subtitle:
+              'Agora a leitura mostra o planejado x gasto no mês. As sugestões continuam só dentro do editor.',
           child: Column(
             children: [
-              if (activeCategories.isEmpty)
+              if (trackItems.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text('Nenhuma categoria ativa ainda.'),
                 )
               else
-                ...activeCategories.take(8).map((category) {
-                  final amount = (_resolvedPlanValues()[category.id] ?? 0);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: FinanceCategorySummaryTile(
-                      icon: category.icon,
-                      color: category.color,
-                      title: category.name,
-                      subtitle: FinancePlanningCatalog.bucketLabel(
-                        FinancePlanningCatalog.bucketOf(category.id),
-                      ),
-                      trailing: formatCurrency(amount, hideValues: _hideValues),
-                    ),
-                  );
-                }),
+                ...trackItems.take(8).map(_buildPlanningTrackTile),
             ],
           ),
         ),
-        const SizedBox(height: 14),
-        FinanceSectionCard(
-          title: 'Sugestão em ação',
-          subtitle:
-              'A divisão automática respeita as categorias ativas e o jeito que você vive.',
-          child: Column(
-            children: preview.take(6).map(_buildPlanPreviewTile).toList(),
-          ),
-        ),
-        const SizedBox(height: 14),
-        PlanningInsightsSection(store: _store),
       ],
     );
   }
@@ -2993,4 +3162,20 @@ class _FinanceTabState extends State<FinanceTab> {
       },
     );
   }
+}
+
+class _PlanningMonthTrackItem {
+  const _PlanningMonthTrackItem({
+    required this.category,
+    required this.planned,
+    required this.spent,
+    required this.remaining,
+    required this.progress,
+  });
+
+  final FinanceCategory category;
+  final double planned;
+  final double spent;
+  final double remaining;
+  final double progress;
 }
