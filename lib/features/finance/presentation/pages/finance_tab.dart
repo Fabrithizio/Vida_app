@@ -93,6 +93,113 @@ class _FinanceTabState extends State<FinanceTab> {
     return (uid == null || uid.isEmpty) ? 'anon' : uid;
   }
 
+  String _yearMonthKey(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    return '${date.year}_$month';
+  }
+
+  String get _currentPlanningMonthKey => _yearMonthKey(DateTime.now());
+
+  String get _previousPlanningMonthKey =>
+      _yearMonthKey(DateTime(DateTime.now().year, DateTime.now().month - 1, 1));
+
+  String get _planningMonthLabel {
+    const labels = [
+      'Janeiro',
+      'Fevereiro',
+      'Março',
+      'Abril',
+      'Maio',
+      'Junho',
+      'Julho',
+      'Agosto',
+      'Setembro',
+      'Outubro',
+      'Novembro',
+      'Dezembro',
+    ];
+    final now = DateTime.now();
+    return '${labels[now.month - 1]} de ${now.year}';
+  }
+
+  String _planningScopedKey(String name, {String? monthKey}) =>
+      '$_prefsPrefix:planning:${monthKey ?? _currentPlanningMonthKey}:$name';
+
+  String _planningCategoryKey(String categoryId, {String? monthKey}) =>
+      '$_prefsPrefix:planning:${monthKey ?? _currentPlanningMonthKey}:category:$categoryId';
+
+  double _readPlanningDouble(
+    SharedPreferences prefs, {
+    required String scopedName,
+    required String legacyName,
+    double fallback = 0,
+  }) {
+    final currentKey = _planningScopedKey(scopedName);
+    final previousKey = _planningScopedKey(
+      scopedName,
+      monthKey: _previousPlanningMonthKey,
+    );
+    final legacyKey = '$_prefsPrefix:$legacyName';
+
+    if (prefs.containsKey(currentKey))
+      return prefs.getDouble(currentKey) ?? fallback;
+    if (prefs.containsKey(previousKey))
+      return prefs.getDouble(previousKey) ?? fallback;
+    if (prefs.containsKey(legacyKey))
+      return prefs.getDouble(legacyKey) ?? fallback;
+    return fallback;
+  }
+
+  List<String>? _readPlanningStringList(
+    SharedPreferences prefs, {
+    required String scopedName,
+    required String legacyName,
+  }) {
+    final currentKey = _planningScopedKey(scopedName);
+    final previousKey = _planningScopedKey(
+      scopedName,
+      monthKey: _previousPlanningMonthKey,
+    );
+    final legacyKey = '$_prefsPrefix:$legacyName';
+
+    if (prefs.containsKey(currentKey)) return prefs.getStringList(currentKey);
+    if (prefs.containsKey(previousKey)) return prefs.getStringList(previousKey);
+    if (prefs.containsKey(legacyKey)) return prefs.getStringList(legacyKey);
+    return null;
+  }
+
+  double _readPlanningCategoryValue(
+    SharedPreferences prefs,
+    String categoryId,
+  ) {
+    final currentKey = _planningCategoryKey(categoryId);
+    final previousKey = _planningCategoryKey(
+      categoryId,
+      monthKey: _previousPlanningMonthKey,
+    );
+    final legacyKey = '$_prefsPrefix:plan:$categoryId';
+
+    if (prefs.containsKey(currentKey)) return prefs.getDouble(currentKey) ?? 0;
+    if (prefs.containsKey(previousKey))
+      return prefs.getDouble(previousKey) ?? 0;
+    if (prefs.containsKey(legacyKey)) return prefs.getDouble(legacyKey) ?? 0;
+    return 0;
+  }
+
+  Map<String, double> _readPlanningSnapshotForMonth(
+    SharedPreferences prefs, {
+    required String monthKey,
+  }) {
+    return {
+      for (final category in _planningCategories)
+        category.id:
+            prefs.getDouble(
+              _planningCategoryKey(category.id, monthKey: monthKey),
+            ) ??
+            0,
+    };
+  }
+
   List<FinancePlanningPreset> get _planningPresets => const [
     FinancePlanningPreset(
       label: '60/30/10',
@@ -189,12 +296,13 @@ class _FinanceTabState extends State<FinanceTab> {
     final nextPlanned = <String, double>{};
 
     for (final category in _planningCategories) {
-      nextPlanned[category.id] =
-          prefs.getDouble('$_prefsPrefix:plan:${category.id}') ?? 0;
+      nextPlanned[category.id] = _readPlanningCategoryValue(prefs, category.id);
     }
 
-    final rawActiveIds = prefs.getStringList(
-      '$_prefsPrefix:finance_plan_active_ids',
+    final rawActiveIds = _readPlanningStringList(
+      prefs,
+      scopedName: 'active_ids',
+      legacyName: 'finance_plan_active_ids',
     );
     final knownIds = _planningCategories.map((item) => item.id).toSet();
     final activeIds = (rawActiveIds == null || rawActiveIds.isEmpty)
@@ -236,17 +344,36 @@ class _FinanceTabState extends State<FinanceTab> {
 
     setState(() {
       _hideValues = prefs.getBool('$_prefsPrefix:finance_hide_values') ?? false;
-      _planningPresetIndex =
-          prefs.getInt('$_prefsPrefix:finance_plan_preset') ?? 0;
-      _monthlyIncomePlan =
-          prefs.getDouble('$_prefsPrefix:finance_income_plan') ?? 0;
-      _planningEssentialPercent =
-          prefs.getDouble('$_prefsPrefix:finance_plan_essentials_percent') ??
-          60;
-      _planningFuturePercent =
-          prefs.getDouble('$_prefsPrefix:finance_plan_future_percent') ?? 30;
-      _planningFreePercent =
-          prefs.getDouble('$_prefsPrefix:finance_plan_free_percent') ?? 10;
+      _planningPresetIndex = _readPlanningDouble(
+        prefs,
+        scopedName: 'preset_index',
+        legacyName: 'finance_plan_preset',
+        fallback: 0,
+      ).round();
+      _monthlyIncomePlan = _readPlanningDouble(
+        prefs,
+        scopedName: 'income',
+        legacyName: 'finance_income_plan',
+        fallback: 0,
+      );
+      _planningEssentialPercent = _readPlanningDouble(
+        prefs,
+        scopedName: 'essentials_percent',
+        legacyName: 'finance_plan_essentials_percent',
+        fallback: 60,
+      );
+      _planningFuturePercent = _readPlanningDouble(
+        prefs,
+        scopedName: 'future_percent',
+        legacyName: 'finance_plan_future_percent',
+        fallback: 30,
+      );
+      _planningFreePercent = _readPlanningDouble(
+        prefs,
+        scopedName: 'free_percent',
+        legacyName: 'finance_plan_free_percent',
+        fallback: 10,
+      );
       _plannedByCategory = nextPlanned;
       _activePlanningCategoryIds = activeIds;
       _planningOwnHome =
@@ -700,6 +827,26 @@ class _FinanceTabState extends State<FinanceTab> {
       return labels.join(' • ');
     }
 
+    void applyPreviousMonthPlan() {
+      final previousValues = _readPlanningSnapshotForMonth(
+        prefs,
+        monthKey: _previousPlanningMonthKey,
+      );
+      for (final category in _planningCategories) {
+        final value = previousValues[category.id] ?? 0;
+        controllers[category.id]!.text = value <= 0 ? '' : moneyField(value);
+      }
+      final previousIncome =
+          prefs.getDouble(
+            _planningScopedKey('income', monthKey: _previousPlanningMonthKey),
+          ) ??
+          prefs.getDouble('$_prefsPrefix:finance_income_plan') ??
+          0;
+      if (previousIncome > 0) {
+        incomeController.text = moneyField(previousIncome);
+      }
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -756,25 +903,43 @@ class _FinanceTabState extends State<FinanceTab> {
                 }
               }
 
+              await prefs.setDouble(_planningScopedKey('income'), parsedIncome);
               await prefs.setDouble(
                 '$_prefsPrefix:finance_income_plan',
                 parsedIncome,
+              );
+              await prefs.setDouble(
+                _planningScopedKey('preset_index'),
+                localPreset.toDouble(),
               );
               await prefs.setInt(
                 '$_prefsPrefix:finance_plan_preset',
                 localPreset,
               );
               await prefs.setDouble(
+                _planningScopedKey('essentials_percent'),
+                essential,
+              );
+              await prefs.setDouble(
                 '$_prefsPrefix:finance_plan_essentials_percent',
                 essential,
+              );
+              await prefs.setDouble(
+                _planningScopedKey('future_percent'),
+                future,
               );
               await prefs.setDouble(
                 '$_prefsPrefix:finance_plan_future_percent',
                 future,
               );
+              await prefs.setDouble(_planningScopedKey('free_percent'), free);
               await prefs.setDouble(
                 '$_prefsPrefix:finance_plan_free_percent',
                 free,
+              );
+              await prefs.setStringList(
+                _planningScopedKey('active_ids'),
+                localActiveIds.toList(),
               );
               await prefs.setStringList(
                 '$_prefsPrefix:finance_plan_active_ids',
@@ -796,9 +961,11 @@ class _FinanceTabState extends State<FinanceTab> {
               );
 
               for (final category in _planningCategories) {
+                final value = parsedValues[category.id] ?? 0;
+                await prefs.setDouble(_planningCategoryKey(category.id), value);
                 await prefs.setDouble(
                   '$_prefsPrefix:plan:${category.id}',
-                  parsedValues[category.id] ?? 0,
+                  value,
                 );
               }
 
@@ -897,9 +1064,9 @@ class _FinanceTabState extends State<FinanceTab> {
             }
 
             return FinanceSheetFrame(
-              title: 'Planejar o mês',
+              title: 'Planejar $_planningMonthLabel',
               subtitle:
-                  'O app sugere, mas você adapta ao seu jeito de viver. O que você não usa sai da divisão.',
+                  'Esse plano agora é mensal. Se o mês atual estiver vazio, o app reaproveita o mês anterior como base e você ajusta só o que mudou.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -911,6 +1078,26 @@ class _FinanceTabState extends State<FinanceTab> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  FinanceSoftInfoCard(
+                    title: 'Planejamento mensal de verdade',
+                    text:
+                        'Você não precisa preencher tudo do zero todo mês. O app reaproveita a base do mês anterior e você corrige só o que mudou.',
+                    icon: Icons.calendar_month_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              setSheetState(applyPreviousMonthPlan),
+                          icon: const Icon(Icons.history_rounded),
+                          label: const Text('Usar mês passado'),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -2173,9 +2360,9 @@ class _FinanceTabState extends State<FinanceTab> {
     }).toList();
 
     items.sort((a, b) {
-      final aBase = a.planned > 0 ? a.planned : a.spent;
-      final bBase = b.planned > 0 ? b.planned : b.spent;
-      return bBase.compareTo(aBase);
+      final aScore = a.remaining < 0 ? a.remaining : -a.spent;
+      final bScore = b.remaining < 0 ? b.remaining : -b.spent;
+      return aScore.compareTo(bScore);
     });
 
     return items;
@@ -2184,12 +2371,6 @@ class _FinanceTabState extends State<FinanceTab> {
   Widget _buildPlanningTrackTile(_PlanningMonthTrackItem item) {
     final overLimit = item.remaining < 0;
     final accent = overLimit ? const Color(0xFFFF5D73) : item.category.color;
-    final plannedLabel = formatCurrency(item.planned, hideValues: _hideValues);
-    final spentLabel = formatCurrency(item.spent, hideValues: _hideValues);
-    final remainingLabel = formatCurrency(
-      item.remaining.abs(),
-      hideValues: _hideValues,
-    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -2238,7 +2419,7 @@ class _FinanceTabState extends State<FinanceTab> {
               ),
               const SizedBox(width: 12),
               Text(
-                spentLabel,
+                formatCurrency(item.spent, hideValues: _hideValues),
                 style: TextStyle(color: accent, fontWeight: FontWeight.w900),
               ),
             ],
@@ -2259,21 +2440,24 @@ class _FinanceTabState extends State<FinanceTab> {
               Expanded(
                 child: FinanceCompactStatCard(
                   title: 'Planejado',
-                  value: plannedLabel,
+                  value: formatCurrency(item.planned, hideValues: _hideValues),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: FinanceCompactStatCard(
                   title: 'Gasto',
-                  value: spentLabel,
+                  value: formatCurrency(item.spent, hideValues: _hideValues),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: FinanceCompactStatCard(
                   title: overLimit ? 'Passou' : 'Restante',
-                  value: remainingLabel,
+                  value: formatCurrency(
+                    item.remaining.abs(),
+                    hideValues: _hideValues,
+                  ),
                 ),
               ),
             ],
@@ -2293,24 +2477,19 @@ class _FinanceTabState extends State<FinanceTab> {
     final trackItems = _buildPlanningTrackItems();
 
     final plannedIncome = summary['Renda planejada'] ?? 0;
-    final plannedEssentials = summary['Essenciais'] ?? 0;
-    final plannedFuture = summary['Investir + reserva'] ?? 0;
-    final plannedFree = summary['Livre'] ?? 0;
-
     final actualIncome = _store.totalIncome;
     final actualImmediate = _store.totalDebitExpense;
     final actualCredit = _store.totalCreditExpense;
-    final monthCommitted = actualImmediate + actualCredit;
-    final plannedLeft = plannedIncome - monthCommitted;
+    final plannedLeft = plannedIncome - actualImmediate - actualCredit;
     final positiveLeft = plannedLeft >= 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FinanceSectionCard(
-          title: 'Planejamento do mês',
+          title: 'Planejamento de $_planningMonthLabel',
           subtitle:
-              'Aqui o plano vira acompanhamento real: quanto entrou, quanto saiu, quanto foi no crédito e quanto ainda cabe no mês.',
+              'Acompanha o mês real: entradas, saídas, crédito e quanto ainda cabe no seu plano.',
           trailing: TextButton.icon(
             onPressed: _openPlanningSheet,
             icon: const Icon(Icons.edit_outlined),
@@ -2387,9 +2566,9 @@ class _FinanceTabState extends State<FinanceTab> {
         ),
         const SizedBox(height: 14),
         FinanceSectionCard(
-          title: 'Divisão do plano',
+          title: 'Plano-base do mês',
           subtitle:
-              'Seu planejamento-base continua editável, mas o acompanhamento acontece mês a mês.',
+              'Seu plano fica mais compacto aqui. As sugestões automáticas aparecem só quando você edita.',
           child: Column(
             children: [
               Row(
@@ -2398,7 +2577,7 @@ class _FinanceTabState extends State<FinanceTab> {
                     child: FinanceValueBadge(
                       label: 'Essenciais',
                       value: formatCurrency(
-                        plannedEssentials,
+                        summary['Essenciais'] ?? 0,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF28C76F),
@@ -2409,7 +2588,7 @@ class _FinanceTabState extends State<FinanceTab> {
                     child: FinanceValueBadge(
                       label: 'Investir + reserva',
                       value: formatCurrency(
-                        plannedFuture,
+                        summary['Investir + reserva'] ?? 0,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF6C63FF),
@@ -2424,7 +2603,7 @@ class _FinanceTabState extends State<FinanceTab> {
                     child: FinanceValueBadge(
                       label: 'Livre',
                       value: formatCurrency(
-                        plannedFree,
+                        summary['Livre'] ?? 0,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFFFFB020),
@@ -2447,9 +2626,9 @@ class _FinanceTabState extends State<FinanceTab> {
         PlanningInsightsSection(store: _store),
         const SizedBox(height: 14),
         FinanceSectionCard(
-          title: 'Categorias ativas do plano',
+          title: 'Para onde o dinheiro do mês está indo',
           subtitle:
-              'Agora a leitura mostra o planejado x gasto no mês. As sugestões continuam só dentro do editor.',
+              'Leitura por categoria com planejado x gasto para você ajustar o mês antes de estourar.',
           child: Column(
             children: [
               if (trackItems.isEmpty)
