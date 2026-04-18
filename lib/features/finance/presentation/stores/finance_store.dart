@@ -8,10 +8,14 @@
 // - Aplica filtros por período e por tipo.
 // - Calcula entradas, saídas reais, crédito e saldo.
 // - Gera dados para ranking e gráfico de categorias.
+// - Mantém histórico consolidado para compras parceladas e projeta as parcelas
+//   mês a mês apenas para a visão de crédito.
 //
 // Ajuste desta versão:
 // - Compra no crédito não contamina mais “Saídas”.
 // - Saída real agora considera só dinheiro que já saiu da conta.
+// - Compras parceladas no crédito ficam salvas uma vez no histórico, mas a
+//   fatura mensal continua distribuída pelos meses seguintes.
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -65,46 +69,163 @@ class FinanceStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<FinanceTransaction> get periodTransactions {
-    final now = DateTime.now();
-    return _transactions.where((transaction) {
-      final date = transaction.date;
-      switch (_selectedPeriod) {
-        case FinancePeriodType.currentMonth:
-          return date.year == now.year && date.month == now.month;
-        case FinancePeriodType.previousMonth:
-          final previousMonthDate = DateTime(now.year, now.month - 1, 1);
-          return date.year == previousMonthDate.year &&
-              date.month == previousMonthDate.month;
-        case FinancePeriodType.currentYear:
-          return date.year == now.year;
-        case FinancePeriodType.allTime:
-          return true;
-      }
-    }).toList();
-  }
+  List<FinanceTransaction> get periodTransactions =>
+      _transactionsForPeriod(_selectedPeriod);
 
   List<FinanceTransaction> get previousPeriodTransactions {
     if (_selectedPeriod == FinancePeriodType.allTime) return [];
 
     final now = DateTime.now();
-    return _transactions.where((transaction) {
-      final date = transaction.date;
-      switch (_selectedPeriod) {
-        case FinancePeriodType.currentMonth:
-          final previousMonthDate = DateTime(now.year, now.month - 1, 1);
-          return date.year == previousMonthDate.year &&
-              date.month == previousMonthDate.month;
-        case FinancePeriodType.previousMonth:
-          final twoMonthsAgoDate = DateTime(now.year, now.month - 2, 1);
-          return date.year == twoMonthsAgoDate.year &&
-              date.month == twoMonthsAgoDate.month;
-        case FinancePeriodType.currentYear:
-          return date.year == now.year - 1;
-        case FinancePeriodType.allTime:
-          return false;
+    switch (_selectedPeriod) {
+      case FinancePeriodType.currentMonth:
+        return _transactionsForPeriod(FinancePeriodType.previousMonth);
+      case FinancePeriodType.previousMonth:
+        final target = DateTime(now.year, now.month - 2, 1);
+        return _transactions
+            .where(
+              (transaction) =>
+                  transaction.date.year == target.year &&
+                  transaction.date.month == target.month,
+            )
+            .toList();
+      case FinancePeriodType.currentYear:
+        final previousYear = now.year - 1;
+        return _transactions
+            .where((transaction) => transaction.date.year == previousYear)
+            .toList();
+      case FinancePeriodType.allTime:
+        return [];
+    }
+  }
+
+  bool _matchesPeriod(DateTime date, FinancePeriodType period, DateTime now) {
+    switch (period) {
+      case FinancePeriodType.currentMonth:
+        return date.year == now.year && date.month == now.month;
+      case FinancePeriodType.previousMonth:
+        final previousMonthDate = DateTime(now.year, now.month - 1, 1);
+        return date.year == previousMonthDate.year &&
+            date.month == previousMonthDate.month;
+      case FinancePeriodType.currentYear:
+        return date.year == now.year;
+      case FinancePeriodType.allTime:
+        return true;
+    }
+  }
+
+  List<FinanceTransaction> _transactionsForPeriod(FinancePeriodType period) {
+    final now = DateTime.now();
+    return _transactions
+        .where((transaction) => _matchesPeriod(transaction.date, period, now))
+        .toList();
+  }
+
+  List<double> _splitInstallments(double total, int count) {
+    final cents = (total * 100).round();
+    final base = cents ~/ count;
+    final remainder = cents % count;
+
+    return List.generate(count, (index) {
+      final part = base + (index < remainder ? 1 : 0);
+      return part / 100.0;
+    });
+  }
+
+  DateTime _addMonthsKeepingDay(DateTime base, int monthOffset) {
+    final targetMonth = DateTime(base.year, base.month + monthOffset, 1);
+    final lastDay = DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
+    final safeDay = base.day < 1
+        ? 1
+        : (base.day > lastDay ? lastDay : base.day);
+    return DateTime(targetMonth.year, targetMonth.month, safeDay);
+  }
+
+  List<FinanceTransaction> _expandCreditTransactionsForPeriod(
+    FinancePeriodType period,
+  ) {
+    final rawCredit = _transactions
+        .where(
+          (transaction) =>
+              !transaction.isIncome &&
+              transaction.entryType == FinanceEntryType.credit,
+        )
+        .toList();
+
+    if (rawCredit.isEmpty) return const [];
+
+    final groups = <String, List<FinanceTransaction>>{};
+    final standalone = <FinanceTransaction>[];
+
+    for (final transaction in rawCredit) {
+      final groupId = transaction.installmentGroupId;
+      if (groupId == null || groupId.isEmpty) {
+        standalone.add(transaction);
+        continue;
       }
-    }).toList();
+      groups.putIfAbsent(groupId, () => []).add(transaction);
+    }
+
+    final projected = <FinanceTransaction>[];
+    final now = DateTime.now();
+
+    for (final transaction in standalone) {
+      if (_matchesPeriod(transaction.date, period, now)) {
+        projected.add(transaction);
+      }
+    }
+
+    for (final entry in groups.entries) {
+      final items = entry.value..sort((a, b) => a.date.compareTo(b.date));
+      final base = items.first;
+
+      // Compatibilidade com lançamentos antigos, já salvos uma parcela por mês.
+      if (items.length > 1) {
+        for (final transaction in items) {
+          if (_matchesPeriod(transaction.date, period, now)) {
+            projected.add(transaction);
+          }
+        }
+        continue;
+      }
+
+      final installmentTotal = base.installmentTotal;
+      if (installmentTotal <= 1) {
+        if (_matchesPeriod(base.date, period, now)) {
+          projected.add(base);
+        }
+        continue;
+      }
+
+      final amounts = _splitInstallments(base.amount, installmentTotal);
+      for (var index = 0; index < installmentTotal; index++) {
+        final installmentDate = _addMonthsKeepingDay(base.date, index);
+        if (!_matchesPeriod(installmentDate, period, now)) continue;
+
+        projected.add(
+          FinanceTransaction(
+            id: '${base.id}__credit_${index + 1}',
+            title: base.title,
+            amount: amounts[index],
+            date: installmentDate,
+            category: base.category,
+            entryType: base.entryType,
+            source: base.source,
+            isIncome: false,
+            note: base.note,
+            subcategory: base.subcategory,
+            tag: base.tag,
+            isRecurring: false,
+            recurringDayOfMonth: null,
+            installmentGroupId: base.installmentGroupId,
+            installmentIndex: index + 1,
+            installmentTotal: installmentTotal,
+          ),
+        );
+      }
+    }
+
+    projected.sort((a, b) => b.date.compareTo(a.date));
+    return projected;
   }
 
   double _sumIncome(List<FinanceTransaction> items) {
@@ -152,7 +273,7 @@ class FinanceStore extends ChangeNotifier {
   /// Compra no crédito entra como compromisso/fatura, não como dinheiro já saído.
   double get balance => totalIncome - totalDebitExpense;
 
-  double get totalCreditExpense => _sumCreditExpense(periodTransactions);
+  double get totalCreditExpense => _sumCreditExpense(creditTransactions);
   double get totalDebitExpense => _sumDebitExpense(periodTransactions);
   double get previousPeriodIncome => _sumIncome(previousPeriodTransactions);
   double get previousPeriodExpense => _sumExpense(previousPeriodTransactions);
@@ -177,15 +298,10 @@ class FinanceStore extends ChangeNotifier {
         .toList();
   }
 
-  List<FinanceTransaction> get creditTransactions {
-    return periodTransactions
-        .where(
-          (transaction) =>
-              !transaction.isIncome &&
-              transaction.entryType == FinanceEntryType.credit,
-        )
-        .toList();
-  }
+  /// Crédito do período atual, já projetado mês a mês quando a compra foi
+  /// salva como uma única compra parcelada no histórico.
+  List<FinanceTransaction> get creditTransactions =>
+      _expandCreditTransactionsForPeriod(_selectedPeriod);
 
   List<FinanceTransaction> get filteredTransactions {
     final items = recentTransactions;
@@ -211,13 +327,7 @@ class FinanceStore extends ChangeNotifier {
             )
             .toList();
       case FinanceFilterType.credit:
-        return items
-            .where(
-              (transaction) =>
-                  !transaction.isIncome &&
-                  transaction.entryType == FinanceEntryType.credit,
-            )
-            .toList();
+        return creditTransactions;
     }
   }
 
@@ -287,7 +397,7 @@ class FinanceStore extends ChangeNotifier {
   }
 
   String get quickInsight {
-    if (periodTransactions.isEmpty) {
+    if (periodTransactions.isEmpty && creditTransactions.isEmpty) {
       return 'Nenhuma movimentação encontrada no período selecionado.';
     }
     if (totalExpense == 0 && totalIncome > 0 && totalCreditExpense == 0) {

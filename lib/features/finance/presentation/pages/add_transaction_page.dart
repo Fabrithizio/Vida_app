@@ -7,9 +7,11 @@
 // - Mantém o fluxo simples para iniciantes.
 // - Esconde opções mais avançadas em uma seção expansível.
 // - Permite tag, subcategoria, recorrência mensal e parcelamento.
-// - Quando o usuário lança uma compra parcelada, o arquivo cria as parcelas
-//   automaticamente nos meses seguintes.
-// - Ajuste desta versão: parcelamento ampliado para até 60x.
+// - Quando o usuário lança uma compra parcelada no crédito, o arquivo salva
+//   uma compra única no histórico e deixa o planejamento mensal por conta da
+//   store, que distribui as parcelas nos meses seguintes.
+// - Ajuste desta versão: parcelamento ampliado para até 60x e histórico
+//   consolidado em uma única compra-mãe.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -225,28 +227,23 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
         if (shouldCreateInstallments) {
           final groupId = 'inst_${DateTime.now().microsecondsSinceEpoch}';
-          final amounts = _splitInstallments(amount, _installmentTotal);
-
-          for (var i = 0; i < _installmentTotal; i++) {
-            final dueDate = _addMonthsKeepingDay(_selectedDate, i);
-            final transaction = FinanceTransaction(
-              id: '${groupId}_${i + 1}',
-              title: title,
-              amount: amounts[i],
-              date: dueDate,
-              category: _category!,
-              entryType: _entryType,
-              source: FinanceTransactionSource.manual,
-              isIncome: false,
-              note: note,
-              subcategory: subcategory,
-              tag: tag,
-              installmentGroupId: groupId,
-              installmentIndex: i + 1,
-              installmentTotal: _installmentTotal,
-            );
-            await widget.store.addTransaction(transaction);
-          }
+          final transaction = FinanceTransaction(
+            id: groupId,
+            title: title,
+            amount: amount,
+            date: _selectedDate,
+            category: _category!,
+            entryType: _entryType,
+            source: FinanceTransactionSource.manual,
+            isIncome: false,
+            note: note,
+            subcategory: subcategory,
+            tag: tag,
+            installmentGroupId: groupId,
+            installmentIndex: 1,
+            installmentTotal: _installmentTotal,
+          );
+          await widget.store.addTransaction(transaction);
         } else {
           final transaction = FinanceTransaction(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -278,30 +275,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
-  DateTime _addMonthsKeepingDay(DateTime base, int monthOffset) {
-    final targetMonth = DateTime(base.year, base.month + monthOffset, 1);
-    final lastDay = DateTime(targetMonth.year, targetMonth.month + 1, 0).day;
-    final safeDay = base.day < 1
-        ? 1
-        : (base.day > lastDay ? lastDay : base.day);
-    return DateTime(targetMonth.year, targetMonth.month, safeDay);
-  }
-
   int _clampRecurringDay(int day) {
     if (day < 1) return 1;
     if (day > 28) return 28;
     return day;
-  }
-
-  List<double> _splitInstallments(double total, int count) {
-    final cents = (total * 100).round();
-    final base = cents ~/ count;
-    final remainder = cents % count;
-
-    return List.generate(count, (index) {
-      final part = base + (index < remainder ? 1 : 0);
-      return part / 100.0;
-    });
   }
 
   String? _nullableText(String raw) {
@@ -591,7 +568,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Compras no crédito entram em Crédito e só viram saída real no pagamento da fatura.',
+                          'Compras no crédito ficam salvas uma vez no histórico, aparecem mês a mês em Crédito e só viram saída real no pagamento da fatura.',
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ),
