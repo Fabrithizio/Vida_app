@@ -2006,6 +2006,12 @@ class VoiceCommandRouter {
         return 'Salário';
       }
       if (normalized.contains('pagamento')) return 'Pagamento';
+
+      final explicitIncome = _extractIncomeItemTitle(original, normalized);
+      if (explicitIncome != null && explicitIncome.isNotEmpty) {
+        return explicitIncome;
+      }
+
       if (normalized.contains('pix')) return 'Pix recebido';
       return 'Entrada';
     }
@@ -2034,6 +2040,110 @@ class VoiceCommandRouter {
     }
 
     return category.name;
+  }
+
+  String? _extractIncomeItemTitle(String original, String normalized) {
+    var text = _applyGlobalSpeechFixes(original).trim();
+    if (text.isEmpty) return null;
+
+    final lower = _normalize(text);
+
+    const leadingPhrases = <String>[
+      'transferencia recebida de ',
+      'transferência recebida de ',
+      'transferencia recebida ',
+      'transferência recebida ',
+      'pix recebido de ',
+      'pix recebido ',
+      'recebi de ',
+      'recebi ',
+      'ganhei de ',
+      'ganhei ',
+      'deposito recebido de ',
+      'depósito recebido de ',
+      'deposito recebido ',
+      'depósito recebido ',
+      'deposito de ',
+      'depósito de ',
+      'deposito ',
+      'depósito ',
+      'entrada de ',
+      'entrada ',
+      'transferencia de ',
+      'transferência de ',
+      'transferencia ',
+      'transferência ',
+      'pix de ',
+      'pix ',
+    ];
+
+    for (final phrase in leadingPhrases) {
+      final normalizedPhrase = _normalize(phrase);
+      if (lower.startsWith(normalizedPhrase)) {
+        text = text.substring(phrase.length).trim();
+        break;
+      }
+    }
+
+    text = text.replaceAll(
+      RegExp(r'^\s*(de|do|da|dos|das)\s+', caseSensitive: false),
+      '',
+    );
+    text = text.replaceAll(RegExp(r'r\$\s*', caseSensitive: false), ' ');
+    text = text.replaceAll(
+      RegExp(
+        r'\b(?:via|por|em)\s+(?:pix|transferencia|transferência|deposito|depósito)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+
+    text = _stripTrailingAmountPhrase(text);
+
+    text = text.replaceAll(
+      RegExp(
+        r'\b(?:rs|reais?|real|conto|contos|centavo|centavos)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b\d+[\d\s\.,]*\b'), ' ');
+    text = text.replaceAll(
+      RegExp(r'\b(hoje|amanha|amanhã|ontem)\b', caseSensitive: false),
+      ' ',
+    );
+    text = text.replaceAll(
+      RegExp(
+        r'\b(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    text = _cleanLooseCommandWords(text);
+
+    if (text.isEmpty) return null;
+
+    final normalizedText = _normalize(text);
+    if ({
+      'entrada',
+      'receita',
+      'recebido',
+      'recebida',
+      'transferencia',
+      'transferência',
+      'pix',
+      'deposito',
+      'depósito',
+      'de',
+      'do',
+      'da',
+    }.contains(normalizedText)) {
+      return null;
+    }
+
+    return _capitalize(_preserveCommonCaps(text));
   }
 
   String? _extractExpenseItemTitle(String original) {
