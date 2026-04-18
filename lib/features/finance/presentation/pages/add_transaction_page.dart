@@ -9,6 +9,7 @@
 // - Permite tag, subcategoria, recorrência mensal e parcelamento.
 // - Quando o usuário lança uma compra parcelada, o arquivo cria as parcelas
 //   automaticamente nos meses seguintes.
+// - Ajuste desta versão: parcelamento ampliado para até 60x.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -36,6 +37,8 @@ class AddTransactionPage extends StatefulWidget {
 }
 
 class _AddTransactionPageState extends State<AddTransactionPage> {
+  static const int _maxInstallments = 60;
+
   final _titleController = TextEditingController();
   final _amountController = TextEditingController();
   final _subcategoryController = TextEditingController();
@@ -46,17 +49,41 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   FinanceCategory? _category;
   bool _isSaving = false;
   late DateTime _selectedDate;
-
   bool _showAdvanced = false;
   bool _showAllCategories = false;
   bool _isRecurring = false;
   int _recurringDay = 5;
   int _installmentTotal = 1;
 
+  static const Set<String> _primaryExpenseCategoryIds = {
+    'food_market',
+    'transport_fuel',
+    'transport_public',
+    'health_plan',
+    'house_rent',
+    'utility_energy',
+    'utility_water',
+    'utility_internet',
+    'debt_credit_card',
+    'future_emergency',
+    'future_stocks',
+    'leisure_restaurants',
+    'leisure_delivery',
+    'shopping_clothes',
+    'subscription_video',
+    'other_expense',
+    'food',
+    'transport',
+    'health',
+    'home',
+    'education',
+    'leisure',
+    'shopping',
+  };
+
   @override
   void initState() {
     super.initState();
-
     final initial = widget.initialTransaction;
     if (initial != null) {
       _titleController.text = initial.title;
@@ -109,32 +136,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         .toList();
   }
 
-  static const Set<String> _primaryExpenseCategoryIds = {
-    'food_market',
-    'transport_fuel',
-    'transport_public',
-    'health_plan',
-    'house_rent',
-    'utility_energy',
-    'utility_water',
-    'utility_internet',
-    'debt_credit_card',
-    'future_emergency',
-    'future_stocks',
-    'leisure_restaurants',
-    'leisure_delivery',
-    'shopping_clothes',
-    'subscription_video',
-    'other_expense',
-    'food',
-    'transport',
-    'health',
-    'home',
-    'education',
-    'leisure',
-    'shopping',
-  };
-
   List<FinanceCategory> _visibleCategories({required bool isIncome}) {
     final all = _filteredCategories(isIncome: isIncome);
     if (isIncome || _showAllCategories) return all;
@@ -144,9 +145,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         .toList();
 
     if (primary.isEmpty) return all;
+
     if (_category != null && !primary.any((item) => item.id == _category!.id)) {
       primary.add(_category!);
     }
+
     return primary;
   }
 
@@ -159,6 +162,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       lastDate: DateTime(now.year + 5),
     );
     if (picked == null) return;
+
     setState(() {
       _selectedDate = picked;
       _recurringDay = _clampRecurringDay(picked.day);
@@ -168,7 +172,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   Future<void> _save() async {
     final title = _titleController.text.trim();
     final amount = double.tryParse(
-      _amountController.text.trim().replaceAll(',', '.'),
+      _amountController.text.trim().replaceAll('.', '').replaceAll(',', '.'),
     );
 
     if (title.isEmpty || amount == null || amount <= 0 || _category == null) {
@@ -212,7 +216,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           installmentIndex: initial.installmentIndex,
           installmentTotal: initial.installmentTotal,
         );
-
         await widget.store.updateTransaction(updated);
       } else {
         final shouldCreateInstallments =
@@ -295,7 +298,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     final base = cents ~/ count;
     final remainder = cents % count;
 
-    return List<double>.generate(count, (index) {
+    return List.generate(count, (index) {
       final part = base + (index < remainder ? 1 : 0);
       return part / 100.0;
     });
@@ -552,16 +555,22 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       labelText: 'Parcelamento',
                       border: OutlineInputBorder(),
                     ),
-                    items: List<int>.generate(12, (index) => index + 1)
-                        .map(
-                          (count) => DropdownMenuItem<int>(
-                            value: count,
-                            child: Text(
-                              count == 1 ? 'À vista / 1x' : '$count parcelas',
-                            ),
-                          ),
-                        )
-                        .toList(),
+                    items:
+                        List<int>.generate(
+                              _maxInstallments,
+                              (index) => index + 1,
+                            )
+                            .map(
+                              (count) => DropdownMenuItem<int>(
+                                value: count,
+                                child: Text(
+                                  count == 1
+                                      ? 'À vista / 1x'
+                                      : '$count parcelas',
+                                ),
+                              ),
+                            )
+                            .toList(),
                     onChanged:
                         (!canEditInstallments ||
                             _entryType != FinanceEntryType.credit)
@@ -576,6 +585,17 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                             });
                           },
                   ),
+                  if (_entryType == FinanceEntryType.credit)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Compras no crédito entram em Crédito e só viram saída real no pagamento da fatura.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
+                    ),
                   if (_entryType != FinanceEntryType.credit)
                     const Padding(
                       padding: EdgeInsets.only(top: 8),

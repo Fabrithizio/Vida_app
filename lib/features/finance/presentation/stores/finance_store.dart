@@ -1,3 +1,19 @@
+// ============================================================================
+// FILE: lib/features/finance/presentation/stores/finance_store.dart
+//
+// Store principal do módulo de finanças.
+//
+// O que este arquivo faz:
+// - Carrega, salva e atualiza transações.
+// - Aplica filtros por período e por tipo.
+// - Calcula entradas, saídas reais, crédito e saldo.
+// - Gera dados para ranking e gráfico de categorias.
+//
+// Ajuste desta versão:
+// - Compra no crédito não contamina mais “Saídas”.
+// - Saída real agora considera só dinheiro que já saiu da conta.
+// ============================================================================
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -16,7 +32,6 @@ class FinanceStore extends ChangeNotifier {
     : _repository = repository ?? HiveFinanceRepository();
 
   final FinanceRepository _repository;
-
   final List<FinanceCategory> _categories = List.from(
     FinanceSeedData.categories,
   );
@@ -100,7 +115,11 @@ class FinanceStore extends ChangeNotifier {
 
   double _sumExpense(List<FinanceTransaction> items) {
     return items
-        .where((transaction) => !transaction.isIncome)
+        .where(
+          (transaction) =>
+              !transaction.isIncome &&
+              _isImmediateOutflow(transaction.entryType),
+        )
         .fold(0.0, (sum, transaction) => sum + transaction.amount);
   }
 
@@ -125,20 +144,20 @@ class FinanceStore extends ChangeNotifier {
   }
 
   double get totalIncome => _sumIncome(periodTransactions);
+
+  /// Saídas reais: só dinheiro que já saiu da conta.
   double get totalExpense => _sumExpense(periodTransactions);
 
-  // Saldo disponível: só cai com saídas imediatas.
-  // Compra no crédito entra como compromisso/fatura, não como dinheiro já saído.
+  /// Saldo disponível: só cai com saídas imediatas.
+  /// Compra no crédito entra como compromisso/fatura, não como dinheiro já saído.
   double get balance => totalIncome - totalDebitExpense;
 
   double get totalCreditExpense => _sumCreditExpense(periodTransactions);
   double get totalDebitExpense => _sumDebitExpense(periodTransactions);
-
   double get previousPeriodIncome => _sumIncome(previousPeriodTransactions);
   double get previousPeriodExpense => _sumExpense(previousPeriodTransactions);
   double get previousPeriodBalance =>
       previousPeriodIncome - _sumDebitExpense(previousPeriodTransactions);
-
   int get transactionCount => periodTransactions.length;
 
   List<FinanceTransaction> get recentTransactions {
@@ -147,9 +166,24 @@ class FinanceStore extends ChangeNotifier {
     return items;
   }
 
+  /// Apenas saídas imediatas. Crédito fica fora daqui.
   List<FinanceTransaction> get expenseTransactions {
     return periodTransactions
-        .where((transaction) => !transaction.isIncome)
+        .where(
+          (transaction) =>
+              !transaction.isIncome &&
+              _isImmediateOutflow(transaction.entryType),
+        )
+        .toList();
+  }
+
+  List<FinanceTransaction> get creditTransactions {
+    return periodTransactions
+        .where(
+          (transaction) =>
+              !transaction.isIncome &&
+              transaction.entryType == FinanceEntryType.credit,
+        )
         .toList();
   }
 
@@ -161,7 +195,13 @@ class FinanceStore extends ChangeNotifier {
       case FinanceFilterType.income:
         return items.where((transaction) => transaction.isIncome).toList();
       case FinanceFilterType.expense:
-        return items.where((transaction) => !transaction.isIncome).toList();
+        return items
+            .where(
+              (transaction) =>
+                  !transaction.isIncome &&
+                  _isImmediateOutflow(transaction.entryType),
+            )
+            .toList();
       case FinanceFilterType.debit:
         return items
             .where(
@@ -198,6 +238,7 @@ class FinanceStore extends ChangeNotifier {
 
     String? winnerId;
     double winnerTotal = 0;
+
     totalsByCategory.forEach((categoryId, total) {
       if (total > winnerTotal) {
         winnerId = categoryId;
@@ -249,19 +290,19 @@ class FinanceStore extends ChangeNotifier {
     if (periodTransactions.isEmpty) {
       return 'Nenhuma movimentação encontrada no período selecionado.';
     }
-    if (totalExpense == 0 && totalIncome > 0) {
+    if (totalExpense == 0 && totalIncome > 0 && totalCreditExpense == 0) {
       return 'Neste período você registrou entradas, mas nenhuma saída.';
     }
     if (totalIncome == 0 && totalExpense > 0) {
       return 'Neste período você registrou saídas, mas nenhuma entrada.';
     }
     if (totalCreditExpense > totalDebitExpense) {
-      return 'Neste período seus gastos no crédito estão maiores que no débito.';
+      return 'Neste período suas compras no crédito estão maiores que as saídas imediatas.';
     }
     if (totalDebitExpense > totalCreditExpense) {
-      return 'Neste período seus gastos no débito estão maiores que no crédito.';
+      return 'Neste período suas saídas imediatas estão maiores que as compras no crédito.';
     }
-    return 'Neste período seus gastos no crédito e no débito estão equilibrados.';
+    return 'Neste período suas saídas imediatas e compras no crédito estão equilibradas.';
   }
 
   String get periodComparisonText {
@@ -274,13 +315,14 @@ class FinanceStore extends ChangeNotifier {
 
     final currentExpense = totalExpense;
     final previousExpense = previousPeriodExpense;
+
     if (currentExpense > previousExpense) {
-      return 'Você gastou mais do que no período anterior.';
+      return 'Você teve mais saídas reais do que no período anterior.';
     }
     if (currentExpense < previousExpense) {
-      return 'Você gastou menos do que no período anterior.';
+      return 'Você teve menos saídas reais do que no período anterior.';
     }
-    return 'Seus gastos ficaram iguais ao período anterior.';
+    return 'Suas saídas reais ficaram iguais ao período anterior.';
   }
 
   void setFilter(FinanceFilterType filter) {
@@ -322,6 +364,7 @@ class FinanceStore extends ChangeNotifier {
       (transaction) => transaction.id == updatedTransaction.id,
     );
     if (index == -1) return;
+
     _transactions[index] = updatedTransaction;
     await _repository.saveAll(_transactions);
     notifyListeners();
