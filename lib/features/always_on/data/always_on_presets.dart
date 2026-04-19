@@ -6,6 +6,7 @@
 // - Dá uma base personalizada para notícias e contexto do usuário
 // - Facilita ligar e desligar blocos sem espalhar regra na UI
 // ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/features/always_on/domain/always_on_models.dart';
 

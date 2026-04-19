@@ -5,7 +5,10 @@
 // - Permite personalizar o Sempre Ligado
 // - Liga e desliga interesses, temas livres e tickers acompanhados
 // - Salva tudo localmente para o feed se moldar ao usuário
+// - Deixa a linguagem mais direta, para o usuário entender que está ensinando
+//   o radar sobre o que realmente vale seu tempo
 // ============================================================================
+
 import 'package:flutter/material.dart';
 import 'package:vida_app/features/always_on/data/always_on_presets.dart';
 import 'package:vida_app/features/always_on/domain/always_on_models.dart';
@@ -99,16 +102,33 @@ class _AlwaysOnCustomizePageState extends State<AlwaysOnCustomizePage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Personalizar Sempre Ligado'),
+        title: const Text('Ajustar radar'),
         actions: [TextButton(onPressed: _save, child: const Text('Salvar'))],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+            ),
+            child: Text(
+              'Escolha só o que realmente merece espaço no seu tempo. Quanto mais claro você for aqui, menos conteúdo genérico o radar vai te mostrar.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.84),
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           _SectionCard(
             title: 'Interesses principais',
             subtitle:
-                'Esses blocos aparecem como seções prontas no seu Sempre Ligado.',
+                'Esses blocos dizem quais temas o radar deve priorizar para você.',
             child: Column(
               children: AlwaysOnPresets.all.map((preset) {
                 final enabled = _activePresetIds.contains(preset.id);
@@ -141,7 +161,7 @@ class _AlwaysOnCustomizePageState extends State<AlwaysOnCustomizePage> {
           _SectionCard(
             title: 'Temas livres',
             subtitle:
-                'Aqui entram assuntos específicos, por exemplo: OpenAI, Flamengo, Enem, produtividade.',
+                'Assuntos específicos que você quer ver do seu jeito. Ex.: OpenAI, Flamengo, Enem, produtividade.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -185,7 +205,7 @@ class _AlwaysOnCustomizePageState extends State<AlwaysOnCustomizePage> {
           _SectionCard(
             title: 'Tickers observados',
             subtitle:
-                'Esses códigos entram como radar extra de notícias, ex: PETR4, VALE3, IVVB11.',
+                'Esses códigos entram como radar extra. Ex.: PETR4, VALE3, IVVB11.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -224,23 +244,6 @@ class _AlwaysOnCustomizePageState extends State<AlwaysOnCustomizePage> {
                   }).toList(),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-            ),
-            child: Text(
-              'O Sempre Ligado usa fontes públicas para trazer um radar rápido e personalizado. A lista pode crescer depois sem mexer na estrutura da tela.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.84),
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
             ),
           ),
         ],

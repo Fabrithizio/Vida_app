@@ -4,8 +4,10 @@
 // O que este arquivo faz:
 // - Define os modelos do sistema Sempre Ligado
 // - Centraliza dados de interesses, notícias, mercado e preferências do usuário
-// - Mantém a feature organizada e fácil de expandir
+// - Adiciona prioridade, motivo curto e impacto prático para o radar ficar
+//   mais direto e mais pessoal
 // ============================================================================
+
 import 'package:flutter/material.dart';
 
 class AlwaysOnInterestPreset {
@@ -24,6 +26,8 @@ class AlwaysOnInterestPreset {
   final IconData icon;
 }
 
+enum AlwaysOnUrgency { low, medium, high }
+
 class AlwaysOnArticle {
   const AlwaysOnArticle({
     required this.id,
@@ -34,6 +38,10 @@ class AlwaysOnArticle {
     required this.link,
     required this.summary,
     required this.publishLabel,
+    required this.shortReason,
+    required this.whyItMatters,
+    required this.urgency,
+    required this.relevanceScore,
   });
 
   final String id;
@@ -44,6 +52,12 @@ class AlwaysOnArticle {
   final String link;
   final String summary;
   final String publishLabel;
+  final String shortReason;
+  final String whyItMatters;
+  final AlwaysOnUrgency urgency;
+  final int relevanceScore;
+
+  bool get isHighPriority => urgency == AlwaysOnUrgency.high;
 }
 
 class AlwaysOnMarketQuote {
@@ -122,6 +136,7 @@ class AlwaysOnSnapshot {
     required this.personalHighlights,
     required this.loadedAt,
     required this.usedFallback,
+    required this.topSignal,
   });
 
   final AlwaysOnSettings settings;
@@ -131,6 +146,7 @@ class AlwaysOnSnapshot {
   final List<AlwaysOnArticle> personalHighlights;
   final DateTime loadedAt;
   final bool usedFallback;
+  final String topSignal;
 
   int get totalItems =>
       personalHighlights.length +

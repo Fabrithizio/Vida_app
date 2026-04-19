@@ -5,7 +5,10 @@
 // - Carrega e salva as preferências do Sempre Ligado
 // - Busca notícias públicas por RSS e cotações públicas de mercado
 // - Monta o snapshot final consumido pela interface
+// - Prioriza o que parece mais útil e mais urgente para o usuário
+// - Garante fallback por seção quando a internet falhar ou vier vazia
 // ============================================================================
+
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -60,35 +63,44 @@ class AlwaysOnRepository {
   Future<AlwaysOnSnapshot> loadSnapshot() async {
     final settings = await loadSettings();
 
+    List<AlwaysOnMarketQuote> marketQuotes = const [];
+    List<AlwaysOnSection> sections = const [];
+    var usedFallback = false;
+
     try {
-      final marketQuotes = await _loadMarketQuotes();
-      final sections = await _loadSections(settings);
-      final highlights = _buildHighlights(sections);
-      final summary = _buildSummary(settings, sections, marketQuotes);
-
-      return AlwaysOnSnapshot(
-        settings: settings,
-        summary: summary,
-        marketQuotes: marketQuotes,
-        sections: sections,
-        personalHighlights: highlights,
-        loadedAt: DateTime.now(),
-        usedFallback: false,
-      );
+      marketQuotes = await _loadMarketQuotes();
     } catch (_) {
-      final fallback = _fallbackSections(settings);
-
-      return AlwaysOnSnapshot(
-        settings: settings,
-        summary:
-            'Sem conexão agora. O Sempre Ligado manteve uma versão local para não deixar a aba vazia.',
-        marketQuotes: _fallbackMarketQuotes(),
-        sections: fallback,
-        personalHighlights: _buildHighlights(fallback),
-        loadedAt: DateTime.now(),
-        usedFallback: true,
-      );
+      marketQuotes = _fallbackMarketQuotes();
+      usedFallback = true;
     }
+
+    try {
+      sections = await _loadSections(settings);
+      if (sections.isEmpty) {
+        sections = _fallbackSections(settings);
+        usedFallback = true;
+      } else {
+        sections = _mergeMissingFallbackSections(settings, sections);
+      }
+    } catch (_) {
+      sections = _fallbackSections(settings);
+      usedFallback = true;
+    }
+
+    final highlights = _buildHighlights(sections);
+    final summary = _buildSummary(settings, sections, marketQuotes, highlights);
+    final topSignal = _buildTopSignal(highlights, settings);
+
+    return AlwaysOnSnapshot(
+      settings: settings,
+      summary: summary,
+      marketQuotes: marketQuotes,
+      sections: sections,
+      personalHighlights: highlights,
+      loadedAt: DateTime.now(),
+      usedFallback: usedFallback,
+      topSignal: topSignal,
+    );
   }
 
   List<String> _readStringList(SharedPreferences prefs, String key) {
@@ -175,6 +187,9 @@ class AlwaysOnRepository {
       );
     }
 
+    quotes.sort(
+      (a, b) => b.changePercent.abs().compareTo(a.changePercent.abs()),
+    );
     return quotes;
   }
 
@@ -191,16 +206,16 @@ class AlwaysOnRepository {
         query: preset.query,
       );
 
-      if (articles.isNotEmpty) {
-        sections.add(
-          AlwaysOnSection(
-            id: preset.id,
-            title: preset.title,
-            icon: preset.icon,
-            items: articles,
-          ),
-        );
-      }
+      sections.add(
+        AlwaysOnSection(
+          id: preset.id,
+          title: preset.title,
+          icon: preset.icon,
+          items: articles.isEmpty
+              ? _fallbackArticlesForPreset(preset)
+              : articles,
+        ),
+      );
     }
 
     for (final topic in settings.customTopics) {
@@ -210,16 +225,16 @@ class AlwaysOnRepository {
         query: topic,
       );
 
-      if (articles.isNotEmpty) {
-        sections.add(
-          AlwaysOnSection(
-            id: 'custom-${topic.toLowerCase()}',
-            title: topic,
-            icon: Icons.interests_rounded,
-            items: articles,
-          ),
-        );
-      }
+      sections.add(
+        AlwaysOnSection(
+          id: 'custom-${topic.toLowerCase()}',
+          title: topic,
+          icon: Icons.interests_rounded,
+          items: articles.isEmpty
+              ? _fallbackArticlesForCustomTopic(topic)
+              : articles,
+        ),
+      );
     }
 
     for (final ticker in settings.trackedTickers) {
@@ -229,19 +244,19 @@ class AlwaysOnRepository {
         query: '${ticker.toUpperCase()} bolsa OR ações OR mercado',
       );
 
-      if (articles.isNotEmpty) {
-        sections.add(
-          AlwaysOnSection(
-            id: 'ticker-${ticker.toLowerCase()}',
-            title: ticker.toUpperCase(),
-            icon: Icons.candlestick_chart_rounded,
-            items: articles,
-          ),
-        );
-      }
+      sections.add(
+        AlwaysOnSection(
+          id: 'ticker-${ticker.toLowerCase()}',
+          title: ticker.toUpperCase(),
+          icon: Icons.candlestick_chart_rounded,
+          items: articles.isEmpty
+              ? _fallbackArticlesForTicker(ticker)
+              : articles,
+        ),
+      );
     }
 
-    return sections;
+    return sections.where((section) => section.items.isNotEmpty).toList();
   }
 
   Future<List<AlwaysOnArticle>> _loadRssSection({
@@ -256,8 +271,8 @@ class AlwaysOnRepository {
     final raw = await _fetchString(rssUrl);
     final items = _extractBlocks(raw, 'item');
 
-    return items
-        .take(5)
+    final mapped = items
+        .take(6)
         .map((item) {
           final fullTitle = _decodeXml(_readTag(item, 'title'));
           final link = _readTag(item, 'link');
@@ -272,63 +287,271 @@ class AlwaysOnRepository {
               ? titleParts.sublist(0, titleParts.length - 1).join(' - ').trim()
               : fullTitle.trim();
 
+          final cleanTitle = title.isEmpty ? fullTitle : title;
+          final score = _scoreArticle(sectionTitle, cleanTitle);
+          final urgency = _urgencyForTitle(sectionTitle, cleanTitle);
+
           return AlwaysOnArticle(
             id: '${sectionId}_${link.hashCode}',
-            title: title.isEmpty ? fullTitle : title,
+            title: cleanTitle,
             source: source.isEmpty ? 'Fonte pública' : source,
             sectionId: sectionId,
             sectionTitle: sectionTitle,
             link: link.trim(),
-            summary: _buildArticleSummary(
-              sectionTitle,
-              title.isEmpty ? fullTitle : title,
-            ),
+            summary: _buildArticleSummary(sectionTitle, cleanTitle),
             publishLabel: _normalizePublishLabel(pubDate),
+            shortReason: _buildShortReason(sectionTitle, cleanTitle, urgency),
+            whyItMatters: _buildWhyItMatters(sectionTitle, cleanTitle, urgency),
+            urgency: urgency,
+            relevanceScore: score,
           );
         })
-        .where((item) => item.title.isNotEmpty && item.link.isNotEmpty)
+        .where((item) => item.title.isNotEmpty)
         .toList();
+
+    mapped.sort((a, b) => b.relevanceScore.compareTo(a.relevanceScore));
+    return mapped.take(5).toList();
   }
 
   List<AlwaysOnArticle> _buildHighlights(List<AlwaysOnSection> sections) {
-    final seen = <String>{};
     final items = <AlwaysOnArticle>[];
+    final seen = <String>{};
 
     for (final section in sections) {
-      if (section.items.isEmpty) continue;
-
-      final first = section.items.first;
-      if (seen.add(first.title.toLowerCase())) {
-        items.add(first);
+      for (final article in section.items) {
+        final key = article.title.toLowerCase();
+        if (!seen.add(key)) continue;
+        items.add(article);
       }
-
-      if (items.length >= 6) break;
     }
 
-    return items;
+    items.sort((a, b) {
+      final urgencyCompare = b.urgency.index.compareTo(a.urgency.index);
+      if (urgencyCompare != 0) return urgencyCompare;
+      return b.relevanceScore.compareTo(a.relevanceScore);
+    });
+
+    return items.take(6).toList();
   }
 
   String _buildSummary(
     AlwaysOnSettings settings,
     List<AlwaysOnSection> sections,
     List<AlwaysOnMarketQuote> marketQuotes,
+    List<AlwaysOnArticle> highlights,
   ) {
-    final interestsCount =
-        settings.activePresetIds.length + settings.customTopics.length;
-    final highlightedMarkets = marketQuotes
-        .take(2)
-        .map((item) => item.title)
-        .join(' e ');
-
     if (sections.isEmpty) {
-      return 'Seu radar está pronto, mas ainda faltou conteúdo novo agora. Tente atualizar novamente em instantes.';
+      return 'Seu radar está pronto, mas ainda não encontrou algo realmente forte para mostrar agora.';
     }
 
-    return '$interestsCount interesses ativos, ${sections.length} blocos informativos e mercado com destaque para $highlightedMarkets.';
+    final themes =
+        settings.activePresetIds.length +
+        settings.customTopics.length +
+        settings.trackedTickers.length;
+    final strongest = highlights.isEmpty ? null : highlights.first;
+    final marketPulse = marketQuotes.isEmpty
+        ? ''
+        : ' Mercado mexendo mais com ${marketQuotes.first.title.toLowerCase()}.';
+
+    if (strongest == null) {
+      return '$themes interesses ligados e ${sections.length} blocos ativos.$marketPulse';
+    }
+
+    return '$themes interesses ligados. O que mais parece valer seu tempo agora: ${strongest.shortReason}.$marketPulse';
+  }
+
+  String _buildTopSignal(
+    List<AlwaysOnArticle> highlights,
+    AlwaysOnSettings settings,
+  ) {
+    if (highlights.isNotEmpty) {
+      return highlights.first.shortReason;
+    }
+
+    if (settings.isEmpty) {
+      return 'Ligue alguns interesses para o radar começar a ficar mais a sua cara.';
+    }
+
+    return 'Seu radar está ativo. Falta só chegar algo novo que realmente combine com você.';
   }
 
   String _buildArticleSummary(String sectionTitle, String title) {
-    return 'Resumo rápido de $sectionTitle: $title';
+    switch (sectionTitle.toLowerCase()) {
+      case 'mercado':
+        return 'Movimento de mercado com possível impacto em preço, risco ou oportunidade.';
+      case 'mundo':
+        return 'Acontecimento externo que pode mudar ambiente econômico, político ou social.';
+      case 'tecnologia':
+        return 'Mudança em produto, IA ou internet que pode alterar rotina, trabalho ou atenção.';
+      case 'política':
+        return 'Tema público com chance de afetar bolso, regras ou clima do país.';
+      case 'saúde':
+        return 'Informação de saúde e bem-estar com efeito prático no dia a dia.';
+      case 'estudos':
+        return 'Conteúdo útil para aprender melhor, produzir mais ou evoluir na carreira.';
+      default:
+        return 'Resumo rápido do que aconteceu e por que isso pode valer sua atenção.';
+    }
+  }
+
+  String _buildShortReason(
+    String sectionTitle,
+    String title,
+    AlwaysOnUrgency urgency,
+  ) {
+    final tone = urgency == AlwaysOnUrgency.high
+        ? 'Vale olhar agora'
+        : urgency == AlwaysOnUrgency.medium
+        ? 'Pode te interessar hoje'
+        : 'Bom para acompanhar';
+
+    switch (sectionTitle.toLowerCase()) {
+      case 'mercado':
+        return '$tone: isso pode mexer com preço, risco ou oportunidade';
+      case 'mundo':
+        return '$tone: tema externo com possível efeito em economia e humor do mercado';
+      case 'tecnologia':
+        return '$tone: mudança que pode impactar rotina digital, trabalho ou atenção';
+      case 'fé':
+        return '$tone: conteúdo de reflexão e contexto do meio cristão';
+      case 'política':
+        return '$tone: decisão pública que pode bater no bolso ou nas regras';
+      case 'saúde':
+        return '$tone: informação com efeito em energia, prevenção ou qualidade de vida';
+      case 'esportes':
+        return '$tone: destaque esportivo que tende a puxar repercussão';
+      case 'cultura':
+        return '$tone: assunto cultural que está ganhando tração';
+      case 'estudos':
+        return '$tone: tema útil para aprender melhor e evoluir';
+      default:
+        return '$tone: isso tem a ver com seu radar';
+    }
+  }
+
+  String _buildWhyItMatters(
+    String sectionTitle,
+    String title,
+    AlwaysOnUrgency urgency,
+  ) {
+    switch (sectionTitle.toLowerCase()) {
+      case 'mercado':
+        return urgency == AlwaysOnUrgency.high
+            ? 'Pode influenciar preço, risco percebido e até decisões de entrada, espera ou proteção.'
+            : 'Ajuda a entender se o cenário está abrindo oportunidade ou pedindo mais cautela.';
+      case 'mundo':
+        return 'Mesmo quando parece longe, esse tipo de notícia pode alterar humor do mercado, dólar, inflação ou narrativa pública.';
+      case 'tecnologia':
+        return 'Pode mexer no seu jeito de trabalhar, aprender, produzir ou até no que vale sua atenção hoje.';
+      case 'fé':
+        return 'Pode ser um ponto de reflexão, contexto do meio cristão ou tema que conversa com seus valores.';
+      case 'política':
+        return 'Pode afetar regras, impostos, percepção de risco e decisões do dia a dia.';
+      case 'saúde':
+        return 'Pode influenciar prevenção, disposição, sono, foco ou escolhas de rotina.';
+      case 'esportes':
+        return 'É o tipo de assunto que pode dominar conversa, repercussão e interesse coletivo rapidamente.';
+      case 'cultura':
+        return 'Ajuda a não perder o que está puxando assunto, referência e tendência cultural.';
+      case 'estudos':
+        return 'Pode melhorar sua forma de aprender, organizar tempo e crescer com mais clareza.';
+      default:
+        return 'Esse assunto conversa com o que você escolheu seguir no radar.';
+    }
+  }
+
+  int _scoreArticle(String sectionTitle, String title) {
+    final lower = title.toLowerCase();
+    var score = 10;
+
+    const hotWords = [
+      'alerta',
+      'urgente',
+      'dispara',
+      'cai',
+      'sobe',
+      'recorde',
+      'aprova',
+      'suspende',
+      'ban',
+      'novo',
+      'lança',
+      'crise',
+      'ataque',
+      'guerra',
+      'tarifa',
+      'juros',
+      'ia',
+      'bitcoin',
+      'dólar',
+      'inflação',
+    ];
+
+    for (final word in hotWords) {
+      if (lower.contains(word)) score += 6;
+    }
+
+    switch (sectionTitle.toLowerCase()) {
+      case 'mercado':
+      case 'política':
+      case 'tecnologia':
+        score += 8;
+        break;
+      case 'saúde':
+      case 'estudos':
+        score += 5;
+        break;
+      default:
+        score += 3;
+    }
+
+    if (lower.contains('?')) score -= 2;
+    if (lower.length > 110) score -= 2;
+
+    return score;
+  }
+
+  AlwaysOnUrgency _urgencyForTitle(String sectionTitle, String title) {
+    final lower = title.toLowerCase();
+
+    const highSignals = [
+      'alerta',
+      'urgente',
+      'dispara',
+      'desaba',
+      'ataque',
+      'guerra',
+      'crise',
+      'aprova',
+      'proíbe',
+      'suspende',
+      'tarifa',
+      'inflação',
+      'juros',
+      'recorde',
+    ];
+
+    for (final word in highSignals) {
+      if (lower.contains(word)) return AlwaysOnUrgency.high;
+    }
+
+    if (sectionTitle.toLowerCase() == 'mercado' &&
+        (lower.contains('dólar') ||
+            lower.contains('bitcoin') ||
+            lower.contains('selic') ||
+            lower.contains('juros'))) {
+      return AlwaysOnUrgency.high;
+    }
+
+    if (sectionTitle.toLowerCase() == 'tecnologia' &&
+        (lower.contains('ia') ||
+            lower.contains('openai') ||
+            lower.contains('google') ||
+            lower.contains('apple'))) {
+      return AlwaysOnUrgency.medium;
+    }
+
+    return AlwaysOnUrgency.medium;
   }
 
   String _normalizePublishLabel(String raw) {
@@ -345,7 +568,7 @@ class AlwaysOnRepository {
   }
 
   List<String> _extractBlocks(String xml, String tag) {
-    final regex = RegExp('<$tag>([\\s\\S]*?)</$tag>', caseSensitive: false);
+    final regex = RegExp('<$tag>([\s\S]*?)</$tag>', caseSensitive: false);
     return regex
         .allMatches(xml)
         .map((match) => match.group(1) ?? '')
@@ -355,7 +578,7 @@ class AlwaysOnRepository {
 
   String _readTag(String block, String tag) {
     final regex = RegExp(
-      '<$tag(?:\\s[^>]*)?>([\\s\\S]*?)</$tag>',
+      '<$tag(?:\s[^>]*)?>([\s\S]*?)</$tag>',
       caseSensitive: false,
     );
 
@@ -380,6 +603,103 @@ class AlwaysOnRepository {
     return 'R\$ $normalized';
   }
 
+  List<AlwaysOnSection> _mergeMissingFallbackSections(
+    AlwaysOnSettings settings,
+    List<AlwaysOnSection> sections,
+  ) {
+    final existingIds = sections.map((item) => item.id).toSet();
+    final fallback = _fallbackSections(settings);
+    final merged = List<AlwaysOnSection>.from(sections);
+
+    for (final section in fallback) {
+      if (!existingIds.contains(section.id)) {
+        merged.add(section);
+      }
+    }
+    return merged;
+  }
+
+  List<AlwaysOnArticle> _fallbackArticlesForPreset(
+    AlwaysOnInterestPreset preset,
+  ) {
+    return [
+      AlwaysOnArticle(
+        id: '${preset.id}_fallback_1',
+        title: 'Seu espaço de ${preset.title} está pronto',
+        source: 'Modo local',
+        sectionId: preset.id,
+        sectionTitle: preset.title,
+        link: '',
+        summary:
+            'Assim que a internet responder, o radar volta a trazer notícias públicas desse tema.',
+        publishLabel: 'Offline',
+        shortReason: 'Seu radar de ${preset.title} está ligado',
+        whyItMatters:
+            'Quando a conexão voltar, esse bloco vai puxar conteúdos ligados ao que você escolheu acompanhar.',
+        urgency: AlwaysOnUrgency.low,
+        relevanceScore: 1,
+      ),
+      AlwaysOnArticle(
+        id: '${preset.id}_fallback_2',
+        title: 'Você pode deixar esse bloco mais pessoal',
+        source: 'Modo local',
+        sectionId: preset.id,
+        sectionTitle: preset.title,
+        link: '',
+        summary:
+            'Abra a personalização para ligar, desligar ou mudar os interesses desse radar.',
+        publishLabel: 'Offline',
+        shortReason: 'Dá para afinar melhor o radar',
+        whyItMatters:
+            'Quanto mais alinhado com seus interesses, menos conteúdo inútil e mais assunto que parece valer seu tempo.',
+        urgency: AlwaysOnUrgency.low,
+        relevanceScore: 1,
+      ),
+    ];
+  }
+
+  List<AlwaysOnArticle> _fallbackArticlesForCustomTopic(String topic) {
+    return [
+      AlwaysOnArticle(
+        id: 'custom_${topic}_1',
+        title: topic,
+        source: 'Modo local',
+        sectionId: 'custom-${topic.toLowerCase()}',
+        sectionTitle: topic,
+        link: '',
+        summary:
+            'Tema salvo no seu radar. Quando houver conexão, ele puxa atualizações ligadas a esse assunto.',
+        publishLabel: 'Offline',
+        shortReason: 'Tema salvo no seu radar pessoal',
+        whyItMatters:
+            'Esse assunto foi escolhido por você, então o feed tende a ficar mais direto e menos genérico.',
+        urgency: AlwaysOnUrgency.low,
+        relevanceScore: 1,
+      ),
+    ];
+  }
+
+  List<AlwaysOnArticle> _fallbackArticlesForTicker(String ticker) {
+    return [
+      AlwaysOnArticle(
+        id: 'ticker_${ticker}_1',
+        title: ticker.toUpperCase(),
+        source: 'Modo local',
+        sectionId: 'ticker-${ticker.toLowerCase()}',
+        sectionTitle: ticker.toUpperCase(),
+        link: '',
+        summary:
+            'Assim que a internet responder, o radar volta a buscar notícias desse ativo.',
+        publishLabel: 'Offline',
+        shortReason: 'Ticker salvo no seu radar',
+        whyItMatters:
+            'Isso ajuda o radar a puxar contexto e notícias ligadas a esse código quando houver conteúdo disponível.',
+        urgency: AlwaysOnUrgency.low,
+        relevanceScore: 1,
+      ),
+    ];
+  }
+
   List<AlwaysOnSection> _fallbackSections(AlwaysOnSettings settings) {
     final sections = <AlwaysOnSection>[];
 
@@ -394,53 +714,29 @@ class AlwaysOnRepository {
           id: preset.id,
           title: preset.title,
           icon: preset.icon,
-          items: [
-            AlwaysOnArticle(
-              id: '${preset.id}_fallback_1',
-              title: 'Seu espaço de ${preset.title} está pronto',
-              source: 'Modo local',
-              sectionId: preset.id,
-              sectionTitle: preset.title,
-              link: '',
-              summary:
-                  'Assim que a internet responder, o Sempre Ligado volta a trazer notícias públicas desse tema.',
-              publishLabel: 'Offline',
-            ),
-            AlwaysOnArticle(
-              id: '${preset.id}_fallback_2',
-              title: 'Você pode personalizar esse bloco',
-              source: 'Modo local',
-              sectionId: preset.id,
-              sectionTitle: preset.title,
-              link: '',
-              summary:
-                  'Abra a personalização para ligar, desligar ou mudar os interesses desse radar.',
-              publishLabel: 'Offline',
-            ),
-          ],
+          items: _fallbackArticlesForPreset(preset),
         ),
       );
     }
 
-    if (settings.customTopics.isNotEmpty) {
+    for (final topic in settings.customTopics) {
       sections.add(
         AlwaysOnSection(
-          id: 'custom_fallback',
-          title: 'Seus temas',
+          id: 'custom-${topic.toLowerCase()}',
+          title: topic,
           icon: Icons.interests_rounded,
-          items: settings.customTopics.map((topic) {
-            return AlwaysOnArticle(
-              id: 'custom_$topic',
-              title: topic,
-              source: 'Modo local',
-              sectionId: 'custom_fallback',
-              sectionTitle: 'Seus temas',
-              link: '',
-              summary:
-                  'Tema salvo no seu Sempre Ligado. Quando houver conexão, ele puxa atualizações ligadas a esse assunto.',
-              publishLabel: 'Offline',
-            );
-          }).toList(),
+          items: _fallbackArticlesForCustomTopic(topic),
+        ),
+      );
+    }
+
+    for (final ticker in settings.trackedTickers) {
+      sections.add(
+        AlwaysOnSection(
+          id: 'ticker-${ticker.toLowerCase()}',
+          title: ticker.toUpperCase(),
+          icon: Icons.candlestick_chart_rounded,
+          items: _fallbackArticlesForTicker(ticker),
         ),
       );
     }
