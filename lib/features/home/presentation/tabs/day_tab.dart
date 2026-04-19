@@ -4,7 +4,8 @@
 // O que este arquivo faz:
 // - Mantém a Timeline do Meu Dia com os controles de período
 // - Mostra a régua de dias da semana
-// - Adiciona um atalho compacto e chamativo do módulo corporal
+// - Adiciona atalhos compactos para compras, casa, corpo e objetivos
+// - Mantém o botão de adicionar por último
 // - Usa o módulo corporal para colorir os cards dos dias
 // - Mantém compras, tarefas da casa e timeline funcionando
 // ============================================================================
@@ -14,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../../../data/models/timeline_block.dart';
 import '../../../body_care/body_care_service.dart';
 import '../../../body_care/presentation/pages/body_care_page.dart';
+import '../../../goals/presentation/pages/goals_hub_page.dart';
 import '../../../home_tasks/home_tasks_store.dart';
 import '../../../notifications/application/notification_service.dart';
 import '../../../shopping/shopping_list_store.dart';
@@ -239,6 +241,14 @@ class _DayTabState extends State<DayTab> {
       context,
     ).push(MaterialPageRoute(builder: (_) => const BodyCarePage()));
     _refreshBodyCareUi();
+  }
+
+  Future<void> _openGoals() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const GoalsHubPage()));
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _addBlock() async {
@@ -675,6 +685,13 @@ class _DayTabState extends State<DayTab> {
                 accent: const Color(0xFFA855F7),
                 badge: streakLabel,
                 highlighted: true,
+              ),
+              const SizedBox(width: 8),
+              actionTile(
+                label: 'Objetivos',
+                icon: Icons.flag_rounded,
+                onTap: _openGoals,
+                accent: const Color(0xFF8B5CF6),
               ),
               const SizedBox(width: 8),
               actionTile(
