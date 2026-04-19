@@ -1472,6 +1472,7 @@ class _FinanceTabState extends State<FinanceTab> {
                           ),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
+                            isExpanded: true,
                             value: selectedProfileId,
                             decoration: const InputDecoration(
                               labelText: 'Produto / perfil',
@@ -1483,6 +1484,8 @@ class _FinanceTabState extends State<FinanceTab> {
                                     value: profile.id,
                                     child: Text(
                                       '${profile.title} • ${profile.badge}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 )
@@ -2874,6 +2877,78 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
+  Future<void> _showInfoSheet({
+    required String title,
+    required String explanation,
+    String? practicalMeaning,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return FinanceSheetFrame(
+          title: title,
+          subtitle: 'Entenda o que esse indicador quer dizer na prática.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FinanceSoftInfoCard(
+                title: 'O que é',
+                text: explanation,
+                icon: Icons.lightbulb_outline_rounded,
+              ),
+              if (practicalMeaning != null) ...[
+                const SizedBox(height: 12),
+                FinanceSoftInfoCard(
+                  title: 'Como isso afeta sua vida',
+                  text: practicalMeaning,
+                  icon: Icons.insights_outlined,
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInfoValueBadge({
+    required String label,
+    required String value,
+    required Color color,
+    required String explanation,
+    required String practicalMeaning,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () => _showInfoSheet(
+        title: label,
+        explanation: explanation,
+        practicalMeaning: practicalMeaning,
+      ),
+      child: Stack(
+        children: [
+          FinanceValueBadge(label: label, value: value, color: color),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.info_outline_rounded, size: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInvestSection() {
     final data = _buildInvestmentData();
     final current = data.current <= 0 ? 1.0 : data.current;
@@ -2911,14 +2986,23 @@ class _FinanceTabState extends State<FinanceTab> {
                     ),
                   ),
                 ),
-                Text(
-                  formatCurrencyCompact(
-                    scenario.netTotal,
-                    hideValues: _hideValues,
-                  ),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        formatCurrencyCompact(
+                          scenario.netTotal,
+                          hideValues: _hideValues,
+                        ),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 18,
+                        ),
+                        maxLines: 1,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -2965,24 +3049,32 @@ class _FinanceTabState extends State<FinanceTab> {
               Row(
                 children: [
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Patrimônio atual',
                       value: formatCurrency(
                         data.current,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF6C63FF),
+                      explanation:
+                          'É a soma do valor atual de todas as suas gavetas de investimento, já incluindo rendimentos.',
+                      practicalMeaning:
+                          'Mostra quanto você realmente tem acumulado hoje. É o número mais direto para acompanhar evolução patrimonial.',
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Seu dinheiro',
                       value: formatCurrency(
                         data.principal,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF39D0FF),
+                      explanation:
+                          'É só o total que saiu do seu bolso e foi aportado, sem contar rendimento.',
+                      practicalMeaning:
+                          'Ajuda a separar o que é esforço seu do que foi ganho do mercado ou do produto.',
                     ),
                   ),
                 ],
@@ -2991,24 +3083,32 @@ class _FinanceTabState extends State<FinanceTab> {
               Row(
                 children: [
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Lucro bruto',
                       value: formatCurrency(
                         data.earnings,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFFFFB020),
+                      explanation:
+                          'É o ganho antes de descontar imposto estimado.',
+                      practicalMeaning:
+                          'Serve para ver a força do rendimento, mas sozinho pode enganar porque ainda não considera tributo nem inflação.',
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Aporte sugerido',
                       value: formatCurrency(
                         data.suggestedMonthlyContribution,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF9CFF3F),
+                      explanation:
+                          'É uma estimativa do quanto seu mês atual parece aguentar investir com base na sobra entre entradas e saídas.',
+                      practicalMeaning:
+                          'Ajuda a investir sem sufocar seu caixa. Não é obrigação, é um teto saudável sugerido.',
                     ),
                   ),
                 ],
@@ -3017,20 +3117,28 @@ class _FinanceTabState extends State<FinanceTab> {
               Row(
                 children: [
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Bruto de referência',
                       value:
                           '${data.grossAnnualReference.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
                       color: const Color(0xFF39D0FF),
+                      explanation:
+                          'É a taxa anual média estimada da carteira antes de imposto, ponderada pelos produtos das gavetas.',
+                      practicalMeaning:
+                          'Mostra a velocidade teórica do crescimento bruto da carteira.',
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Líquido estimado',
                       value:
                           '${data.netAnnualReference.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
                       color: const Color(0xFF28C76F),
+                      explanation:
+                          'É a taxa anual depois do desconto estimado de imposto.',
+                      practicalMeaning:
+                          'É mais próxima do que realmente sobra para você do que a taxa bruta.',
                     ),
                   ),
                 ],
@@ -3039,20 +3147,28 @@ class _FinanceTabState extends State<FinanceTab> {
               Row(
                 children: [
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Real acima da inflação',
                       value:
                           '${data.realAnnualReference.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
                       color: const Color(0xFFFFB020),
+                      explanation:
+                          'É o ganho estimado depois de considerar imposto e também o efeito da inflação.',
+                      practicalMeaning:
+                          'Se esse número estiver baixo ou negativo, seu dinheiro até pode crescer no papel, mas perde força de compra na vida real.',
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FinanceValueBadge(
+                    child: _buildInfoValueBadge(
                       label: 'Arrasto de imposto',
                       value:
                           '${data.taxDragAnnual.toStringAsFixed(2).replaceAll('.', ',')} p.p.',
                       color: const Color(0xFFFF5D73),
+                      explanation:
+                          'Mostra quanto da taxa anual é perdido para imposto. p.p. significa pontos percentuais.',
+                      practicalMeaning:
+                          'Exemplo: se o bruto é 12% e o líquido cai para 10%, o arrasto foi 2 p.p. Isso ajuda a entender por que dois investimentos parecidos podem render diferente no bolso.',
                     ),
                   ),
                 ],
@@ -3127,30 +3243,42 @@ class _FinanceTabState extends State<FinanceTab> {
                 Row(
                   children: [
                     Expanded(
-                      child: FinanceValueBadge(
+                      child: _buildInfoValueBadge(
                         label: 'CDI',
                         value:
                             '${data.marketSnapshot!.cdiAnnual.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
                         color: const Color(0xFF39D0FF),
+                        explanation:
+                            'CDI é a principal referência usada em muitos CDBs, contas remuneradas e caixinhas pós-fixadas.',
+                        practicalMeaning:
+                            'Quando um produto diz 100% ou 115% do CDI, ele está seguindo esta taxa como base.',
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: FinanceValueBadge(
+                      child: _buildInfoValueBadge(
                         label: 'Selic',
                         value:
                             '${data.marketSnapshot!.selicAnnual.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
                         color: const Color(0xFF9CFF3F),
+                        explanation:
+                            'Selic é a taxa básica de juros da economia brasileira.',
+                        practicalMeaning:
+                            'Ela influencia o rendimento de produtos conservadores, o custo do crédito e o comportamento geral do mercado.',
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 10),
-                FinanceValueBadge(
+                _buildInfoValueBadge(
                   label: 'IPCA 12 meses',
                   value:
                       '${data.marketSnapshot!.ipca12Months.toStringAsFixed(2).replaceAll('.', ',')}%',
                   color: const Color(0xFFFFB020),
+                  explanation:
+                      'IPCA é a inflação oficial. Aqui aparece o acumulado dos últimos 12 meses.',
+                  practicalMeaning:
+                      'Ele mostra quanto o custo de vida subiu. Seu investimento precisa superar isso para crescer de verdade em poder de compra.',
                 ),
               ] else
                 FinanceSoftInfoCard(
@@ -3272,6 +3400,7 @@ class _FinanceTabState extends State<FinanceTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           CircleAvatar(
                             radius: 18,
@@ -3294,6 +3423,8 @@ class _FinanceTabState extends State<FinanceTab> {
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
@@ -3302,18 +3433,30 @@ class _FinanceTabState extends State<FinanceTab> {
                                     color: Colors.white.withOpacity(0.68),
                                     fontSize: 12,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
                           ),
-                          Text(
-                            formatCurrency(
-                              bucket.current,
-                              hideValues: _hideValues,
-                            ),
-                            style: TextStyle(
-                              color: bucket.config.color,
-                              fontWeight: FontWeight.w900,
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  formatCurrency(
+                                    bucket.current,
+                                    hideValues: _hideValues,
+                                  ),
+                                  style: TextStyle(
+                                    color: bucket.config.color,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                  maxLines: 1,
+                                ),
+                              ),
                             ),
                           ),
                         ],
