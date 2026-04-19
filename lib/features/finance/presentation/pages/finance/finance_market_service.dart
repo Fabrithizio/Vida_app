@@ -2,11 +2,11 @@
 // FILE: lib/features/finance/presentation/pages/finance/finance_market_service.dart
 //
 // Serviço leve para buscar indicadores macro usados na área Investir.
-//
-// O que este arquivo faz:
-// - Busca Selic anualizada e IPCA acumulado em 12 meses.
-// - Usa endpoints públicos do Banco Central do Brasil.
-// - Não depende de integração bancária nem de pacote HTTP externo.
+// Ajuste desta versão:
+// - Corrige a leitura de números brasileiros/ingleses da API.
+// - Evita percentuais absurdos por erro de parsing.
+// - Expõe CDI, Selic e IPCA 12 meses.
+// - Se o CDI não puder ser carregado com segurança, usa a Selic como fallback.
 // ============================================================================
 
 import 'dart:convert';
@@ -21,9 +21,23 @@ class FinanceMarketService {
       final selicAnnual = await _fetchLatestSgsValue(client, 1178);
       final ipcaMonthlyRates = await _fetchLatestSgsValues(client, 433, 12);
       final ipca12Months = _compoundMonthlyRates(ipcaMonthlyRates);
+
+      double cdiAnnual = selicAnnual;
+      try {
+        // Em muitas leituras práticas de pós-fixados, CDI e Selic ficam muito próximos.
+        // Se a série específica falhar, mantemos fallback seguro na Selic.
+        cdiAnnual = await _fetchLatestSgsValue(client, 12);
+        if (cdiAnnual <= 0 || cdiAnnual > 100) {
+          cdiAnnual = selicAnnual;
+        }
+      } catch (_) {
+        cdiAnnual = selicAnnual;
+      }
+
       return FinanceMarketSnapshot(
-        selicAnnual: selicAnnual,
-        ipca12Months: ipca12Months,
+        cdiAnnual: _sanitizeAnnualRate(cdiAnnual, fallback: selicAnnual),
+        selicAnnual: _sanitizeAnnualRate(selicAnnual, fallback: 0),
+        ipca12Months: _sanitizeAnnualRate(ipca12Months, fallback: 0),
         fetchedAt: DateTime.now(),
       );
     } finally {
@@ -42,7 +56,7 @@ class FinanceMarketService {
       throw StateError('Sem dados para a série $seriesCode.');
     }
     final value = (jsonBody.first as Map<String, dynamic>)['valor']?.toString();
-    return _parseBrazilNumber(value);
+    return _parseFlexibleNumber(value);
   }
 
   Future<List<double>> _fetchLatestSgsValues(
@@ -61,7 +75,7 @@ class FinanceMarketService {
     }
     return jsonBody
         .map(
-          (item) => _parseBrazilNumber(
+          (item) => _parseFlexibleNumber(
             (item as Map<String, dynamic>)['valor']?.toString(),
           ),
         )
@@ -69,18 +83,36 @@ class FinanceMarketService {
   }
 
   double _compoundMonthlyRates(List<double> monthlyRates) {
-    double factor = 1;
+    double factor = 1.0;
     for (final rate in monthlyRates) {
       factor *= (1 + (rate / 100));
     }
-    return ((factor - 1) * 100);
+    return (factor - 1) * 100;
   }
 
-  double _parseBrazilNumber(String? value) {
-    final normalized = (value ?? '0')
-        .trim()
-        .replaceAll('.', '')
-        .replaceAll(',', '.');
-    return double.tryParse(normalized) ?? 0;
+  double _parseFlexibleNumber(String? value) {
+    final raw = (value ?? '0').trim();
+    if (raw.isEmpty) return 0;
+
+    // "14,65" -> 14.65
+    if (raw.contains(',') && !raw.contains('.')) {
+      return double.tryParse(raw.replaceAll(',', '.')) ?? 0;
+    }
+
+    // "1.234,56" -> 1234.56
+    if (raw.contains(',') && raw.contains('.')) {
+      final normalized = raw.replaceAll('.', '').replaceAll(',', '.');
+      return double.tryParse(normalized) ?? 0;
+    }
+
+    // "14.65" -> 14.65
+    return double.tryParse(raw) ?? 0;
+  }
+
+  double _sanitizeAnnualRate(double value, {required double fallback}) {
+    if (value.isNaN || value.isInfinite) return fallback;
+    if (value < 0) return fallback;
+    if (value > 1000) return fallback;
+    return value;
   }
 }

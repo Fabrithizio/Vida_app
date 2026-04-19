@@ -1,16 +1,8 @@
 // ============================================================================
 // FILE: lib/features/finance/presentation/pages/finance/finance_tab_utils.dart
-//
-// Utilitários visuais e de formatação da tela de Finanças.
-//
-// Caminho no projeto:
-// - lib/features/finance/presentation/pages/finance/finance_tab_utils.dart
-//
-// Como se conecta com o app:
-// - É usado pela tela de Finanças para formatar moeda, datas e campos numéricos.
-// - Mantém as mesmas funções antigas para não quebrar imports existentes.
-// - Usa a mesma regra do utilitário global de moeda do app.
 // ============================================================================
+
+import 'dart:math' as math;
 
 String parseMoneyField(String raw) {
   return raw
@@ -47,7 +39,6 @@ String formatCurrency(double value, {required bool hideValues}) {
   for (int i = 0; i < integer.length; i++) {
     final reverseIndex = integer.length - i;
     buffer.write(integer[i]);
-
     if (reverseIndex > 1 && reverseIndex % 3 == 1) {
       buffer.write('.');
     }
@@ -88,6 +79,37 @@ String formatCurrencyCompact(double value, {required bool hideValues}) {
 String formatShortDate(DateTime date) {
   final d = date.day.toString().padLeft(2, '0');
   final m = date.month.toString().padLeft(2, '0');
-
   return '$d/$m/${date.year}';
+}
+
+double projectFutureValue({
+  required double current,
+  required double monthlyContribution,
+  required double annualPercent,
+  required int months,
+}) {
+  if (months <= 0) return current;
+  final monthlyRate = annualPercent <= 0
+      ? 0.0
+      : math.pow(1 + (annualPercent / 100), 1 / 12).toDouble() - 1;
+
+  double total = current;
+  for (int i = 0; i < months; i++) {
+    total = (total + monthlyContribution) * (1 + monthlyRate);
+  }
+  return total;
+}
+
+double estimateFixedIncomeTaxRate(int months) {
+  if (months <= 6) return 22.5;
+  if (months <= 12) return 20.0;
+  if (months <= 24) return 17.5;
+  return 15.0;
+}
+
+double nominalToRealAnnual(double nominalAnnual, double inflationAnnual) {
+  final nominalFactor = 1 + (nominalAnnual / 100);
+  final inflationFactor = 1 + (inflationAnnual / 100);
+  if (inflationFactor <= 0) return nominalAnnual;
+  return ((nominalFactor / inflationFactor) - 1) * 100;
 }

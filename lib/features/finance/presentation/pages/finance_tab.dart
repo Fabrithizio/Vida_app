@@ -31,7 +31,6 @@ import 'finance/finance_planning_catalog.dart';
 import 'finance/finance_tab_models.dart';
 import 'finance/finance_tab_utils.dart';
 import 'finance/finance_tab_widgets.dart';
-import '../widgets/planning_insights_section.dart';
 
 String _financePeriodLabel(FinancePeriodType period) {
   switch (period) {
@@ -84,6 +83,9 @@ class _FinanceTabState extends State<FinanceTab> {
   Map<String, double> _investmentBucketPrincipal = <String, double>{};
   Map<String, double> _investmentBucketCurrent = <String, double>{};
   Map<String, double> _investmentBucketMonthly = <String, double>{};
+  Map<String, String> _investmentBucketProfileIds = <String, String>{};
+  Map<String, double> _investmentBucketCustomRate = <String, double>{};
+  Map<String, double> _investmentBucketGoal = <String, double>{};
   FinanceMarketSnapshot? _marketSnapshot;
   bool _loadingMarket = false;
   String? _marketError;
@@ -91,113 +93,6 @@ class _FinanceTabState extends State<FinanceTab> {
   String get _prefsPrefix {
     final uid = FirebaseAuth.instance.currentUser?.uid?.trim();
     return (uid == null || uid.isEmpty) ? 'anon' : uid;
-  }
-
-  String _yearMonthKey(DateTime date) {
-    final month = date.month.toString().padLeft(2, '0');
-    return '${date.year}_$month';
-  }
-
-  String get _currentPlanningMonthKey => _yearMonthKey(DateTime.now());
-
-  String get _previousPlanningMonthKey =>
-      _yearMonthKey(DateTime(DateTime.now().year, DateTime.now().month - 1, 1));
-
-  String get _planningMonthLabel {
-    const labels = [
-      'Janeiro',
-      'Fevereiro',
-      'Março',
-      'Abril',
-      'Maio',
-      'Junho',
-      'Julho',
-      'Agosto',
-      'Setembro',
-      'Outubro',
-      'Novembro',
-      'Dezembro',
-    ];
-    final now = DateTime.now();
-    return '${labels[now.month - 1]} de ${now.year}';
-  }
-
-  String _planningScopedKey(String name, {String? monthKey}) =>
-      '$_prefsPrefix:planning:${monthKey ?? _currentPlanningMonthKey}:$name';
-
-  String _planningCategoryKey(String categoryId, {String? monthKey}) =>
-      '$_prefsPrefix:planning:${monthKey ?? _currentPlanningMonthKey}:category:$categoryId';
-
-  double _readPlanningDouble(
-    SharedPreferences prefs, {
-    required String scopedName,
-    required String legacyName,
-    double fallback = 0,
-  }) {
-    final currentKey = _planningScopedKey(scopedName);
-    final previousKey = _planningScopedKey(
-      scopedName,
-      monthKey: _previousPlanningMonthKey,
-    );
-    final legacyKey = '$_prefsPrefix:$legacyName';
-
-    if (prefs.containsKey(currentKey))
-      return prefs.getDouble(currentKey) ?? fallback;
-    if (prefs.containsKey(previousKey))
-      return prefs.getDouble(previousKey) ?? fallback;
-    if (prefs.containsKey(legacyKey))
-      return prefs.getDouble(legacyKey) ?? fallback;
-    return fallback;
-  }
-
-  List<String>? _readPlanningStringList(
-    SharedPreferences prefs, {
-    required String scopedName,
-    required String legacyName,
-  }) {
-    final currentKey = _planningScopedKey(scopedName);
-    final previousKey = _planningScopedKey(
-      scopedName,
-      monthKey: _previousPlanningMonthKey,
-    );
-    final legacyKey = '$_prefsPrefix:$legacyName';
-
-    if (prefs.containsKey(currentKey)) return prefs.getStringList(currentKey);
-    if (prefs.containsKey(previousKey)) return prefs.getStringList(previousKey);
-    if (prefs.containsKey(legacyKey)) return prefs.getStringList(legacyKey);
-    return null;
-  }
-
-  double _readPlanningCategoryValue(
-    SharedPreferences prefs,
-    String categoryId,
-  ) {
-    final currentKey = _planningCategoryKey(categoryId);
-    final previousKey = _planningCategoryKey(
-      categoryId,
-      monthKey: _previousPlanningMonthKey,
-    );
-    final legacyKey = '$_prefsPrefix:plan:$categoryId';
-
-    if (prefs.containsKey(currentKey)) return prefs.getDouble(currentKey) ?? 0;
-    if (prefs.containsKey(previousKey))
-      return prefs.getDouble(previousKey) ?? 0;
-    if (prefs.containsKey(legacyKey)) return prefs.getDouble(legacyKey) ?? 0;
-    return 0;
-  }
-
-  Map<String, double> _readPlanningSnapshotForMonth(
-    SharedPreferences prefs, {
-    required String monthKey,
-  }) {
-    return {
-      for (final category in _planningCategories)
-        category.id:
-            prefs.getDouble(
-              _planningCategoryKey(category.id, monthKey: monthKey),
-            ) ??
-            0,
-    };
   }
 
   List<FinancePlanningPreset> get _planningPresets => const [
@@ -267,6 +162,119 @@ class _FinanceTabState extends State<FinanceTab> {
     ),
   ];
 
+  List<FinanceInvestmentProductProfile> get _investmentProfiles => const [
+    FinanceInvestmentProductProfile(
+      id: 'reserve_cdi_100',
+      title: 'Reserva 100% CDI',
+      subtitle: 'Liquidez com benchmark CDI.',
+      benchmarkType: FinanceInvestmentBenchmarkType.cdi,
+      multiplier: 1.0,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.regressiveFixedIncome,
+      isVariableIncome: false,
+      badge: '100% CDI',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'nubank_turbo_115',
+      title: 'Caixinha Turbo 115% CDI',
+      subtitle: 'Modelo de caixinha turbo atrelada ao CDI.',
+      benchmarkType: FinanceInvestmentBenchmarkType.cdi,
+      multiplier: 1.15,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.regressiveFixedIncome,
+      isVariableIncome: false,
+      badge: '115% CDI',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'cdb_110_cdi',
+      title: 'CDB 110% CDI',
+      subtitle: 'Renda fixa bancária com IR regressivo.',
+      benchmarkType: FinanceInvestmentBenchmarkType.cdi,
+      multiplier: 1.10,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.regressiveFixedIncome,
+      isVariableIncome: false,
+      badge: '110% CDI',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'tesouro_selic',
+      title: 'Tesouro Selic',
+      subtitle: 'Tende a acompanhar a Selic.',
+      benchmarkType: FinanceInvestmentBenchmarkType.selic,
+      multiplier: 1.0,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.regressiveFixedIncome,
+      isVariableIncome: false,
+      badge: 'Selic',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'tesouro_ipca_6',
+      title: 'Tesouro IPCA+',
+      subtitle: 'Proteção real acima da inflação.',
+      benchmarkType: FinanceInvestmentBenchmarkType.ipca,
+      multiplier: 1.0,
+      spreadAnnual: 6.0,
+      taxRule: FinanceInvestmentTaxRule.regressiveFixedIncome,
+      isVariableIncome: false,
+      badge: 'IPCA+',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'prefixado_custom',
+      title: 'Prefixado / taxa fixa',
+      subtitle: 'Taxa anual contratada.',
+      benchmarkType: FinanceInvestmentBenchmarkType.fixed,
+      multiplier: 1.0,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.regressiveFixedIncome,
+      isVariableIncome: false,
+      badge: 'Taxa fixa',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'acoes_growth',
+      title: 'Ações / ETFs',
+      subtitle: 'Estimativa própria para renda variável.',
+      benchmarkType: FinanceInvestmentBenchmarkType.custom,
+      multiplier: 1.0,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.variableIncome15,
+      isVariableIncome: true,
+      badge: 'Variável',
+    ),
+    FinanceInvestmentProductProfile(
+      id: 'business_custom',
+      title: 'Negócio / crescimento próprio',
+      subtitle: 'Use taxa própria para crescimento.',
+      benchmarkType: FinanceInvestmentBenchmarkType.custom,
+      multiplier: 1.0,
+      spreadAnnual: 0,
+      taxRule: FinanceInvestmentTaxRule.customNone,
+      isVariableIncome: true,
+      badge: 'Custom',
+    ),
+  ];
+
+  String _defaultInvestmentProfileIdForBucket(String bucketId) {
+    switch (bucketId) {
+      case 'reserve':
+        return 'nubank_turbo_115';
+      case 'fixed_income':
+        return 'cdb_110_cdi';
+      case 'variable_income':
+        return 'acoes_growth';
+      case 'self_growth':
+        return 'business_custom';
+      default:
+        return 'reserve_cdi_100';
+    }
+  }
+
+  FinanceInvestmentProductProfile _profileById(String id) {
+    return _investmentProfiles.firstWhere(
+      (item) => item.id == id,
+      orElse: () => _investmentProfiles.first,
+    );
+  }
+
   Set<String> _defaultActivePlanningIds() {
     return FinancePlanningCatalog.defaultActiveIds(_planningCategories).toSet();
   }
@@ -296,13 +304,12 @@ class _FinanceTabState extends State<FinanceTab> {
     final nextPlanned = <String, double>{};
 
     for (final category in _planningCategories) {
-      nextPlanned[category.id] = _readPlanningCategoryValue(prefs, category.id);
+      nextPlanned[category.id] =
+          prefs.getDouble('$_prefsPrefix:plan:${category.id}') ?? 0;
     }
 
-    final rawActiveIds = _readPlanningStringList(
-      prefs,
-      scopedName: 'active_ids',
-      legacyName: 'finance_plan_active_ids',
+    final rawActiveIds = prefs.getStringList(
+      '$_prefsPrefix:finance_plan_active_ids',
     );
     final knownIds = _planningCategories.map((item) => item.id).toSet();
     final activeIds = (rawActiveIds == null || rawActiveIds.isEmpty)
@@ -312,6 +319,9 @@ class _FinanceTabState extends State<FinanceTab> {
     final nextBucketPrincipal = <String, double>{};
     final nextBucketCurrent = <String, double>{};
     final nextBucketMonthly = <String, double>{};
+    final nextBucketProfileIds = <String, String>{};
+    final nextBucketCustomRate = <String, double>{};
+    final nextBucketGoal = <String, double>{};
     for (final bucket in _investmentBucketConfigs) {
       nextBucketPrincipal[bucket.id] =
           prefs.getDouble(
@@ -324,6 +334,16 @@ class _FinanceTabState extends State<FinanceTab> {
       nextBucketMonthly[bucket.id] =
           prefs.getDouble('$_prefsPrefix:invest_bucket:${bucket.id}:monthly') ??
           0;
+      nextBucketProfileIds[bucket.id] =
+          prefs.getString('$_prefsPrefix:invest_bucket:${bucket.id}:profile') ??
+          _defaultInvestmentProfileIdForBucket(bucket.id);
+      nextBucketCustomRate[bucket.id] =
+          prefs.getDouble(
+            '$_prefsPrefix:invest_bucket:${bucket.id}:custom_rate',
+          ) ??
+          0;
+      nextBucketGoal[bucket.id] =
+          prefs.getDouble('$_prefsPrefix:invest_bucket:${bucket.id}:goal') ?? 0;
     }
 
     final hasBucketData =
@@ -344,36 +364,17 @@ class _FinanceTabState extends State<FinanceTab> {
 
     setState(() {
       _hideValues = prefs.getBool('$_prefsPrefix:finance_hide_values') ?? false;
-      _planningPresetIndex = _readPlanningDouble(
-        prefs,
-        scopedName: 'preset_index',
-        legacyName: 'finance_plan_preset',
-        fallback: 0,
-      ).round();
-      _monthlyIncomePlan = _readPlanningDouble(
-        prefs,
-        scopedName: 'income',
-        legacyName: 'finance_income_plan',
-        fallback: 0,
-      );
-      _planningEssentialPercent = _readPlanningDouble(
-        prefs,
-        scopedName: 'essentials_percent',
-        legacyName: 'finance_plan_essentials_percent',
-        fallback: 60,
-      );
-      _planningFuturePercent = _readPlanningDouble(
-        prefs,
-        scopedName: 'future_percent',
-        legacyName: 'finance_plan_future_percent',
-        fallback: 30,
-      );
-      _planningFreePercent = _readPlanningDouble(
-        prefs,
-        scopedName: 'free_percent',
-        legacyName: 'finance_plan_free_percent',
-        fallback: 10,
-      );
+      _planningPresetIndex =
+          prefs.getInt('$_prefsPrefix:finance_plan_preset') ?? 0;
+      _monthlyIncomePlan =
+          prefs.getDouble('$_prefsPrefix:finance_income_plan') ?? 0;
+      _planningEssentialPercent =
+          prefs.getDouble('$_prefsPrefix:finance_plan_essentials_percent') ??
+          60;
+      _planningFuturePercent =
+          prefs.getDouble('$_prefsPrefix:finance_plan_future_percent') ?? 30;
+      _planningFreePercent =
+          prefs.getDouble('$_prefsPrefix:finance_plan_free_percent') ?? 10;
       _plannedByCategory = nextPlanned;
       _activePlanningCategoryIds = activeIds;
       _planningOwnHome =
@@ -397,6 +398,9 @@ class _FinanceTabState extends State<FinanceTab> {
       _investmentBucketPrincipal = nextBucketPrincipal;
       _investmentBucketCurrent = nextBucketCurrent;
       _investmentBucketMonthly = nextBucketMonthly;
+      _investmentBucketProfileIds = nextBucketProfileIds;
+      _investmentBucketCustomRate = nextBucketCustomRate;
+      _investmentBucketGoal = nextBucketGoal;
       _loadingPrefs = false;
     });
   }
@@ -827,26 +831,6 @@ class _FinanceTabState extends State<FinanceTab> {
       return labels.join(' • ');
     }
 
-    void applyPreviousMonthPlan() {
-      final previousValues = _readPlanningSnapshotForMonth(
-        prefs,
-        monthKey: _previousPlanningMonthKey,
-      );
-      for (final category in _planningCategories) {
-        final value = previousValues[category.id] ?? 0;
-        controllers[category.id]!.text = value <= 0 ? '' : moneyField(value);
-      }
-      final previousIncome =
-          prefs.getDouble(
-            _planningScopedKey('income', monthKey: _previousPlanningMonthKey),
-          ) ??
-          prefs.getDouble('$_prefsPrefix:finance_income_plan') ??
-          0;
-      if (previousIncome > 0) {
-        incomeController.text = moneyField(previousIncome);
-      }
-    }
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -903,43 +887,25 @@ class _FinanceTabState extends State<FinanceTab> {
                 }
               }
 
-              await prefs.setDouble(_planningScopedKey('income'), parsedIncome);
               await prefs.setDouble(
                 '$_prefsPrefix:finance_income_plan',
                 parsedIncome,
-              );
-              await prefs.setDouble(
-                _planningScopedKey('preset_index'),
-                localPreset.toDouble(),
               );
               await prefs.setInt(
                 '$_prefsPrefix:finance_plan_preset',
                 localPreset,
               );
               await prefs.setDouble(
-                _planningScopedKey('essentials_percent'),
-                essential,
-              );
-              await prefs.setDouble(
                 '$_prefsPrefix:finance_plan_essentials_percent',
                 essential,
-              );
-              await prefs.setDouble(
-                _planningScopedKey('future_percent'),
-                future,
               );
               await prefs.setDouble(
                 '$_prefsPrefix:finance_plan_future_percent',
                 future,
               );
-              await prefs.setDouble(_planningScopedKey('free_percent'), free);
               await prefs.setDouble(
                 '$_prefsPrefix:finance_plan_free_percent',
                 free,
-              );
-              await prefs.setStringList(
-                _planningScopedKey('active_ids'),
-                localActiveIds.toList(),
               );
               await prefs.setStringList(
                 '$_prefsPrefix:finance_plan_active_ids',
@@ -961,11 +927,9 @@ class _FinanceTabState extends State<FinanceTab> {
               );
 
               for (final category in _planningCategories) {
-                final value = parsedValues[category.id] ?? 0;
-                await prefs.setDouble(_planningCategoryKey(category.id), value);
                 await prefs.setDouble(
                   '$_prefsPrefix:plan:${category.id}',
-                  value,
+                  parsedValues[category.id] ?? 0,
                 );
               }
 
@@ -1064,9 +1028,9 @@ class _FinanceTabState extends State<FinanceTab> {
             }
 
             return FinanceSheetFrame(
-              title: 'Planejar $_planningMonthLabel',
+              title: 'Planejar o mês',
               subtitle:
-                  'Esse plano agora é mensal. Se o mês atual estiver vazio, o app reaproveita o mês anterior como base e você ajusta só o que mudou.',
+                  'O app sugere, mas você adapta ao seu jeito de viver. O que você não usa sai da divisão.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1078,26 +1042,6 @@ class _FinanceTabState extends State<FinanceTab> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  FinanceSoftInfoCard(
-                    title: 'Planejamento mensal de verdade',
-                    text:
-                        'Você não precisa preencher tudo do zero todo mês. O app reaproveita a base do mês anterior e você corrige só o que mudou.',
-                    icon: Icons.calendar_month_outlined,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () =>
-                              setSheetState(applyPreviousMonthPlan),
-                          icon: const Icon(Icons.history_rounded),
-                          label: const Text('Usar mês passado'),
-                        ),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -1381,8 +1325,32 @@ class _FinanceTabState extends State<FinanceTab> {
               : moneyField(_investmentBucketMonthly[bucket.id] ?? 0),
         ),
     };
+    final customRateControllers = <String, TextEditingController>{
+      for (final bucket in _investmentBucketConfigs)
+        bucket.id: TextEditingController(
+          text: (_investmentBucketCustomRate[bucket.id] ?? 0) <= 0
+              ? ''
+              : (_investmentBucketCustomRate[bucket.id] ?? 0).toStringAsFixed(
+                  2,
+                ),
+        ),
+    };
+    final goalControllers = <String, TextEditingController>{
+      for (final bucket in _investmentBucketConfigs)
+        bucket.id: TextEditingController(
+          text: (_investmentBucketGoal[bucket.id] ?? 0) <= 0
+              ? ''
+              : moneyField(_investmentBucketGoal[bucket.id] ?? 0),
+        ),
+    };
+    final localProfileIds = <String, String>{
+      for (final bucket in _investmentBucketConfigs)
+        bucket.id:
+            _investmentBucketProfileIds[bucket.id] ??
+            _defaultInvestmentProfileIdForBucket(bucket.id),
+    };
 
-    double suggestedMonthly = _suggestedInvestmentCapacity()
+    final suggestedMonthly = _suggestedInvestmentCapacity()
         .clamp(0.0, double.infinity)
         .toDouble();
 
@@ -1391,203 +1359,321 @@ class _FinanceTabState extends State<FinanceTab> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return FinanceSheetFrame(
-          title: 'Ajustar investimentos',
-          subtitle:
-              'Agora você separa por gavetas. O app soma tudo e ainda sugere o aporte do mês.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FinanceSoftInfoCard(
-                title: 'Sugestão do mês',
-                text:
-                    'Pela sua sobra real do período, hoje o app sugere até ${formatCurrency(suggestedMonthly, hideValues: false)} de aporte.',
-                icon: Icons.auto_graph_rounded,
-              ),
-              const SizedBox(height: 16),
-              FinanceTextField(
-                controller: rateController,
-                label: 'Juros médios ao ano da simulação',
-                suffixText: '%',
-                icon: Icons.trending_up_rounded,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-              ),
-              const SizedBox(height: 12),
-              FinanceTextField(
-                controller: targetController,
-                label: 'Meta total de patrimônio',
-                prefixText: 'R\$ ',
-                icon: Icons.flag_outlined,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Gavetas de investimento',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Preencha só o que você já usa. O resto pode ficar zerado.',
-                style: TextStyle(color: Colors.white.withOpacity(0.70)),
-              ),
-              const SizedBox(height: 14),
-              ..._investmentBucketConfigs.map((bucket) {
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    color: const Color(0xFF111A1A),
-                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return FinanceSheetFrame(
+              title: 'Ajustar investimentos',
+              subtitle:
+                  'Configure produto, taxa e meta por gaveta para projeções mais confiáveis.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FinanceSoftInfoCard(
+                    title: 'Sugestão do mês',
+                    text:
+                        'Pela sua sobra real do período, hoje o app sugere até ${formatCurrency(suggestedMonthly, hideValues: false)} de aporte.',
+                    icon: Icons.auto_graph_rounded,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 16),
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: bucket.color.withOpacity(0.18),
-                            child: Icon(
-                              bucket.icon,
-                              color: bucket.color,
-                              size: 18,
-                            ),
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: rateController,
+                          label: 'Taxa anual base',
+                          suffixText: '%',
+                          icon: Icons.trending_up_rounded,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  bucket.title,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  bucket.subtitle,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.64),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      FinanceTextField(
-                        controller: principalControllers[bucket.id]!,
-                        label: 'Seu dinheiro aportado',
-                        prefixText: 'R\$ ',
-                        icon: Icons.account_balance_wallet_outlined,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      FinanceTextField(
-                        controller: currentControllers[bucket.id]!,
-                        label: 'Montante atual',
-                        prefixText: 'R\$ ',
-                        icon: Icons.savings_outlined,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      FinanceTextField(
-                        controller: monthlyControllers[bucket.id]!,
-                        label: 'Aporte mensal nesta gaveta',
-                        prefixText: 'R\$ ',
-                        icon: Icons.calendar_month_outlined,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: targetController,
+                          label: 'Meta total',
+                          prefixText: 'R\$ ',
+                          icon: Icons.flag_outlined,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                );
-              }),
-              const SizedBox(height: 6),
-              const FinanceSoftInfoCard(
-                title: 'Como ler',
-                text:
-                    'Seu dinheiro aportado = só o que saiu do seu bolso. Montante atual = seu dinheiro + rendimento. A projeção não desconta IR, IOF, taxas ou inflação.',
-                icon: Icons.info_outline_rounded,
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Gavetas de investimento',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Agora cada gaveta pode usar um produto diferente, taxa custom e meta própria.',
+                    style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                  ),
+                  const SizedBox(height: 14),
+                  ..._investmentBucketConfigs.map((bucket) {
+                    final selectedProfileId = localProfileIds[bucket.id]!;
+                    final selectedProfile = _profileById(selectedProfileId);
+                    final useCustomRate =
+                        selectedProfile.benchmarkType ==
+                            FinanceInvestmentBenchmarkType.fixed ||
+                        selectedProfile.benchmarkType ==
+                            FinanceInvestmentBenchmarkType.custom;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        color: const Color(0xFF111A1A),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.06),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 18,
+                                backgroundColor: bucket.color.withOpacity(0.18),
+                                child: Icon(
+                                  bucket.icon,
+                                  color: bucket.color,
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      bucket.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      bucket.subtitle,
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.64),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            value: selectedProfileId,
+                            decoration: const InputDecoration(
+                              labelText: 'Produto / perfil',
+                              prefixIcon: Icon(Icons.account_tree_outlined),
+                            ),
+                            items: _investmentProfiles
+                                .map(
+                                  (profile) => DropdownMenuItem<String>(
+                                    value: profile.id,
+                                    child: Text(
+                                      '${profile.title} • ${profile.badge}',
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setSheetState(() {
+                                localProfileIds[bucket.id] = value;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FinanceTextField(
+                                  controller: principalControllers[bucket.id]!,
+                                  label: 'Seu dinheiro',
+                                  prefixText: 'R\$ ',
+                                  icon: Icons.account_balance_wallet_outlined,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FinanceTextField(
+                                  controller: currentControllers[bucket.id]!,
+                                  label: 'Montante atual',
+                                  prefixText: 'R\$ ',
+                                  icon: Icons.savings_outlined,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FinanceTextField(
+                                  controller: monthlyControllers[bucket.id]!,
+                                  label: 'Aporte/mês',
+                                  prefixText: 'R\$ ',
+                                  icon: Icons.calendar_month_outlined,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FinanceTextField(
+                                  controller: goalControllers[bucket.id]!,
+                                  label: 'Meta da gaveta',
+                                  prefixText: 'R\$ ',
+                                  icon: Icons.flag_circle_outlined,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (useCustomRate) ...[
+                            const SizedBox(height: 10),
+                            FinanceTextField(
+                              controller: customRateControllers[bucket.id]!,
+                              label: 'Taxa anual custom desta gaveta',
+                              suffixText: '%',
+                              icon: Icons.percent_rounded,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                          FinanceSoftInfoCard(
+                            title: selectedProfile.title,
+                            text:
+                                'Benchmark: ${_benchmarkLabelForProfile(selectedProfile)} • ${_taxRuleLabel(selectedProfile.taxRule)}.',
+                            icon: Icons.insights_outlined,
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 6),
+                  const FinanceSoftInfoCard(
+                    title: 'Como o app calcula',
+                    text:
+                        'Bruto usa benchmark/taxa da gaveta. Líquido estima imposto conforme o tipo. Real desconta inflação do período.',
+                    icon: Icons.info_outline_rounded,
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        double principalSum = 0;
+                        double currentSum = 0;
+                        double monthlySum = 0;
+                        for (final bucket in _investmentBucketConfigs) {
+                          final principal = parseMoney(
+                            principalControllers[bucket.id]!.text,
+                          );
+                          final current = parseMoney(
+                            currentControllers[bucket.id]!.text,
+                          );
+                          final monthly = parseMoney(
+                            monthlyControllers[bucket.id]!.text,
+                          );
+                          final customRate = parseDoubleValue(
+                            customRateControllers[bucket.id]!.text,
+                          );
+                          final goal = parseMoney(
+                            goalControllers[bucket.id]!.text,
+                          );
+                          final profileId =
+                              localProfileIds[bucket.id] ??
+                              _defaultInvestmentProfileIdForBucket(bucket.id);
+
+                          principalSum += principal;
+                          currentSum += current;
+                          monthlySum += monthly;
+
+                          await prefs.setDouble(
+                            '$_prefsPrefix:invest_bucket:${bucket.id}:principal',
+                            principal,
+                          );
+                          await prefs.setDouble(
+                            '$_prefsPrefix:invest_bucket:${bucket.id}:current',
+                            current,
+                          );
+                          await prefs.setDouble(
+                            '$_prefsPrefix:invest_bucket:${bucket.id}:monthly',
+                            monthly,
+                          );
+                          await prefs.setString(
+                            '$_prefsPrefix:invest_bucket:${bucket.id}:profile',
+                            profileId,
+                          );
+                          await prefs.setDouble(
+                            '$_prefsPrefix:invest_bucket:${bucket.id}:custom_rate',
+                            customRate,
+                          );
+                          await prefs.setDouble(
+                            '$_prefsPrefix:invest_bucket:${bucket.id}:goal',
+                            goal,
+                          );
+                        }
+                        await prefs.setDouble(
+                          '$_prefsPrefix:invest_principal',
+                          principalSum,
+                        );
+                        await prefs.setDouble(
+                          '$_prefsPrefix:invest_current_value',
+                          currentSum,
+                        );
+                        await prefs.setDouble(
+                          '$_prefsPrefix:invest_monthly_contribution',
+                          monthlySum,
+                        );
+                        await prefs.setDouble(
+                          '$_prefsPrefix:invest_annual_rate',
+                          parseDoubleValue(rateController.text),
+                        );
+                        await prefs.setDouble(
+                          '$_prefsPrefix:invest_target',
+                          parseMoney(targetController.text),
+                        );
+                        if (!mounted) return;
+                        Navigator.of(context).pop();
+                        await _loadPrefs();
+                      },
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Salvar investimento'),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    double principalSum = 0;
-                    double currentSum = 0;
-                    double monthlySum = 0;
-                    for (final bucket in _investmentBucketConfigs) {
-                      final principal = parseMoney(
-                        principalControllers[bucket.id]!.text,
-                      );
-                      final current = parseMoney(
-                        currentControllers[bucket.id]!.text,
-                      );
-                      final monthly = parseMoney(
-                        monthlyControllers[bucket.id]!.text,
-                      );
-                      principalSum += principal;
-                      currentSum += current;
-                      monthlySum += monthly;
-                      await prefs.setDouble(
-                        '$_prefsPrefix:invest_bucket:${bucket.id}:principal',
-                        principal,
-                      );
-                      await prefs.setDouble(
-                        '$_prefsPrefix:invest_bucket:${bucket.id}:current',
-                        current,
-                      );
-                      await prefs.setDouble(
-                        '$_prefsPrefix:invest_bucket:${bucket.id}:monthly',
-                        monthly,
-                      );
-                    }
-                    await prefs.setDouble(
-                      '$_prefsPrefix:invest_principal',
-                      principalSum,
-                    );
-                    await prefs.setDouble(
-                      '$_prefsPrefix:invest_current_value',
-                      currentSum,
-                    );
-                    await prefs.setDouble(
-                      '$_prefsPrefix:invest_monthly_contribution',
-                      monthlySum,
-                    );
-                    await prefs.setDouble(
-                      '$_prefsPrefix:invest_annual_rate',
-                      parseDoubleValue(rateController.text),
-                    );
-                    await prefs.setDouble(
-                      '$_prefsPrefix:invest_target',
-                      parseMoney(targetController.text),
-                    );
-                    if (!mounted) return;
-                    Navigator.of(context).pop();
-                    await _loadPrefs();
-                  },
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('Salvar investimento'),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -1868,6 +1954,11 @@ class _FinanceTabState extends State<FinanceTab> {
         principal: _investmentBucketPrincipal[bucket.id] ?? 0,
         current: _investmentBucketCurrent[bucket.id] ?? 0,
         monthlyContribution: _investmentBucketMonthly[bucket.id] ?? 0,
+        profileId:
+            _investmentBucketProfileIds[bucket.id] ??
+            _defaultInvestmentProfileIdForBucket(bucket.id),
+        customAnnualRate: _investmentBucketCustomRate[bucket.id] ?? 0,
+        goalAmount: _investmentBucketGoal[bucket.id] ?? 0,
       );
     }).toList();
     return items;
@@ -1966,6 +2057,11 @@ class _FinanceTabState extends State<FinanceTab> {
         principal: 0,
         current: 0,
         monthlyContribution: 0,
+        profileId: _defaultInvestmentProfileIdForBucket(
+          _investmentBucketConfigs.first.id,
+        ),
+        customAnnualRate: 0,
+        goalAmount: 0,
       ),
     );
     final monthlyBase = math
@@ -2086,6 +2182,234 @@ class _FinanceTabState extends State<FinanceTab> {
     return items;
   }
 
+  double _marketBackedAnnualRate(
+    FinanceInvestmentProductProfile profile,
+    FinanceInvestmentBucketData bucket,
+  ) {
+    final market = _marketSnapshot;
+    final fallback = bucket.customAnnualRate > 0
+        ? bucket.customAnnualRate
+        : _annualInterestRate;
+
+    switch (profile.benchmarkType) {
+      case FinanceInvestmentBenchmarkType.cdi:
+        final cdi = market?.cdiAnnual ?? market?.selicAnnual ?? fallback;
+        return (cdi * profile.multiplier) + profile.spreadAnnual;
+      case FinanceInvestmentBenchmarkType.selic:
+        final selic = market?.selicAnnual ?? fallback;
+        return (selic * profile.multiplier) + profile.spreadAnnual;
+      case FinanceInvestmentBenchmarkType.ipca:
+        final ipca = market?.ipca12Months ?? 0;
+        return ipca + profile.spreadAnnual;
+      case FinanceInvestmentBenchmarkType.fixed:
+        return bucket.customAnnualRate > 0 ? bucket.customAnnualRate : fallback;
+      case FinanceInvestmentBenchmarkType.custom:
+        return bucket.customAnnualRate > 0 ? bucket.customAnnualRate : fallback;
+      case FinanceInvestmentBenchmarkType.savings:
+        final selic = market?.selicAnnual ?? fallback;
+        return selic <= 8.5 ? selic * 0.7 : 6.17;
+    }
+  }
+
+  double _scenarioAdjustedAnnualRate(
+    FinanceInvestmentProductProfile profile,
+    FinanceInvestmentBucketData bucket,
+    FinanceInvestmentScenarioType scenario,
+  ) {
+    final baseRate = _marketBackedAnnualRate(profile, bucket);
+    if (scenario == FinanceInvestmentScenarioType.base) return baseRate;
+
+    if (profile.isVariableIncome) {
+      if (scenario == FinanceInvestmentScenarioType.conservative) {
+        return math.max(0.0, (baseRate * 0.65) - 4).toDouble();
+      }
+      return ((baseRate * 1.20) + 2).toDouble();
+    }
+
+    if (scenario == FinanceInvestmentScenarioType.conservative) {
+      return math.max(0.0, (baseRate * 0.90) - 0.6).toDouble();
+    }
+    return ((baseRate * 1.05) + 0.35).toDouble();
+  }
+
+  double _estimateTaxRate(FinanceInvestmentProductProfile profile, int months) {
+    switch (profile.taxRule) {
+      case FinanceInvestmentTaxRule.regressiveFixedIncome:
+        return estimateFixedIncomeTaxRate(months);
+      case FinanceInvestmentTaxRule.taxFree:
+      case FinanceInvestmentTaxRule.exemptGain:
+      case FinanceInvestmentTaxRule.customNone:
+        return 0;
+      case FinanceInvestmentTaxRule.variableIncome15:
+        return 15;
+    }
+  }
+
+  FinanceInvestmentProjectionScenario _buildProjectionScenario({
+    required FinanceInvestmentScenarioType type,
+    required String label,
+    required int years,
+    required double current,
+    required double monthlyContribution,
+    required double annualRate,
+    required double taxRate,
+    required double inflationAnnual,
+  }) {
+    final months = years * 12;
+    final grossTotal = projectFutureValue(
+      current: current,
+      monthlyContribution: monthlyContribution,
+      annualPercent: annualRate,
+      months: months,
+    );
+    final principalFuture = current + (monthlyContribution * months);
+    final grossGain = math.max(0.0, grossTotal - principalFuture).toDouble();
+    final netGain = grossGain * (1 - taxRate / 100);
+    final netTotal = principalFuture + netGain;
+    final factor = math.pow(1 + inflationAnnual / 100, years).toDouble();
+    final realTotal = factor <= 0 ? netTotal : (netTotal / factor);
+    final realGain = realTotal - principalFuture;
+    final netAnnual = annualRate <= 0
+        ? annualRate
+        : math.max(0.0, annualRate - ((annualRate * taxRate) / 100)).toDouble();
+    final realAnnual = nominalToRealAnnual(netAnnual, inflationAnnual);
+
+    return FinanceInvestmentProjectionScenario(
+      type: type,
+      label: label,
+      years: years,
+      nominalAnnualRate: annualRate,
+      netAnnualRate: netAnnual,
+      realAnnualRate: realAnnual,
+      grossTotal: grossTotal,
+      netTotal: netTotal,
+      realTotal: realTotal,
+      grossGain: grossGain,
+      netGain: netGain,
+      realGain: realGain,
+    );
+  }
+
+  double _weightedReferenceRate(
+    List<FinanceInvestmentBucketData> buckets,
+    FinanceInvestmentScenarioType scenario,
+  ) {
+    final totalBase = buckets.fold<double>(
+      0.0,
+      (sum, item) => sum + (item.current > 0 ? item.current : item.principal),
+    );
+    if (totalBase <= 0.01) return _annualInterestRate;
+    double weighted = 0;
+    for (final bucket in buckets) {
+      final base = bucket.current > 0 ? bucket.current : bucket.principal;
+      final profile = _profileById(bucket.profileId);
+      weighted += _scenarioAdjustedAnnualRate(profile, bucket, scenario) * base;
+    }
+    return weighted / totalBase;
+  }
+
+  int? _monthsToGoal({
+    required double current,
+    required double monthlyContribution,
+    required double target,
+    required double annualRate,
+  }) {
+    if (target <= 0 || current >= target) return 0;
+    var total = current;
+    int safety = 0;
+    while (total < target && safety < 1200) {
+      total = projectFutureValue(
+        current: total,
+        monthlyContribution: monthlyContribution,
+        annualPercent: annualRate,
+        months: 1,
+      );
+      safety++;
+    }
+    return safety >= 1200 ? null : safety;
+  }
+
+  List<FinanceInvestmentGoalProgress> _buildGoalItems(
+    List<FinanceInvestmentBucketData> buckets,
+    FinanceInvestmentScenarioType scenario,
+  ) {
+    final items = <FinanceInvestmentGoalProgress>[];
+    for (final bucket in buckets) {
+      if (bucket.goalAmount <= 0) continue;
+      final profile = _profileById(bucket.profileId);
+      final progress = bucket.current <= 0
+          ? 0.0
+          : (bucket.current / bucket.goalAmount).clamp(0.0, 1.0);
+      items.add(
+        FinanceInvestmentGoalProgress(
+          title: bucket.config.title,
+          target: bucket.goalAmount,
+          current: bucket.current,
+          progress: progress,
+          monthsAtBaseScenario: _monthsToGoal(
+            current: bucket.current,
+            monthlyContribution: bucket.monthlyContribution,
+            target: bucket.goalAmount,
+            annualRate: _scenarioAdjustedAnnualRate(profile, bucket, scenario),
+          ),
+        ),
+      );
+    }
+    return items;
+  }
+
+  String _taxRuleLabel(FinanceInvestmentTaxRule rule) {
+    switch (rule) {
+      case FinanceInvestmentTaxRule.regressiveFixedIncome:
+        return 'IR regressivo';
+      case FinanceInvestmentTaxRule.taxFree:
+        return 'Isento';
+      case FinanceInvestmentTaxRule.exemptGain:
+        return 'Ganho isento';
+      case FinanceInvestmentTaxRule.variableIncome15:
+        return 'IR 15%';
+      case FinanceInvestmentTaxRule.customNone:
+        return 'Sem IR automático';
+    }
+  }
+
+  String _benchmarkLabelForProfile(FinanceInvestmentProductProfile profile) {
+    switch (profile.benchmarkType) {
+      case FinanceInvestmentBenchmarkType.cdi:
+        return '${(profile.multiplier * 100).toStringAsFixed(0)}% do CDI';
+      case FinanceInvestmentBenchmarkType.selic:
+        return 'Selic';
+      case FinanceInvestmentBenchmarkType.ipca:
+        return 'IPCA + ${profile.spreadAnnual.toStringAsFixed(1).replaceAll('.', ',')}%';
+      case FinanceInvestmentBenchmarkType.fixed:
+        return 'Prefixado';
+      case FinanceInvestmentBenchmarkType.custom:
+        return 'Taxa custom';
+      case FinanceInvestmentBenchmarkType.savings:
+        return 'Poupança';
+    }
+  }
+
+  double _bucketNetProjection12Months(FinanceInvestmentBucketData bucket) {
+    final profile = _profileById(bucket.profileId);
+    final annualRate = _scenarioAdjustedAnnualRate(
+      profile,
+      bucket,
+      FinanceInvestmentScenarioType.base,
+    );
+    final grossTotal = projectFutureValue(
+      current: bucket.current,
+      monthlyContribution: bucket.monthlyContribution,
+      annualPercent: annualRate,
+      months: 12,
+    );
+    final principalFuture = bucket.current + (bucket.monthlyContribution * 12);
+    final grossGain = math.max(0.0, grossTotal - principalFuture).toDouble();
+    final taxRate = _estimateTaxRate(profile, 12);
+    final netGain = grossGain * (1 - taxRate / 100);
+    return principalFuture + netGain;
+  }
+
   FinanceInvestmentViewData _buildInvestmentData() {
     final buckets = _buildInvestmentBuckets();
     final principal = buckets.fold<double>(
@@ -2100,22 +2424,87 @@ class _FinanceTabState extends State<FinanceTab> {
       0.0,
       (sum, item) => sum + item.monthlyContribution,
     );
-    final annualRate = _annualInterestRate;
-    final monthlyRate = annualRate <= 0 ? 0 : annualRate / 100 / 12;
     final earnings = math.max(0.0, current - principal).toDouble();
     final progress = _investmentTarget <= 0
         ? 0.0
         : (current / _investmentTarget).clamp(0.0, 1.0);
 
+    final inflation = _marketSnapshot?.ipca12Months ?? 0.0;
+    final grossAnnualReference = _weightedReferenceRate(
+      buckets,
+      FinanceInvestmentScenarioType.base,
+    );
+    final double taxDragAnnual = buckets.isEmpty
+        ? 0.0
+        : buckets
+                  .map((bucket) {
+                    final profile = _profileById(bucket.profileId);
+                    final tax = _estimateTaxRate(profile, 12);
+                    final rate = _scenarioAdjustedAnnualRate(
+                      profile,
+                      bucket,
+                      FinanceInvestmentScenarioType.base,
+                    );
+                    return rate * tax / 100;
+                  })
+                  .fold<double>(0.0, (sum, item) => sum + item) /
+              buckets.length;
+    final double netAnnualReference = math
+        .max(0.0, grossAnnualReference - taxDragAnnual)
+        .toDouble();
+    final double realAnnualReference = nominalToRealAnnual(
+      netAnnualReference,
+      inflation,
+    ).toDouble();
+
+    final conservativeScenario = _buildProjectionScenario(
+      type: FinanceInvestmentScenarioType.conservative,
+      label: 'Conservador',
+      years: 5,
+      current: current,
+      monthlyContribution: monthly,
+      annualRate: _weightedReferenceRate(
+        buckets,
+        FinanceInvestmentScenarioType.conservative,
+      ),
+      taxRate: buckets.isEmpty ? 0.0 : taxDragAnnual,
+      inflationAnnual: inflation,
+    );
+
+    final baseScenario = _buildProjectionScenario(
+      type: FinanceInvestmentScenarioType.base,
+      label: 'Base',
+      years: 5,
+      current: current,
+      monthlyContribution: monthly,
+      annualRate: grossAnnualReference,
+      taxRate: buckets.isEmpty ? 0.0 : taxDragAnnual,
+      inflationAnnual: inflation,
+    );
+
+    final optimisticScenario = _buildProjectionScenario(
+      type: FinanceInvestmentScenarioType.optimistic,
+      label: 'Otimista',
+      years: 5,
+      current: current,
+      monthlyContribution: monthly,
+      annualRate: _weightedReferenceRate(
+        buckets,
+        FinanceInvestmentScenarioType.optimistic,
+      ),
+      taxRate: buckets.isEmpty ? 0.0 : taxDragAnnual,
+      inflationAnnual: inflation,
+    );
+
     final snapshots = <FinanceInvestmentSnapshot>[];
     for (final months in <int>[6, 12, 24, 60]) {
-      double total = current;
-      double principalPart = principal;
-      for (int i = 0; i < months; i++) {
-        total += monthly;
-        principalPart += monthly;
-        total *= (1 + monthlyRate);
-      }
+      final total = projectFutureValue(
+        current: current,
+        monthlyContribution: monthly,
+        annualPercent: grossAnnualReference,
+        months: months,
+      );
+      final principalPart = current + (monthly * months);
       snapshots.add(
         FinanceInvestmentSnapshot(
           label: months >= 12 ? '${months ~/ 12}a' : '${months}m',
@@ -2126,24 +2515,19 @@ class _FinanceTabState extends State<FinanceTab> {
       );
     }
 
-    int? monthsToTarget;
-    if (_investmentTarget > 0 && current < _investmentTarget) {
-      double total = current;
-      int safety = 0;
-      while (total < _investmentTarget && safety < 1200) {
-        total += monthly;
-        total *= (1 + monthlyRate);
-        safety++;
-      }
-      if (safety < 1200) monthsToTarget = safety;
-    }
+    final monthsToTarget = _monthsToGoal(
+      current: current,
+      monthlyContribution: monthly,
+      target: _investmentTarget,
+      annualRate: grossAnnualReference,
+    );
 
     return FinanceInvestmentViewData(
       principal: principal,
       current: current,
       earnings: earnings,
       monthlyContribution: monthly,
-      annualRate: annualRate,
+      annualRate: grossAnnualReference,
       target: _investmentTarget,
       targetProgress: progress,
       monthsToTarget: monthsToTarget,
@@ -2156,6 +2540,14 @@ class _FinanceTabState extends State<FinanceTab> {
       marketSnapshot: _marketSnapshot,
       marketError: _marketError,
       marketLoading: _loadingMarket,
+      baseScenario: baseScenario,
+      conservativeScenario: conservativeScenario,
+      optimisticScenario: optimisticScenario,
+      goalItems: _buildGoalItems(buckets, FinanceInvestmentScenarioType.base),
+      grossAnnualReference: grossAnnualReference,
+      netAnnualReference: netAnnualReference,
+      realAnnualReference: realAnnualReference,
+      taxDragAnnual: taxDragAnnual,
     );
   }
 
@@ -2324,172 +2716,28 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
-  List<_PlanningMonthTrackItem> _buildPlanningTrackItems() {
-    final values = _resolvedPlanValues();
-    final activeCategories = _sortedPlanningCategories(
-      _activePlanningCategoryIds.isEmpty
-          ? _defaultActivePlanningIds()
-          : _activePlanningCategoryIds,
-    );
-
-    final spentByCategory = <String, double>{};
-    for (final tx in _store.expenseTransactions) {
-      spentByCategory[tx.category.id] =
-          (spentByCategory[tx.category.id] ?? 0) + tx.amount;
-    }
-    for (final tx in _store.creditTransactions) {
-      spentByCategory[tx.category.id] =
-          (spentByCategory[tx.category.id] ?? 0) + tx.amount;
-    }
-
-    final items = activeCategories.map((category) {
-      final planned = values[category.id] ?? 0;
-      final spent = spentByCategory[category.id] ?? 0;
-      final remaining = planned - spent;
-      final progress = planned <= 0
-          ? (spent > 0 ? 1.0 : 0.0)
-          : (spent / planned).clamp(0.0, 1.4);
-
-      return _PlanningMonthTrackItem(
-        category: category,
-        planned: planned,
-        spent: spent,
-        remaining: remaining,
-        progress: progress,
-      );
-    }).toList();
-
-    items.sort((a, b) {
-      final aScore = a.remaining < 0 ? a.remaining : -a.spent;
-      final bScore = b.remaining < 0 ? b.remaining : -b.spent;
-      return aScore.compareTo(bScore);
-    });
-
-    return items;
-  }
-
-  Widget _buildPlanningTrackTile(_PlanningMonthTrackItem item) {
-    final overLimit = item.remaining < 0;
-    final accent = overLimit ? const Color(0xFFFF5D73) : item.category.color;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: item.category.color.withOpacity(0.18),
-                child: Icon(
-                  item.category.icon,
-                  color: item.category.color,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.category.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      overLimit ? 'Acima do planejado' : 'Dentro do planejado',
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                formatCurrency(item.spent, hideValues: _hideValues),
-                style: TextStyle(color: accent, fontWeight: FontWeight.w900),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: item.progress > 1 ? 1 : item.progress,
-              minHeight: 8,
-              backgroundColor: Colors.white.withOpacity(0.06),
-              valueColor: AlwaysStoppedAnimation<Color>(accent),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: FinanceCompactStatCard(
-                  title: 'Planejado',
-                  value: formatCurrency(item.planned, hideValues: _hideValues),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FinanceCompactStatCard(
-                  title: 'Gasto',
-                  value: formatCurrency(item.spent, hideValues: _hideValues),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FinanceCompactStatCard(
-                  title: overLimit ? 'Passou' : 'Restante',
-                  value: formatCurrency(
-                    item.remaining.abs(),
-                    hideValues: _hideValues,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPlanningSection() {
     final summary = _buildPlanningSummary();
+    final preview = _buildPlanningBuckets();
     final activeCategories = _sortedPlanningCategories(
       _activePlanningCategoryIds.isEmpty
           ? _defaultActivePlanningIds()
           : _activePlanningCategoryIds,
     );
-    final trackItems = _buildPlanningTrackItems();
-
-    final plannedIncome = summary['Renda planejada'] ?? 0;
-    final actualIncome = _store.totalIncome;
-    final actualImmediate = _store.totalDebitExpense;
-    final actualCredit = _store.totalCreditExpense;
-    final plannedLeft = plannedIncome - actualImmediate - actualCredit;
-    final positiveLeft = plannedLeft >= 0;
+    final lifeFlags = <String>[
+      if (_planningOwnHome) 'Casa própria',
+      if (_planningMealTicket) 'Vale alimentação',
+      if (_planningNoCar) 'Sem carro',
+      if (_planningFreeTransit) 'Passagem grátis',
+      if (_planningHasHealthPlan) 'Plano de saúde',
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FinanceSectionCard(
-          title: 'Planejamento de $_planningMonthLabel',
-          subtitle:
-              'Acompanha o mês real: entradas, saídas, crédito e quanto ainda cabe no seu plano.',
+          title: 'Planejamento do mês',
+          subtitle: 'O app sugere, mas você adapta ao seu jeito de viver.',
           trailing: TextButton.icon(
             onPressed: _openPlanningSheet,
             icon: const Icon(Icons.edit_outlined),
@@ -2503,76 +2751,13 @@ class _FinanceTabState extends State<FinanceTab> {
                     child: FinanceValueBadge(
                       label: 'Renda planejada',
                       value: formatCurrency(
-                        plannedIncome,
+                        summary['Renda planejada'] ?? 0,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF9CFF3F),
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: FinanceValueBadge(
-                      label: 'Entradas do mês',
-                      value: formatCurrency(
-                        actualIncome,
-                        hideValues: _hideValues,
-                      ),
-                      color: const Color(0xFF39D0FF),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: FinanceValueBadge(
-                      label: 'Saídas do mês',
-                      value: formatCurrency(
-                        actualImmediate,
-                        hideValues: _hideValues,
-                      ),
-                      color: const Color(0xFFFF5D73),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FinanceValueBadge(
-                      label: 'Crédito do mês',
-                      value: formatCurrency(
-                        actualCredit,
-                        hideValues: _hideValues,
-                      ),
-                      color: const Color(0xFF6C63FF),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              FinanceValueBadge(
-                label: positiveLeft
-                    ? 'Ainda cabe no mês'
-                    : 'Mês acima do plano',
-                value: formatCurrency(
-                  plannedLeft.abs(),
-                  hideValues: _hideValues,
-                ),
-                color: positiveLeft
-                    ? const Color(0xFF28C76F)
-                    : const Color(0xFFFFB020),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        FinanceSectionCard(
-          title: 'Plano-base do mês',
-          subtitle:
-              'Seu plano fica mais compacto aqui. As sugestões automáticas aparecem só quando você edita.',
-          child: Column(
-            children: [
-              Row(
-                children: [
                   Expanded(
                     child: FinanceValueBadge(
                       label: 'Essenciais',
@@ -2583,7 +2768,11 @@ class _FinanceTabState extends State<FinanceTab> {
                       color: const Color(0xFF28C76F),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
                   Expanded(
                     child: FinanceValueBadge(
                       label: 'Investir + reserva',
@@ -2594,11 +2783,7 @@ class _FinanceTabState extends State<FinanceTab> {
                       color: const Color(0xFF6C63FF),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
+                  const SizedBox(width: 10),
                   Expanded(
                     child: FinanceValueBadge(
                       label: 'Livre',
@@ -2609,36 +2794,80 @@ class _FinanceTabState extends State<FinanceTab> {
                       color: const Color(0xFFFFB020),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FinanceValueBadge(
-                      label: 'Categorias ativas',
-                      value: activeCategories.length.toString(),
-                      color: const Color(0xFF39D0FF),
-                    ),
-                  ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              FinanceValueBadge(
+                label: 'Sobra automática',
+                value: formatCurrency(
+                  summary['Sobra'] ?? 0,
+                  hideValues: _hideValues,
+                ),
+                color: const Color(0xFF39D0FF),
               ),
             ],
           ),
         ),
         const SizedBox(height: 14),
-        PlanningInsightsSection(store: _store),
+        FinanceSectionCard(
+          title: 'Seu perfil do mês',
+          subtitle: 'Esses atalhos mudam a divisão automática.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (lifeFlags.isEmpty)
+                Text(
+                  'Nenhum atalho ligado. Toque em Editar para marcar casa própria, vale alimentação, sem carro e outros.',
+                  style: TextStyle(color: Colors.white.withOpacity(0.72)),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: lifeFlags
+                      .map((label) => Chip(label: Text(label)))
+                      .toList(),
+                ),
+            ],
+          ),
+        ),
         const SizedBox(height: 14),
         FinanceSectionCard(
-          title: 'Para onde o dinheiro do mês está indo',
-          subtitle:
-              'Leitura por categoria com planejado x gasto para você ajustar o mês antes de estourar.',
+          title: 'Categorias ativas do plano',
+          subtitle: 'Só aparece forte aqui o que você realmente usa.',
           child: Column(
             children: [
-              if (trackItems.isEmpty)
+              if (activeCategories.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text('Nenhuma categoria ativa ainda.'),
                 )
               else
-                ...trackItems.take(8).map(_buildPlanningTrackTile),
+                ...activeCategories.take(8).map((category) {
+                  final amount = (_resolvedPlanValues()[category.id] ?? 0);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: FinanceCategorySummaryTile(
+                      icon: category.icon,
+                      color: category.color,
+                      title: category.name,
+                      subtitle: FinancePlanningCatalog.bucketLabel(
+                        FinancePlanningCatalog.bucketOf(category.id),
+                      ),
+                      trailing: formatCurrency(amount, hideValues: _hideValues),
+                    ),
+                  );
+                }),
             ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
+          title: 'Sugestão em ação',
+          subtitle:
+              'A divisão automática respeita as categorias ativas e o jeito que você vive.',
+          child: Column(
+            children: preview.take(6).map(_buildPlanPreviewTile).toList(),
           ),
         ),
       ],
@@ -2655,13 +2884,77 @@ class _FinanceTabState extends State<FinanceTab> {
       (best, item) => math.max(best, item.amount.abs()),
     );
 
+    Widget scenarioCard(
+      FinanceInvestmentProjectionScenario scenario,
+      Color color,
+    ) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: color.withOpacity(0.10),
+          border: Border.all(color: color.withOpacity(0.26)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    scenario.label,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                Text(
+                  formatCurrencyCompact(
+                    scenario.netTotal,
+                    hideValues: _hideValues,
+                  ),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Bruto ${scenario.nominalAnnualRate.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+              style: TextStyle(color: Colors.white.withOpacity(0.78)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Líquido ${scenario.netAnnualRate.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+              style: TextStyle(color: Colors.white.withOpacity(0.78)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Real ${scenario.realAnnualRate.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+              style: TextStyle(color: Colors.white.withOpacity(0.78)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Em ${scenario.years} anos, líquido estimado.',
+              style: TextStyle(color: Colors.white.withOpacity(0.64)),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         FinanceSectionCard(
           title: 'Investimentos',
           subtitle:
-              'Agora a leitura mistura gavetas, aporte sugerido e saúde da carteira.',
+              'Bruto, líquido, real e cenários usando benchmark do produto quando disponível.',
           trailing: TextButton.icon(
             onPressed: _openInvestmentSheet,
             icon: const Icon(Icons.tune_rounded),
@@ -2673,23 +2966,23 @@ class _FinanceTabState extends State<FinanceTab> {
                 children: [
                   Expanded(
                     child: FinanceValueBadge(
+                      label: 'Patrimônio atual',
+                      value: formatCurrency(
+                        data.current,
+                        hideValues: _hideValues,
+                      ),
+                      color: const Color(0xFF6C63FF),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FinanceValueBadge(
                       label: 'Seu dinheiro',
                       value: formatCurrency(
                         data.principal,
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF39D0FF),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FinanceValueBadge(
-                      label: 'Rendimento',
-                      value: formatCurrency(
-                        data.earnings,
-                        hideValues: _hideValues,
-                      ),
-                      color: const Color(0xFFFFB020),
                     ),
                   ),
                 ],
@@ -2699,12 +2992,12 @@ class _FinanceTabState extends State<FinanceTab> {
                 children: [
                   Expanded(
                     child: FinanceValueBadge(
-                      label: 'Montante atual',
+                      label: 'Lucro bruto',
                       value: formatCurrency(
-                        data.current,
+                        data.earnings,
                         hideValues: _hideValues,
                       ),
-                      color: const Color(0xFF6C63FF),
+                      color: const Color(0xFFFFB020),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2716,6 +3009,50 @@ class _FinanceTabState extends State<FinanceTab> {
                         hideValues: _hideValues,
                       ),
                       color: const Color(0xFF9CFF3F),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Bruto de referência',
+                      value:
+                          '${data.grossAnnualReference.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+                      color: const Color(0xFF39D0FF),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Líquido estimado',
+                      value:
+                          '${data.netAnnualReference.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+                      color: const Color(0xFF28C76F),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Real acima da inflação',
+                      value:
+                          '${data.realAnnualReference.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+                      color: const Color(0xFFFFB020),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FinanceValueBadge(
+                      label: 'Arrasto de imposto',
+                      value:
+                          '${data.taxDragAnnual.toStringAsFixed(2).replaceAll('.', ',')} p.p.',
+                      color: const Color(0xFFFF5D73),
                     ),
                   ),
                 ],
@@ -2760,73 +3097,168 @@ class _FinanceTabState extends State<FinanceTab> {
                   SizedBox(width: 14),
                   FinanceLegendDot(
                     color: Color(0xFFFFB020),
-                    text: 'Juros / rendimento',
+                    text: 'Ganho bruto',
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              FinanceSoftInfoCard(
-                title: 'Risco geral da carteira',
-                text: data.portfolioRiskScore <= 0
-                    ? 'Preencha alguma gaveta para o app começar a avaliar o risco geral.'
-                    : 'Hoje sua carteira está em ${data.portfolioRiskScore.toStringAsFixed(1)} / 5 de risco médio ponderado.',
-                icon: Icons.speed_rounded,
-              ),
-              if (data.target > 0) ...[
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Progresso até a meta',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white.withOpacity(0.92),
-                        ),
-                      ),
-                    ),
-                    Text(
-                      formatCurrency(data.target, hideValues: _hideValues),
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.72),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: data.targetProgress,
-                    minHeight: 10,
-                    backgroundColor: Colors.white.withOpacity(0.06),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Color(0xFF6C63FF),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  data.monthsToTarget == null
-                      ? 'Com os dados atuais, a meta ainda não foi alcançada.'
-                      : 'Mantendo esse ritmo, a projeção chega na meta em cerca de ${data.monthsToTarget} meses.',
-                  style: TextStyle(color: Colors.white.withOpacity(0.72)),
-                ),
-              ],
             ],
           ),
         ),
         const SizedBox(height: 14),
         FinanceSectionCard(
+          title: 'Benchmarks e inflação',
+          subtitle:
+              'Taxas de referência usadas para acompanhar produtos indexados a CDI, Selic e IPCA.',
+          trailing: IconButton(
+            onPressed: _refreshMarketData,
+            tooltip: 'Atualizar indicadores',
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+          child: Column(
+            children: [
+              if (data.marketLoading)
+                const FinanceSoftInfoCard(
+                  title: 'Atualizando',
+                  text:
+                      'Buscando CDI, Selic e IPCA para alimentar os cálculos.',
+                  icon: Icons.sync_rounded,
+                )
+              else if (data.marketSnapshot != null) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: FinanceValueBadge(
+                        label: 'CDI',
+                        value:
+                            '${data.marketSnapshot!.cdiAnnual.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+                        color: const Color(0xFF39D0FF),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FinanceValueBadge(
+                        label: 'Selic',
+                        value:
+                            '${data.marketSnapshot!.selicAnnual.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
+                        color: const Color(0xFF9CFF3F),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                FinanceValueBadge(
+                  label: 'IPCA 12 meses',
+                  value:
+                      '${data.marketSnapshot!.ipca12Months.toStringAsFixed(2).replaceAll('.', ',')}%',
+                  color: const Color(0xFFFFB020),
+                ),
+              ] else
+                FinanceSoftInfoCard(
+                  title: 'Sem atualização agora',
+                  text:
+                      data.marketError ??
+                      'Ainda não deu para carregar os indicadores.',
+                  icon: Icons.cloud_off_rounded,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
+          title: 'Cenários de projeção',
+          subtitle:
+              'Projeção bruta, líquida estimada e real descontando inflação.',
+          child: Column(
+            children: [
+              scenarioCard(data.conservativeScenario, const Color(0xFFFFB020)),
+              scenarioCard(data.baseScenario, const Color(0xFF39D0FF)),
+              scenarioCard(data.optimisticScenario, const Color(0xFF28C76F)),
+            ],
+          ),
+        ),
+        if (data.goalItems.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          FinanceSectionCard(
+            title: 'Metas por gaveta',
+            subtitle:
+                'Quanto falta para cada objetivo usando o cenário base como referência.',
+            child: Column(
+              children: data.goalItems.map((goal) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      color: const Color(0xFF111A1A),
+                      border: Border.all(color: Colors.white.withOpacity(0.06)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                goal.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              formatCurrency(
+                                goal.target,
+                                hideValues: _hideValues,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: goal.progress,
+                            minHeight: 8,
+                            backgroundColor: Colors.white.withOpacity(0.06),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF6C63FF),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          goal.monthsAtBaseScenario == null
+                              ? 'Ainda sem prazo confiável para atingir a meta.'
+                              : 'Projeção: cerca de ${goal.monthsAtBaseScenario} meses no cenário base.',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.72),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        FinanceSectionCard(
           title: 'Suas gavetas',
           subtitle:
-              'Cada gaveta mostra o tamanho atual, o dinheiro próprio e quanto entra por mês.',
+              'Cada gaveta mostra produto, benchmark, imposto estimado e projeção líquida de 12 meses.',
           child: Column(
             children: data.buckets.map((bucket) {
+              final profile = _profileById(bucket.profileId);
               final share = data.current <= 0
                   ? 0.0
                   : (bucket.current / data.current).clamp(0.0, 1.0);
+              final projectedNet12m = _bucketNetProjection12Months(bucket);
+              final taxLabel = _taxRuleLabel(profile.taxRule);
+              final benchmarkLabel = _benchmarkLabelForProfile(profile);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Container(
@@ -2865,7 +3297,7 @@ class _FinanceTabState extends State<FinanceTab> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  bucket.config.subtitle,
+                                  '${profile.title} • ${profile.badge}',
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.68),
                                     fontSize: 12,
@@ -2913,16 +3345,6 @@ class _FinanceTabState extends State<FinanceTab> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: FinanceCompactStatCard(
-                              title: 'Juros',
-                              value: formatCurrency(
-                                bucket.earnings,
-                                hideValues: _hideValues,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FinanceCompactStatCard(
                               title: 'Aporte/mês',
                               value: formatCurrency(
                                 bucket.monthlyContribution,
@@ -2930,7 +3352,24 @@ class _FinanceTabState extends State<FinanceTab> {
                               ),
                             ),
                           ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FinanceCompactStatCard(
+                              title: 'Proj. líq. 12m',
+                              value: formatCurrencyCompact(
+                                projectedNet12m,
+                                hideValues: _hideValues,
+                              ),
+                            ),
+                          ),
                         ],
+                      ),
+                      const SizedBox(height: 10),
+                      FinanceSoftInfoCard(
+                        title: benchmarkLabel,
+                        text:
+                            'Imposto: $taxLabel${bucket.goalAmount > 0 ? ' • Meta: ${formatCurrency(bucket.goalAmount, hideValues: _hideValues)}' : ''}',
+                        icon: Icons.insights_outlined,
                       ),
                     ],
                   ),
@@ -3036,135 +3475,6 @@ class _FinanceTabState extends State<FinanceTab> {
                   title: item.title,
                   text: item.message,
                   icon: item.icon,
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 14),
-        FinanceSectionCard(
-          title: 'Indicadores do cenário',
-          subtitle:
-              'Comecei pelo essencial do Brasil para não complicar: Selic e IPCA.',
-          trailing: IconButton(
-            onPressed: _refreshMarketData,
-            tooltip: 'Atualizar indicadores',
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          child: Column(
-            children: [
-              if (data.marketLoading)
-                const FinanceSoftInfoCard(
-                  title: 'Atualizando',
-                  text:
-                      'Buscando os indicadores macro para alimentar sua leitura.',
-                  icon: Icons.sync_rounded,
-                )
-              else if (data.marketSnapshot != null) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: FinanceValueBadge(
-                        label: 'Selic',
-                        value:
-                            '${data.marketSnapshot!.selicAnnual.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
-                        color: const Color(0xFF39D0FF),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FinanceValueBadge(
-                        label: 'IPCA 12m',
-                        value:
-                            '${data.marketSnapshot!.ipca12Months.toStringAsFixed(2).replaceAll('.', ',')}%',
-                        color: const Color(0xFFFFB020),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                FinanceSoftInfoCard(
-                  title: 'Leitura rápida',
-                  text:
-                      'Esses números ajudam a comparar se seu plano está protegendo poder de compra e se a parte mais segura da carteira ainda faz sentido.',
-                  icon: Icons.insights_outlined,
-                ),
-              ] else
-                FinanceSoftInfoCard(
-                  title: 'Sem atualização agora',
-                  text:
-                      data.marketError ??
-                      'Ainda não deu para carregar os indicadores.',
-                  icon: Icons.cloud_off_rounded,
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        FinanceSectionCard(
-          title: 'Projeção visual',
-          subtitle:
-              'Comparação do seu dinheiro x rendimento ao longo do tempo.',
-          child: Column(
-            children: data.snapshots.map((snap) {
-              final total = snap.total <= 0 ? 1.0 : snap.total;
-              final ownRatio = (snap.principal / total).clamp(0.0, 1.0);
-              final earnRatio = (snap.earnings / total).clamp(0.0, 1.0);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    color: const Color(0xFF111A1A),
-                    border: Border.all(color: Colors.white.withOpacity(0.06)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            snap.label,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          const Spacer(),
-                          Text(
-                            formatCurrency(snap.total, hideValues: _hideValues),
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: SizedBox(
-                          height: 12,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: math.max(1, (ownRatio * 1000).round()),
-                                child: Container(
-                                  color: const Color(0xFF39D0FF),
-                                ),
-                              ),
-                              Expanded(
-                                flex: math.max(1, (earnRatio * 1000).round()),
-                                child: Container(
-                                  color: const Color(0xFFFFB020),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Seu dinheiro: ${formatCurrency(snap.principal, hideValues: _hideValues)}  •  Juros: ${formatCurrency(snap.earnings, hideValues: _hideValues)}',
-                        style: TextStyle(color: Colors.white.withOpacity(0.72)),
-                      ),
-                    ],
-                  ),
                 ),
               );
             }).toList(),
@@ -3341,20 +3651,4 @@ class _FinanceTabState extends State<FinanceTab> {
       },
     );
   }
-}
-
-class _PlanningMonthTrackItem {
-  const _PlanningMonthTrackItem({
-    required this.category,
-    required this.planned,
-    required this.spent,
-    required this.remaining,
-    required this.progress,
-  });
-
-  final FinanceCategory category;
-  final double planned;
-  final double spent;
-  final double remaining;
-  final double progress;
 }
