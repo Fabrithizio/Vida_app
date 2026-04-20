@@ -2,9 +2,9 @@
 // FILE: lib/features/goals/presentation/pages/goal_details_page.dart
 //
 // O que este arquivo faz:
-// - Mostra a meta já pronta para uso real
-// - Exibe etapa atual, próxima ação, progresso, marcos e travas
-// - Deixa marcar ações concluídas e sentir avanço real
+// - Mostra a missão já pronta para uso real
+// - Exibe fase atual, próxima jogada, progresso, trilha e pequenas vitórias
+// - Dá tom mais de jogo sem perder clareza para vida real
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -72,6 +72,16 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     );
 
     await _persist(next);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          action.isDone ? 'Ação reaberta.' : 'Pequena vitória desbloqueada.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _toggleMilestone(int milestoneIndex) async {
@@ -99,6 +109,14 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     );
 
     await _persist(next);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(nextDone ? 'Fase concluída.' : 'Fase reaberta.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   String _nextStageLabel(List<GoalMilestoneModel> milestones) {
@@ -135,11 +153,11 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
   String _kindLabel(GoalKind value) {
     switch (value) {
       case GoalKind.objective:
-        return 'Objetivo';
+        return 'Missão';
       case GoalKind.project:
         return 'Projeto';
       case GoalKind.problem:
-        return 'Problema';
+        return 'Boss';
       case GoalKind.habit:
         return 'Hábito';
     }
@@ -168,13 +186,28 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     }
   }
 
+  int get _xpTotal {
+    final actionsXp = _plan.doneActions * 10;
+    final milestonesXp = _plan.doneMilestones * 40;
+    final finalBonus = _plan.isCompleted ? 120 : 0;
+    return actionsXp + milestonesXp + finalBonus;
+  }
+
+  String get _energyLabel {
+    if (_plan.isCompleted) return 'Missão finalizada';
+    if (_plan.progress >= 0.80) return 'Reta final';
+    if (_plan.progress >= 0.55) return 'Ritmo forte';
+    if (_plan.progress >= 0.25) return 'Evoluindo';
+    return 'Saindo do zero';
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = _accentForStatus();
     final progressPercent = (_plan.progress * 100)
         .clamp(0, 100)
         .toStringAsFixed(0);
-    final nextAction = _plan.nextAction?.title ?? 'Sem próxima ação definida';
+    final nextAction = _plan.nextAction?.title ?? 'Sem próxima jogada definida';
 
     return Scaffold(
       backgroundColor: const Color(0xFF060A14),
@@ -195,7 +228,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(26),
               gradient: LinearGradient(
                 colors: [
                   accent.withValues(alpha: 0.18),
@@ -205,6 +238,13 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 end: Alignment.bottomRight,
               ),
               border: Border.all(color: accent.withValues(alpha: 0.26)),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,12 +255,12 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                   children: [
                     _pill(_kindLabel(_plan.kind), accent),
                     _pill(_areaLabel(_plan.area), Colors.white70),
-                    _pill(_plan.status.name.toUpperCase(), accent),
+                    _pill(_energyLabel, accent),
                   ],
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  _plan.currentMilestone?.title ?? 'Sem etapa atual',
+                  _plan.currentMilestone?.title ?? 'Sem fase atual',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -230,7 +270,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 const SizedBox(height: 6),
                 Text(
                   _plan.whyItMatters.isEmpty
-                      ? 'Você já tirou isso da cabeça e colocou em movimento. Agora é continuar.'
+                      ? 'A missão já começou. Agora é continuar até a barra encher.'
                       : _plan.whyItMatters,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.82),
@@ -241,20 +281,18 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Expanded(
-                      child: _metricCard('Progresso', '$progressPercent%'),
-                    ),
+                    Expanded(child: _metricCard('XP', '$_xpTotal')),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _metricCard(
-                        'Etapas',
+                        'Fases',
                         '${_plan.doneMilestones}/${_plan.totalMilestones}',
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _metricCard(
-                        'Ações',
+                        'Vitórias',
                         '${_plan.doneActions}/${_plan.totalActions}',
                       ),
                     ),
@@ -275,7 +313,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Próxima ação visível',
+                        'Próxima jogada',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.68),
                           fontWeight: FontWeight.w700,
@@ -293,6 +331,23 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: _plan.progress,
+                    minHeight: 12,
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    valueColor: AlwaysStoppedAnimation<Color>(accent),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _plan.isCompleted
+                      ? 'Barra cheia • missão concluída'
+                      : '$progressPercent% carregado • siga até a próxima virada',
+                  style: TextStyle(color: accent, fontWeight: FontWeight.w800),
+                ),
               ],
             ),
           ),
@@ -309,7 +364,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'O que você jogou aqui no começo',
+                    'Texto bruto da missão',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
@@ -329,7 +384,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
             ),
           const SizedBox(height: 14),
           const Text(
-            'Trilha de conclusão',
+            'Mapa de fases',
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -339,11 +394,16 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
           const SizedBox(height: 10),
           ...List.generate(_plan.milestones.length, (index) {
             final milestone = _plan.milestones[index];
+            final isCurrent =
+                !milestone.isDone && _plan.currentMilestone?.id == milestone.id;
+
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: _MilestoneCard(
                 milestone: milestone,
                 accent: accent,
+                isCurrent: isCurrent,
+                index: index,
                 onToggleMilestone: () => _toggleMilestone(index),
                 onToggleAction: (actionIndex) =>
                     _toggleAction(index, actionIndex),
@@ -417,24 +477,34 @@ class _MilestoneCard extends StatelessWidget {
   const _MilestoneCard({
     required this.milestone,
     required this.accent,
+    required this.isCurrent,
+    required this.index,
     required this.onToggleMilestone,
     required this.onToggleAction,
   });
 
   final GoalMilestoneModel milestone;
   final Color accent;
+  final bool isCurrent;
+  final int index;
   final VoidCallback onToggleMilestone;
   final ValueChanged<int> onToggleAction;
 
   @override
   Widget build(BuildContext context) {
+    final stageAccent = milestone.isDone
+        ? const Color(0xFF22C55E)
+        : isCurrent
+        ? accent
+        : Colors.white54;
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF10182B),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
-          color: milestone.isDone
-              ? accent.withValues(alpha: 0.28)
+          color: milestone.isDone || isCurrent
+              ? stageAccent.withValues(alpha: 0.28)
               : Colors.white.withValues(alpha: 0.07),
         ),
       ),
@@ -442,40 +512,41 @@ class _MilestoneCard extends StatelessWidget {
         children: [
           ListTile(
             onTap: onToggleMilestone,
-            leading: Icon(
-              milestone.isDone
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              color: milestone.isDone ? accent : Colors.white54,
+            leading: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: stageAccent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: stageAccent.withValues(alpha: 0.22)),
+              ),
+              child: Icon(
+                milestone.isDone
+                    ? Icons.check_circle_rounded
+                    : isCurrent
+                    ? Icons.auto_awesome_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: stageAccent,
+              ),
             ),
             title: Text(
-              milestone.title,
+              'Fase ${index + 1}: ${milestone.title}',
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w900,
               ),
             ),
-            subtitle: milestone.description.isEmpty
-                ? Text(
-                    milestone.actions.isEmpty
+            subtitle: Text(
+              milestone.description.isEmpty
+                  ? (milestone.actions.isEmpty
                         ? 'Sem ações'
-                        : '${milestone.doneActions}/${milestone.totalActions} ações feitas',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.64),
-                    ),
-                  )
-                : Text(
-                    milestone.description,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.64),
-                    ),
-                  ),
+                        : '${milestone.doneActions}/${milestone.totalActions} pequenas vitórias feitas')
+                  : milestone.description,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.64)),
+            ),
             trailing: Text(
               '${(milestone.progress * 100).toStringAsFixed(0)}%',
-              style: TextStyle(
-                color: milestone.isDone ? accent : Colors.white,
-                fontWeight: FontWeight.w900,
-              ),
+              style: TextStyle(color: stageAccent, fontWeight: FontWeight.w900),
             ),
           ),
           if (milestone.actions.isNotEmpty)
@@ -492,6 +563,12 @@ class _MilestoneCard extends StatelessWidget {
                         ? TextDecoration.lineThrough
                         : null,
                   ),
+                ),
+                subtitle: Text(
+                  action.isDone
+                      ? 'Vitória registrada'
+                      : 'Ação pronta para ataque',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.54)),
                 ),
                 dense: true,
                 activeColor: accent,
