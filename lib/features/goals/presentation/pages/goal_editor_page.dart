@@ -2,10 +2,11 @@
 // FILE: lib/features/goals/presentation/pages/goal_editor_page.dart
 //
 // O que este arquivo faz:
-// - Cria ou edita uma meta/projeto/problema da nova central
+// - Cria ou edita uma missão/projeto/boss/hábito
 // - Aceita captura livre
-// - Quebra em marcos e próximas ações
+// - Quebra em fases e próximas jogadas
 // - Sugere um plano inicial automaticamente para não deixar o usuário travado
+// - Já nasce com tom mais gamificado
 // ============================================================================
 
 import 'dart:math' as math;
@@ -148,7 +149,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
           description: 'Dar lugar para o que importa.',
           actions: [
             'Definir onde cada grupo de itens vai ficar',
-            'Separar caixas/sacos para descarte e doação',
+            'Separar caixas ou sacos para descarte e doação',
             'Limpar a primeira área escolhida',
           ],
         ),
@@ -158,7 +159,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
           actions: [
             'Finalizar o restante por blocos',
             'Criar regra simples de manutenção',
-            'Fazer revisão rápida 1x por semana',
+            'Fazer revisão rápida 1 vez por semana',
           ],
         ),
       ];
@@ -169,7 +170,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         text.contains('negocio')) {
       return [
         _MilestoneDraft(
-          title: 'Definir o problema real',
+          title: 'Definir o boss real',
           description: 'Trocar preocupação solta por clareza.',
           actions: [
             'Escrever em uma frase o que precisa ser resolvido',
@@ -179,7 +180,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         ),
         _MilestoneDraft(
           title: 'Criar plano enxuto',
-          description: 'Saber o próximo passo em vez de tentar resolver tudo.',
+          description: 'Saber a próxima jogada em vez de tentar resolver tudo.',
           actions: [
             'Separar o problema em 3 partes menores',
             'Definir o que pode ser feito esta semana',
@@ -201,7 +202,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     return [
       _MilestoneDraft(
         title: 'Clareza',
-        description: 'Entender o que essa meta realmente significa.',
+        description: 'Entender o que essa missão realmente significa.',
         actions: [
           'Escrever o objetivo de forma simples',
           'Definir por que isso importa agora',
@@ -212,7 +213,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         title: 'Primeiro avanço',
         description: 'Sair da intenção e entrar em movimento.',
         actions: [
-          'Executar uma ação pequena',
+          'Executar uma jogada pequena',
           'Remover um bloqueio óbvio',
           'Registrar o que funcionou',
         ],
@@ -221,9 +222,9 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         title: 'Constância',
         description: 'Continuar mesmo sem dia perfeito.',
         actions: [
-          'Definir a próxima ação',
+          'Definir a próxima jogada',
           'Criar um ritmo mínimo',
-          'Revisar o objetivo no fim da semana',
+          'Revisar a missão no fim da semana',
         ],
       ),
     ];
@@ -247,7 +248,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         GoalMilestoneModel(
           id: 'm_${i + 1}_$id',
           title: draft.title.trim().isEmpty
-              ? 'Etapa ${i + 1}'
+              ? 'Fase ${i + 1}'
               : draft.title.trim(),
           description: draft.description.trim(),
           order: i,
@@ -276,7 +277,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
           actions: [
             GoalActionModel(
               id: 'a_1_1_$id',
-              title: 'Definir a próxima ação',
+              title: 'Definir a próxima jogada',
               isDone: false,
               createdAtMs: now,
             ),
@@ -288,7 +289,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     return GoalPlanModel(
       id: id,
       title: _titleCtrl.text.trim().isEmpty
-          ? 'Nova meta'
+          ? 'Nova missão'
           : _titleCtrl.text.trim(),
       captureText: _captureCtrl.text.trim(),
       kind: _kind,
@@ -311,11 +312,11 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
   String _kindLabel(GoalKind value) {
     switch (value) {
       case GoalKind.objective:
-        return 'Objetivo';
+        return 'Missão';
       case GoalKind.project:
         return 'Projeto';
       case GoalKind.problem:
-        return 'Problema';
+        return 'Boss';
       case GoalKind.habit:
         return 'Hábito';
     }
@@ -351,7 +352,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(_editing ? 'Editar objetivo' : 'Novo objetivo'),
+        title: Text(_editing ? 'Editar missão' : 'Nova missão'),
         actions: [TextButton(onPressed: _save, child: const Text('Salvar'))],
       ),
       body: ListView(
@@ -365,7 +366,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
               border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
             ),
             child: const Text(
-              'Jogue aqui o que está travando sua cabeça. Depois o app ajuda a quebrar isso em etapas pequenas e próximas ações.',
+              'Jogue aqui o que está travando sua cabeça. Depois o app quebra isso em fases e próximas jogadas.',
               style: TextStyle(
                 color: Colors.white70,
                 fontWeight: FontWeight.w600,
@@ -386,7 +387,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             maxLines: 7,
             style: const TextStyle(color: Colors.white),
             decoration: _input(
-              'Descarrego livre',
+              'Texto bruto',
               'Escreva do seu jeito: problema, meta, confusão, vontade, trava, tudo junto...',
             ),
           ),
@@ -397,7 +398,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             maxLines: 4,
             style: const TextStyle(color: Colors.white),
             decoration: _input(
-              'Por que isso importa',
+              'Por que essa missão importa',
               'O que muda na sua vida quando isso andar?',
             ),
           ),
@@ -452,14 +453,14 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
                 child: FilledButton.icon(
                   onPressed: _generateSuggestion,
                   icon: const Icon(Icons.auto_awesome_rounded),
-                  label: const Text('Gerar etapas'),
+                  label: const Text('Gerar fases'),
                 ),
               ),
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: _addMilestone,
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Etapa'),
+                label: const Text('Fase'),
               ),
             ],
           ),
@@ -473,7 +474,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
                 border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
               child: const Text(
-                'Ainda não existem etapas. Você pode gerar um plano automático ou criar manualmente.',
+                'Ainda não existem fases. Gere uma base automática ou crie manualmente.',
                 style: TextStyle(color: Colors.white70),
               ),
             ),
@@ -497,7 +498,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             child: FilledButton.icon(
               onPressed: _save,
               icon: const Icon(Icons.flag_rounded),
-              label: const Text('Salvar objetivo'),
+              label: const Text('Salvar missão'),
             ),
           ),
         ],
@@ -565,7 +566,7 @@ class _MilestoneEditorCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Etapa ${index + 1}',
+                  'Fase ${index + 1}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
@@ -582,7 +583,7 @@ class _MilestoneEditorCard extends StatelessWidget {
           TextFormField(
             initialValue: draft.title,
             style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(labelText: 'Nome da etapa'),
+            decoration: const InputDecoration(labelText: 'Nome da fase'),
             onChanged: (value) {
               draft.title = value;
               onChanged();
@@ -611,7 +612,7 @@ class _MilestoneEditorCard extends StatelessWidget {
                       initialValue: draft.actions[actionIndex],
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: 'Próxima ação ${actionIndex + 1}',
+                        labelText: 'Próxima jogada ${actionIndex + 1}',
                       ),
                       onChanged: (value) {
                         draft.actions[actionIndex] = value;
@@ -639,7 +640,7 @@ class _MilestoneEditorCard extends StatelessWidget {
                 onChanged();
               },
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Adicionar ação'),
+              label: const Text('Adicionar jogada'),
             ),
           ),
         ],

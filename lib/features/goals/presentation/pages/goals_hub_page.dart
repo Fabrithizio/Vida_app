@@ -2,10 +2,10 @@
 // FILE: lib/features/goals/presentation/pages/goals_hub_page.dart
 //
 // O que este arquivo faz:
-// - Transforma a área de metas em uma central mais gamificada
-// - Dá sensação de progresso com linguagem de missão, fase e próxima jogada
-// - Mostra cards com energia visual sem perder utilidade real
-// - Continua usando a nova estrutura de dados e persistência já criada
+// - Central gamificada de missões da vida
+// - Dá sensação de progresso com XP, fases, energia e próxima jogada
+// - Mostra quais missões estão aquecendo, travadas ou quase concluídas
+// - Continua usando a estrutura de dados e persistência já criada
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -87,6 +87,12 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
       )
       .length;
 
+  int get _stuckCount => _goals
+      .where(
+        (item) => item.progress < 0.15 && item.status != GoalStatus.completed,
+      )
+      .length;
+
   double get _avgProgress {
     if (_goals.isEmpty) return 0;
     final total = _goals.fold<double>(0, (sum, item) => sum + item.progress);
@@ -95,16 +101,19 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
 
   int _xpForGoal(GoalSummaryModel goal) {
     final base = (goal.progress * 100).round();
-    return goal.status == GoalStatus.completed ? base + 80 : base + 15;
+    return goal.status == GoalStatus.completed ? base + 100 : base + 20;
   }
 
   int get _totalXp =>
       _goals.fold<int>(0, (sum, item) => sum + _xpForGoal(item));
 
+  int get _playerLevel => (_totalXp ~/ 120) + 1;
+
   String get _playerMood {
     if (_goals.isEmpty) return 'Modo preparação';
     if (_completedCount >= 3) return 'Modo imparável';
     if (_almostThereCount >= 2) return 'Quase virando fase';
+    if (_stuckCount >= 2) return 'Pedindo destrave';
     if (_activeCount >= 3) return 'Missões em andamento';
     return 'Ritmo crescente';
   }
@@ -150,7 +159,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
     if (progress >= 0.85) return 'Chefão quase vencido';
     if (progress >= 0.60) return 'Fase bem encaminhada';
     if (progress >= 0.30) return 'Saindo do zero';
-    return 'Início da jornada';
+    return 'Primeiros passos';
   }
 
   IconData _iconForKind(GoalKind kind) {
@@ -163,6 +172,20 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
         return Icons.shield_moon_rounded;
       case GoalKind.habit:
         return Icons.bolt_rounded;
+    }
+  }
+
+  Color _accentForGoal(GoalSummaryModel goal) {
+    if (goal.status == GoalStatus.completed) return const Color(0xFF22C55E);
+    switch (goal.kind) {
+      case GoalKind.objective:
+        return const Color(0xFFA855F7);
+      case GoalKind.project:
+        return const Color(0xFF3B82F6);
+      case GoalKind.problem:
+        return const Color(0xFFF97316);
+      case GoalKind.habit:
+        return const Color(0xFF22C55E);
     }
   }
 
@@ -232,11 +255,11 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            const Expanded(
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
+                                  const Text(
                                     'Painel de evolução',
                                     style: TextStyle(
                                       color: Colors.white,
@@ -244,12 +267,12 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                                       fontSize: 20,
                                     ),
                                   ),
-                                  SizedBox(height: 4),
+                                  const SizedBox(height: 4),
                                   Text(
-                                    'Menos meta largada. Mais fase concluída.',
-                                    style: TextStyle(
+                                    'Nível $_playerLevel • $_playerMood',
+                                    style: const TextStyle(
                                       color: Color(0xD9FFFFFF),
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ],
@@ -268,29 +291,15 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                               color: Colors.white.withValues(alpha: 0.07),
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _playerMood,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _goals.isEmpty
-                                    ? 'Crie sua primeira missão para começar a sentir progresso real.'
-                                    : 'Você está com $_activeCount missões ativas, $_completedCount concluídas e média de $avgPercent% de avanço.',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.78),
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            _goals.isEmpty
+                                ? 'Crie sua primeira missão para sair do menu e entrar no jogo.'
+                                : 'Você está com $_activeCount missões ativas, $_completedCount concluídas, $_almostThereCount quase virando fase e média de $avgPercent% de avanço.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.80),
+                              fontWeight: FontWeight.w600,
+                              height: 1.35,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -306,9 +315,9 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _heroMetric(
-                                label: 'Ativas',
-                                value: '$_activeCount',
-                                icon: Icons.flash_on_rounded,
+                                label: 'Nível',
+                                value: '$_playerLevel',
+                                icon: Icons.workspace_premium_rounded,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -390,6 +399,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                           completed: goal.status == GoalStatus.completed,
                           xp: _xpForGoal(goal),
                           icon: _iconForKind(goal.kind),
+                          accent: _accentForGoal(goal),
                           statusText: _progressLabel(
                             goal.progress,
                             goal.status == GoalStatus.completed,
@@ -454,6 +464,7 @@ class _GoalSummaryCard extends StatelessWidget {
     required this.completed,
     required this.xp,
     required this.icon,
+    required this.accent,
     required this.statusText,
     required this.onTap,
     required this.onDelete,
@@ -467,15 +478,13 @@ class _GoalSummaryCard extends StatelessWidget {
   final bool completed;
   final int xp;
   final IconData icon;
+  final Color accent;
   final String statusText;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final accent = completed
-        ? const Color(0xFF22C55E)
-        : const Color(0xFFA855F7);
     final percent = (progress * 100).toStringAsFixed(0);
 
     return InkWell(

@@ -138,15 +138,16 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
   }
 
   Color _accentForStatus() {
-    switch (_plan.status) {
-      case GoalStatus.active:
+    if (_plan.isCompleted) return const Color(0xFF22C55E);
+    switch (_plan.kind) {
+      case GoalKind.objective:
         return const Color(0xFFA855F7);
-      case GoalStatus.paused:
-        return const Color(0xFFF59E0B);
-      case GoalStatus.completed:
+      case GoalKind.project:
+        return const Color(0xFF3B82F6);
+      case GoalKind.problem:
+        return const Color(0xFFF97316);
+      case GoalKind.habit:
         return const Color(0xFF22C55E);
-      case GoalStatus.archived:
-        return const Color(0xFF64748B);
     }
   }
 
