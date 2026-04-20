@@ -6,12 +6,10 @@
 // O que este arquivo faz:
 // - Mostra um painel vivo do módulo fitness dentro do Meu Dia
 // - Mantém os registros de alimentação, treino, água e sono já existentes
-// - Adiciona leitura visual de continuidade para dar ânimo ao usuário
-// - Exibe um guia alimentar simples, sem radicalismo, com cara do app
-// - Traz tabelas rápidas de refeições e calorias aproximadas por item
+// - Deixa o peso diário mais visível e fácil de atualizar
+// - Exibe gráficos mais organizados e explicativos
+// - Agrupa refeições por faixa de calorias totais para ficar mais útil
 // ============================================================================
-
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -32,7 +30,10 @@ class _BodyCarePageState extends State<BodyCarePage> {
   late final BodyCareService _service;
 
   bool _isLoading = true;
+  bool _savingWeight = false;
   DateTime _selectedDay = _dayOnly(DateTime.now());
+
+  final TextEditingController _weightController = TextEditingController();
 
   BodyCareProfile _profile = const BodyCareProfile();
   BodyCareEntry _entry = const BodyCareEntry();
@@ -48,6 +49,12 @@ class _BodyCarePageState extends State<BodyCarePage> {
     _loadAll();
   }
 
+  @override
+  void dispose() {
+    _weightController.dispose();
+    super.dispose();
+  }
+
   static DateTime _dayOnly(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
@@ -59,7 +66,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
     final overview = await _service.loadOverview();
     final nutrition = await _service.loadNutritionGuide();
     final week = await _service.last7Days(_selectedDay);
-    final recent = await _service.loadRecentEntries(days: 14);
+    final recent = await _service.loadRecentEntries(days: 21);
 
     if (!mounted) return;
     setState(() {
@@ -69,6 +76,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
       _nutrition = nutrition;
       _week = week;
       _recent = recent;
+      _weightController.text = entry.weightKg == null
+          ? ''
+          : entry.weightKg!.toStringAsFixed(1).replaceAll('.', ',');
       _isLoading = false;
     });
   }
@@ -94,6 +104,15 @@ class _BodyCarePageState extends State<BodyCarePage> {
     await _loadAll();
   }
 
+  Future<void> _saveInlineWeight() async {
+    setState(() => _savingWeight = true);
+    final value = _parseDouble(_weightController.text);
+    await _service.saveWeight(_selectedDay, value <= 0 ? null : value);
+    if (!mounted) return;
+    setState(() => _savingWeight = false);
+    await _loadAll();
+  }
+
   Future<void> _openProfileSheet() async {
     final heightController = TextEditingController(
       text: _profile.heightCm == null
@@ -112,16 +131,16 @@ class _BodyCarePageState extends State<BodyCarePage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
             return SafeArea(
               top: false,
               child: Container(
                 margin: const EdgeInsets.fromLTRB(12, 60, 12, 12),
                 padding: EdgeInsets.fromLTRB(18, 14, 18, 18 + bottomInset),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF071112),
+                  color: const Color(0xFF08101E),
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(color: Colors.white.withOpacity(0.06)),
                 ),
@@ -231,11 +250,6 @@ class _BodyCarePageState extends State<BodyCarePage> {
   }
 
   Future<void> _openWeightNoteSheet() async {
-    final weightController = TextEditingController(
-      text: _entry.weightKg == null
-          ? ''
-          : _entry.weightKg!.toStringAsFixed(1).replaceAll('.', ','),
-    );
     final noteController = TextEditingController(text: _entry.note ?? '');
 
     await showModalBottomSheet<void>(
@@ -250,7 +264,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
             margin: const EdgeInsets.fromLTRB(12, 60, 12, 12),
             padding: EdgeInsets.fromLTRB(18, 14, 18, 18 + bottomInset),
             decoration: BoxDecoration(
-              color: const Color(0xFF071112),
+              color: const Color(0xFF08101E),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(color: Colors.white.withOpacity(0.06)),
             ),
@@ -270,30 +284,18 @@ class _BodyCarePageState extends State<BodyCarePage> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'Peso e observações',
+                    'Observações do dia',
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Registre o peso do dia e alguma observação importante.',
+                    'Use isso para notar retenção, treino forte, sono ruim ou qualquer detalhe importante.',
                     style: TextStyle(color: Colors.white.withOpacity(0.70)),
                   ),
                   const SizedBox(height: 18),
                   TextField(
-                    controller: weightController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Peso do dia',
-                      suffixText: 'kg',
-                      prefixIcon: Icon(Icons.monitor_weight_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
                     controller: noteController,
-                    maxLines: 4,
+                    maxLines: 5,
                     decoration: const InputDecoration(
                       labelText: 'Observação',
                       prefixIcon: Icon(Icons.notes_rounded),
@@ -305,10 +307,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () async {
-                            await _saveQuickField(
-                              clearNote: true,
-                              weight: null,
-                            );
+                            await _saveQuickField(clearNote: true);
                             if (!mounted) return;
                             Navigator.of(context).pop();
                           },
@@ -320,7 +319,6 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         child: FilledButton(
                           onPressed: () async {
                             await _saveQuickField(
-                              weight: _parseDouble(weightController.text),
                               note: noteController.text.trim(),
                             );
                             if (!mounted) return;
@@ -363,7 +361,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
   String _metricLabel(double? value, {String suffix = ''}) {
     if (value == null) return '—';
     final decimals = suffix == 'kg' || suffix == 'cm' ? 1 : 0;
-    return '${value.toStringAsFixed(decimals)}$suffix';
+    return '${value.toStringAsFixed(decimals).replaceAll('.', ',')}$suffix';
   }
 
   Future<void> _saveScore(
@@ -376,10 +374,10 @@ class _BodyCarePageState extends State<BodyCarePage> {
 
   Color _heroAccent() {
     final score = _entry.average ?? _overview.weeklyAverageTraining ?? 0;
-    if (score >= 3.6) return const Color(0xFF9CFF3F);
-    if (score >= 2.6) return const Color(0xFF39D0FF);
-    if (score >= 1.6) return const Color(0xFFFFB020);
-    return const Color(0xFF7D5CFF);
+    if (score >= 3.6) return const Color(0xFF7A6BFF);
+    if (score >= 2.6) return const Color(0xFF4AA3FF);
+    if (score >= 1.6) return const Color(0xFF6E79FF);
+    return const Color(0xFF5A50D8);
   }
 
   Widget _buildHero() {
@@ -391,11 +389,11 @@ class _BodyCarePageState extends State<BodyCarePage> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [const Color(0xFF39205B), accent.withOpacity(0.85)],
+          colors: [const Color(0xFF2A2268), const Color(0xFF244A94), accent],
         ),
         boxShadow: [
           BoxShadow(
-            color: accent.withOpacity(0.20),
+            color: const Color(0xFF5F79FF).withOpacity(0.22),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -431,7 +429,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     Text(
                       _overview.goalLabel,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.72),
+                        color: Colors.white.withOpacity(0.76),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -440,7 +438,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
               ),
               IconButton(
                 onPressed: _openProfileSheet,
-                icon: const Icon(Icons.edit_outlined),
+                icon: const Icon(Icons.tune_rounded),
               ),
             ],
           ),
@@ -448,7 +446,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
           Text(
             _entry.statusLabel,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.72),
+              color: Colors.white.withOpacity(0.76),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -468,7 +466,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 child: _MetricCard(
                   title: 'Foco do dia',
                   value: _scoreLabel(_entry.average),
-                  accent: const Color(0xFF9CFF3F),
+                  accent: const Color(0xFFD2E0FF),
                 ),
               ),
               const SizedBox(width: 10),
@@ -476,7 +474,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 child: _MetricCard(
                   title: 'Sequência',
                   value: '${_overview.currentStreak}d',
-                  accent: const Color(0xFF39D0FF),
+                  accent: const Color(0xFFB7FFEE),
                 ),
               ),
             ],
@@ -491,7 +489,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: const Color(0xFF071112),
+        color: const Color(0xFF08101E),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
@@ -532,80 +530,123 @@ class _BodyCarePageState extends State<BodyCarePage> {
     );
   }
 
-  double _weekStartScore() {
-    for (final point in _week) {
-      if (point.score != null) return point.score!;
-    }
-    return 0;
-  }
-
-  double _weekEndScore() {
-    for (final point in _week.reversed) {
-      if (point.score != null) return point.score!;
-    }
-    return 0;
-  }
-
-  String _momentumMessage() {
-    if (_week.isEmpty)
-      return 'Comece registrando seus dias para ver sua linha subir.';
-    final diff = _weekEndScore() - _weekStartScore();
-    if (diff >= 0.7) {
-      return 'Boa! Sua semana está subindo. Continue empilhando dias úteis.';
-    }
-    if (diff >= 0.1) {
-      return 'Você está melhorando aos poucos. O segredo agora é não quebrar o ritmo.';
-    }
-    if (diff > -0.4) {
-      return 'A semana oscilou, mas ainda dá para fechar bem os próximos dias.';
-    }
-    return 'Seu gráfico caiu um pouco. Volte para o básico: água, comida, sono e algum movimento.';
-  }
-
-  Widget _buildMomentumSection() {
-    final best = _week
-        .map((e) => e.score ?? 0)
-        .fold<double>(0.0, (a, b) => math.max(a, b));
-    final focusedDays = _week.where((e) => (e.score ?? 0) >= 3).length;
-
+  Widget _buildWeightSection() {
     return _SectionCard(
-      title: 'Ritmo da semana',
-      subtitle: 'Uma linha mais viva para mostrar se você está engrenando.',
+      title: 'Peso do dia',
+      subtitle:
+          'Deixe o peso visível como água e treino. Assim ele entra de forma clara nos gráficos, junto da faixa ideal calculada.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          BodyProgressSection(
-            week: _week,
-            recent: _recent,
-            targetWeightKg: _profile.targetWeightKg,
-            latestWeightKg: _overview.latestWeightKg,
-            weeklyAverageFood: _overview.weeklyAverageFood,
-            weeklyAverageTraining: _overview.weeklyAverageTraining,
-            referenceWeightLabel: _overview.referenceWeightLabel,
-            goalLabel: _overview.goalLabel,
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: _MetricCard(
-                  title: 'Melhor nota',
-                  value: best <= 0 ? '—' : best.toStringAsFixed(1),
-                  accent: const Color(0xFF9CFF3F),
+                child: TextField(
+                  controller: _weightController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Peso de hoje',
+                    suffixText: 'kg',
+                    prefixIcon: Icon(Icons.monitor_weight_outlined),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: _MetricCard(
-                  title: 'Dias fortes',
-                  value: '$focusedDays/7',
-                  accent: const Color(0xFF39D0FF),
+              SizedBox(
+                height: 54,
+                child: FilledButton.icon(
+                  onPressed: _savingWeight ? null : _saveInlineWeight,
+                  icon: _savingWeight
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: const Text('Salvar'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          _InfoBlock(title: 'Continua assim', body: _momentumMessage()),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: const Color(0xFF111A2A),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFF74A6FF),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'O melhor horário para se pesar é pela manhã, logo após acordar, em jejum e após ir ao banheiro. Assim a pesagem fica mais precisa e acompanha melhor a evolução.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.76),
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  title: 'Faixa ideal',
+                  value: _overview.referenceWeightLabel,
+                  accent: const Color(0xFF88F089),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  title: 'Objetivo atual',
+                  value: _overview.goalLabel,
+                  accent: const Color(0xFF8E82FF),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _InfoBlock(
+            title: 'Como essa faixa é calculada',
+            body: _overview.referenceWeightHint,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  title: 'Último peso',
+                  value: _metricLabel(_overview.latestWeightKg, suffix: 'kg'),
+                  accent: const Color(0xFF78B5FF),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  title: 'Variação',
+                  value: _overview.weightDeltaKg == null
+                      ? '—'
+                      : '${_overview.weightDeltaKg! > 0 ? '+' : ''}${_overview.weightDeltaKg!.toStringAsFixed(1).replaceAll('.', ',')}kg',
+                  accent: const Color(0xFF9EC2FF),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -629,24 +670,24 @@ class _BodyCarePageState extends State<BodyCarePage> {
               _MetricCard(
                 title: 'Peso atual',
                 value: _metricLabel(_overview.latestWeightKg, suffix: 'kg'),
-                accent: const Color(0xFF39D0FF),
+                accent: const Color(0xFF78B5FF),
               ),
               _MetricCard(
                 title: 'IMC',
                 value: _overview.bmi == null
                     ? _overview.bmiLabel
                     : '${_overview.bmi!.toStringAsFixed(1)} • ${_overview.bmiLabel}',
-                accent: const Color(0xFFFFB020),
+                accent: const Color(0xFFF9C66B),
               ),
               _MetricCard(
                 title: 'Comida média',
                 value: _scoreLabel(_overview.weeklyAverageFood),
-                accent: const Color(0xFF9CFF3F),
+                accent: const Color(0xFF88F089),
               ),
               _MetricCard(
                 title: 'Treino médio',
                 value: _scoreLabel(_overview.weeklyAverageTraining),
-                accent: const Color(0xFF6C63FF),
+                accent: const Color(0xFF8E82FF),
               ),
             ],
           ),
@@ -715,6 +756,141 @@ class _BodyCarePageState extends State<BodyCarePage> {
     );
   }
 
+  List<BodyCareMealSuggestion> get _extraMeals {
+    return const [
+      BodyCareMealSuggestion(
+        title: 'Prato leve',
+        subtitle: 'Faixa leve • cerca de 320 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Salada grande',
+            portion: '1 prato',
+            calories: 55,
+          ),
+          BodyCareMealItem(
+            name: 'Frango grelhado',
+            portion: '100 g',
+            calories: 165,
+          ),
+          BodyCareMealItem(
+            name: 'Batata inglesa',
+            portion: '100 g',
+            calories: 87,
+          ),
+        ],
+      ),
+      BodyCareMealSuggestion(
+        title: 'Prato moderado',
+        subtitle: 'Faixa moderada • cerca de 470 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Arroz cozido',
+            portion: '120 g',
+            calories: 156,
+          ),
+          BodyCareMealItem(
+            name: 'Feijão cozido',
+            portion: '100 g',
+            calories: 76,
+          ),
+          BodyCareMealItem(
+            name: 'Patinho moído',
+            portion: '120 g',
+            calories: 190,
+          ),
+          BodyCareMealItem(name: 'Legumes', portion: '1 porção', calories: 48),
+        ],
+      ),
+      BodyCareMealSuggestion(
+        title: 'Prato reforçado',
+        subtitle: 'Faixa alta • cerca de 690 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Macarrão cozido',
+            portion: '180 g',
+            calories: 282,
+          ),
+          BodyCareMealItem(
+            name: 'Frango grelhado',
+            portion: '150 g',
+            calories: 248,
+          ),
+          BodyCareMealItem(
+            name: 'Azeite',
+            portion: '1 colher sopa',
+            calories: 90,
+          ),
+          BodyCareMealItem(name: 'Legumes', portion: '1 porção', calories: 70),
+        ],
+      ),
+      BodyCareMealSuggestion(
+        title: 'Lanche proteico',
+        subtitle: 'Faixa moderada • cerca de 410 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Iogurte natural',
+            portion: '170 g',
+            calories: 110,
+          ),
+          BodyCareMealItem(name: 'Aveia', portion: '40 g', calories: 152),
+          BodyCareMealItem(name: 'Banana', portion: '1 un', calories: 90),
+          BodyCareMealItem(
+            name: 'Pasta de amendoim',
+            portion: '10 g',
+            calories: 58,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<BodyCareFoodTableItem> get _extraFoodTable {
+    return const [
+      BodyCareFoodTableItem(
+        group: 'Proteína',
+        item: 'Patinho moído',
+        portion: '100 g',
+        calories: 160,
+        note: 'Boa base para prato simples.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Proteína',
+        item: 'Tilápia grelhada',
+        portion: '100 g',
+        calories: 129,
+        note: 'Leve e fácil de combinar.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Carboidrato',
+        item: 'Macarrão cozido',
+        portion: '100 g',
+        calories: 157,
+        note: 'Energia prática para dias de treino.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Carboidrato',
+        item: 'Cuscuz',
+        portion: '100 g',
+        calories: 112,
+        note: 'Base rápida para café ou jantar.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Gordura boa',
+        item: 'Pasta de amendoim',
+        portion: '15 g',
+        calories: 88,
+        note: 'Boa em lanches, mas sem exagero.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Vegetal',
+        item: 'Brócolis cozido',
+        portion: '100 g',
+        calories: 35,
+        note: 'Volume e fibra com poucas calorias.',
+      ),
+    ];
+  }
+
   Widget _buildNutritionSummary() {
     return _SectionCard(
       title: _nutrition.title,
@@ -727,7 +903,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 child: _InfoMetricCard(
                   title: 'Energia',
                   body: _nutrition.energyLabel,
-                  accent: const Color(0xFF9CFF3F),
+                  accent: const Color(0xFF88F089),
                   icon: Icons.local_fire_department_outlined,
                 ),
               ),
@@ -736,7 +912,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 child: _InfoMetricCard(
                   title: 'Água',
                   body: _nutrition.hydrationLabel,
-                  accent: const Color(0xFF39D0FF),
+                  accent: const Color(0xFF78B5FF),
                   icon: Icons.water_drop_outlined,
                 ),
               ),
@@ -746,7 +922,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
           _InfoMetricCard(
             title: 'Movimento',
             body: _nutrition.activityLabel,
-            accent: const Color(0xFF6C63FF),
+            accent: const Color(0xFF8E82FF),
             icon: Icons.directions_run_rounded,
           ),
           const SizedBox(height: 12),
@@ -809,7 +985,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     child: Icon(
                       Icons.check_circle_outline_rounded,
                       size: 16,
-                      color: Color(0xFF9CFF3F),
+                      color: Color(0xFF88F089),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -831,80 +1007,129 @@ class _BodyCarePageState extends State<BodyCarePage> {
     );
   }
 
+  Map<String, List<BodyCareMealSuggestion>> _mealBuckets() {
+    final allMeals = <BodyCareMealSuggestion>[
+      ..._nutrition.meals,
+      ..._extraMeals,
+    ];
+
+    final buckets = <String, List<BodyCareMealSuggestion>>{
+      'Até 350 kcal': [],
+      '351–550 kcal': [],
+      'Acima de 550 kcal': [],
+    };
+
+    for (final meal in allMeals) {
+      final kcal = meal.totalCalories;
+      if (kcal <= 350) {
+        buckets['Até 350 kcal']!.add(meal);
+      } else if (kcal <= 550) {
+        buckets['351–550 kcal']!.add(meal);
+      } else {
+        buckets['Acima de 550 kcal']!.add(meal);
+      }
+    }
+    return buckets;
+  }
+
   Widget _buildMealSuggestions() {
+    final buckets = _mealBuckets();
+
     return _SectionCard(
-      title: 'Refeições base',
-      subtitle: 'Modelos simples com calorias aproximadas por conjunto.',
+      title: 'Refeições por faixa de calorias',
+      subtitle: 'Agora os pratos ficam separados por nível de calorias totais.',
       child: Column(
-        children: _nutrition.meals.map((meal) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              color: const Color(0xFF111A1A),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
-            ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: buckets.entries.map((entry) {
+          if (entry.value.isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            meal.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            meal.subtitle,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.68),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    _KcalPill(value: '${meal.totalCalories} kcal'),
-                  ],
+                Text(
+                  entry.key,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                ...meal.items.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
+                const SizedBox(height: 10),
+                ...entry.value.map((meal) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      color: const Color(0xFF10192A),
+                      border: Border.all(color: Colors.white.withOpacity(0.05)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            item.name,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    meal.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    meal.subtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.68),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            _KcalPill(value: '${meal.totalCalories} kcal'),
+                          ],
                         ),
-                        Text(
-                          item.portion,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.66),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          '${item.calories} kcal',
-                          style: const TextStyle(
-                            color: Color(0xFF39D0FF),
-                            fontWeight: FontWeight.w800,
+                        const SizedBox(height: 12),
+                        ...meal.items.map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  item.portion,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.66),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  '${item.calories} kcal',
+                                  style: const TextStyle(
+                                    color: Color(0xFF78B5FF),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
+                  );
+                }),
               ],
             ),
           );
@@ -914,9 +1139,15 @@ class _BodyCarePageState extends State<BodyCarePage> {
   }
 
   Widget _buildFoodTable() {
+    final rows = <BodyCareFoodTableItem>[
+      ..._nutrition.foodTable,
+      ..._extraFoodTable,
+    ];
+
     return _SectionCard(
       title: 'Tabela rápida de alimentos',
-      subtitle: 'Valores aproximados por item para ajudar noção e organização.',
+      subtitle:
+          'Valores aproximados por item para ajudar na noção e na organização.',
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
@@ -938,13 +1169,13 @@ class _BodyCarePageState extends State<BodyCarePage> {
             DataColumn(label: Text('Porção')),
             DataColumn(label: Text('Kcal')),
           ],
-          rows: _nutrition.foodTable.map((item) {
+          rows: rows.map((item) {
             return DataRow(
               cells: [
                 DataCell(Text(item.group)),
                 DataCell(
                   SizedBox(
-                    width: 150,
+                    width: 160,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -972,7 +1203,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                   Text(
                     '${item.calories}',
                     style: const TextStyle(
-                      color: Color(0xFF9CFF3F),
+                      color: Color(0xFF88F089),
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -1041,7 +1272,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  color: const Color(0xFF111A1A),
+                  color: const Color(0xFF10192A),
                   border: Border.all(color: Colors.white.withOpacity(0.05)),
                 ),
                 child: Column(
@@ -1076,7 +1307,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         if (entry.weightKg != null)
                           _TinyTag(
                             label:
-                                'Peso ${entry.weightKg!.toStringAsFixed(1)}kg',
+                                'Peso ${entry.weightKg!.toStringAsFixed(1).replaceAll('.', ',')}kg',
                           ),
                       ],
                     ),
@@ -1104,7 +1335,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
         actions: [
           IconButton(
             onPressed: _openWeightNoteSheet,
-            icon: const Icon(Icons.monitor_weight_outlined),
+            icon: const Icon(Icons.notes_rounded),
           ),
           IconButton(
             onPressed: _openProfileSheet,
@@ -1123,7 +1354,18 @@ class _BodyCarePageState extends State<BodyCarePage> {
                   const SizedBox(height: 14),
                   _buildDaySelector(),
                   const SizedBox(height: 14),
-                  _buildMomentumSection(),
+                  _buildWeightSection(),
+                  const SizedBox(height: 14),
+                  BodyProgressSection(
+                    week: _week,
+                    recent: _recent,
+                    targetWeightKg: _profile.targetWeightKg,
+                    latestWeightKg: _overview.latestWeightKg,
+                    weeklyAverageFood: _overview.weeklyAverageFood,
+                    weeklyAverageTraining: _overview.weeklyAverageTraining,
+                    referenceWeightLabel: _overview.referenceWeightLabel,
+                    goalLabel: _overview.goalLabel,
+                  ),
                   const SizedBox(height: 14),
                   _buildQuickOverview(),
                   const SizedBox(height: 14),
@@ -1131,7 +1373,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     title: 'Alimentação',
                     subtitle: 'Como seu corpo foi alimentado nesse dia.',
                     icon: Icons.restaurant_outlined,
-                    accent: const Color(0xFF9CFF3F),
+                    accent: const Color(0xFF88F089),
                     value: _entry.food,
                     options: BodyCareService.foodOptions,
                     onSave: (score) => _saveScore(score, _service.saveFood),
@@ -1141,7 +1383,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     title: 'Movimento / treino',
                     subtitle: 'O quanto você se mexeu ou treinou.',
                     icon: Icons.fitness_center_rounded,
-                    accent: const Color(0xFF7D5CFF),
+                    accent: const Color(0xFF8E82FF),
                     value: _entry.training,
                     options: BodyCareService.trainingOptions,
                     onSave: (score) => _saveScore(score, _service.saveTraining),
@@ -1151,7 +1393,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     title: 'Água',
                     subtitle: 'Seu nível de hidratação no dia.',
                     icon: Icons.water_drop_outlined,
-                    accent: const Color(0xFF39D0FF),
+                    accent: const Color(0xFF78B5FF),
                     value: _entry.water,
                     options: BodyCareService.waterOptions,
                     onSave: (score) => _saveScore(score, _service.saveWater),
@@ -1161,7 +1403,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     title: 'Sono',
                     subtitle: 'Como seu corpo descansou.',
                     icon: Icons.bedtime_outlined,
-                    accent: const Color(0xFFFFB020),
+                    accent: const Color(0xFFF9C66B),
                     value: _entry.sleep,
                     options: BodyCareService.sleepOptions,
                     onSave: (score) => _saveScore(score, _service.saveSleep),
@@ -1221,7 +1463,7 @@ class _SectionCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        color: const Color(0xFF071112),
+        color: const Color(0xFF08101E),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
@@ -1310,7 +1552,7 @@ class _InfoMetricCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: const Color(0xFF111A1A),
+        color: const Color(0xFF10192A),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
@@ -1363,7 +1605,7 @@ class _InfoBlock extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: const Color(0xFF111A1A),
+        color: const Color(0xFF10192A),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
@@ -1418,13 +1660,13 @@ class _KcalPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: const Color(0xFF39D0FF).withOpacity(0.14),
-        border: Border.all(color: const Color(0xFF39D0FF).withOpacity(0.25)),
+        color: const Color(0xFF78B5FF).withOpacity(0.14),
+        border: Border.all(color: const Color(0xFF78B5FF).withOpacity(0.25)),
       ),
       child: Text(
         value,
         style: const TextStyle(
-          color: Color(0xFF39D0FF),
+          color: Color(0xFF78B5FF),
           fontWeight: FontWeight.w900,
         ),
       ),
@@ -1445,7 +1687,7 @@ class _TipRow extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 4),
-          child: Icon(icon, size: 16, color: const Color(0xFF9CFF3F)),
+          child: Icon(icon, size: 16, color: const Color(0xFF88F089)),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1481,143 +1723,5 @@ class _TinyTag extends StatelessWidget {
         style: TextStyle(color: Colors.white.withOpacity(0.74)),
       ),
     );
-  }
-}
-
-class _MomentumChart extends StatelessWidget {
-  const _MomentumChart({required this.points});
-
-  final List<BodyCareWeekPoint> points;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-        child: Column(
-          children: [
-            Expanded(
-              child: CustomPaint(
-                painter: _MomentumPainter(points: points),
-                child: Container(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: points.map((point) {
-                final day = point.day.day.toString().padLeft(2, '0');
-                return Expanded(
-                  child: Text(
-                    day,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.58),
-                      fontSize: 11,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MomentumPainter extends CustomPainter {
-  const _MomentumPainter({required this.points});
-
-  final List<BodyCareWeekPoint> points;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.05)
-      ..strokeWidth = 1;
-
-    for (var i = 1; i <= 4; i++) {
-      final y = size.height * (i / 4);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    if (points.isEmpty) return;
-
-    final usable = points.map((e) => e.score ?? 0).toList();
-    final stepX = points.length == 1
-        ? size.width
-        : size.width / (points.length - 1);
-
-    final linePath = Path();
-    final fillPath = Path();
-
-    Offset pointAt(int index) {
-      final score = usable[index].clamp(0.0, 4.0);
-      final ratio = score / 4.0;
-      final x = stepX * index;
-      final y = size.height - (size.height * ratio);
-      return Offset(x, y);
-    }
-
-    final start = pointAt(0);
-    linePath.moveTo(start.dx, start.dy);
-    fillPath.moveTo(start.dx, size.height);
-    fillPath.lineTo(start.dx, start.dy);
-
-    for (var i = 1; i < points.length; i++) {
-      final p = pointAt(i);
-      linePath.lineTo(p.dx, p.dy);
-      fillPath.lineTo(p.dx, p.dy);
-    }
-
-    final end = pointAt(points.length - 1);
-    fillPath.lineTo(end.dx, size.height);
-    fillPath.close();
-
-    final fillPaint = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0x5535D26F), Color(0x117D5CFF)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    final linePaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFF35D26F), Color(0xFF7D5CFF)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    canvas.drawPath(fillPath, fillPaint);
-    canvas.drawPath(linePath, linePaint);
-
-    for (var i = 0; i < points.length; i++) {
-      final p = pointAt(i);
-      final value = usable[i];
-      final dotPaint = Paint()
-        ..color = value >= 3
-            ? const Color(0xFF9CFF3F)
-            : const Color(0xFF39D0FF);
-      canvas.drawCircle(p, 4, dotPaint);
-      canvas.drawCircle(
-        p,
-        7,
-        Paint()
-          ..color = dotPaint.color.withOpacity(0.16)
-          ..style = PaintingStyle.fill,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _MomentumPainter oldDelegate) {
-    return oldDelegate.points != points;
   }
 }

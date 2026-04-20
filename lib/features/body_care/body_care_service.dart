@@ -1159,10 +1159,11 @@ class BodyCareService {
 
   List<BodyCareMealSuggestion> _mealSuggestions({required String goal}) {
     final lower = goal.toLowerCase();
-    final defaultMeals = <BodyCareMealSuggestion>[
+
+    final meals = <BodyCareMealSuggestion>[
       const BodyCareMealSuggestion(
         title: 'Café da manhã base',
-        subtitle: 'Energia + proteína para começar melhor',
+        subtitle: 'Faixa leve • cerca de 386 kcal',
         items: [
           BodyCareMealItem(name: '2 ovos', portion: '2 un', calories: 156),
           BodyCareMealItem(
@@ -1175,7 +1176,7 @@ class BodyCareService {
       ),
       const BodyCareMealSuggestion(
         title: 'Almoço simples',
-        subtitle: 'Prato base fácil de repetir',
+        subtitle: 'Faixa moderada • cerca de 475 kcal',
         items: [
           BodyCareMealItem(
             name: 'Arroz cozido',
@@ -1201,7 +1202,7 @@ class BodyCareService {
       ),
       const BodyCareMealSuggestion(
         title: 'Lanche da tarde',
-        subtitle: 'Ajuda a segurar o ritmo',
+        subtitle: 'Faixa leve • cerca de 294 kcal',
         items: [
           BodyCareMealItem(
             name: 'Iogurte natural',
@@ -1214,7 +1215,7 @@ class BodyCareService {
       ),
       const BodyCareMealSuggestion(
         title: 'Jantar enxuto',
-        subtitle: 'Leve, mas com sustento',
+        subtitle: 'Faixa moderada • cerca de 399 kcal',
         items: [
           BodyCareMealItem(
             name: 'Batata-doce',
@@ -1229,13 +1230,96 @@ class BodyCareService {
           BodyCareMealItem(name: 'Legumes', portion: '1 prato', calories: 60),
         ],
       ),
+      const BodyCareMealSuggestion(
+        title: 'Prato leve',
+        subtitle: 'Faixa leve • cerca de 320 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Salada grande',
+            portion: '1 prato',
+            calories: 55,
+          ),
+          BodyCareMealItem(
+            name: 'Frango grelhado',
+            portion: '100 g',
+            calories: 165,
+          ),
+          BodyCareMealItem(
+            name: 'Batata inglesa',
+            portion: '100 g',
+            calories: 100,
+          ),
+        ],
+      ),
+      const BodyCareMealSuggestion(
+        title: 'Prato moderado',
+        subtitle: 'Faixa moderada • cerca de 470 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Arroz cozido',
+            portion: '120 g',
+            calories: 156,
+          ),
+          BodyCareMealItem(
+            name: 'Feijão cozido',
+            portion: '100 g',
+            calories: 76,
+          ),
+          BodyCareMealItem(
+            name: 'Patinho moído',
+            portion: '120 g',
+            calories: 190,
+          ),
+          BodyCareMealItem(name: 'Legumes', portion: '1 porção', calories: 48),
+        ],
+      ),
+      const BodyCareMealSuggestion(
+        title: 'Prato reforçado',
+        subtitle: 'Faixa alta • cerca de 690 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Macarrão cozido',
+            portion: '180 g',
+            calories: 282,
+          ),
+          BodyCareMealItem(
+            name: 'Frango grelhado',
+            portion: '150 g',
+            calories: 248,
+          ),
+          BodyCareMealItem(
+            name: 'Azeite',
+            portion: '1 colher sopa',
+            calories: 90,
+          ),
+          BodyCareMealItem(name: 'Legumes', portion: '1 porção', calories: 70),
+        ],
+      ),
+      const BodyCareMealSuggestion(
+        title: 'Lanche proteico',
+        subtitle: 'Faixa moderada • cerca de 410 kcal',
+        items: [
+          BodyCareMealItem(
+            name: 'Iogurte natural',
+            portion: '170 g',
+            calories: 110,
+          ),
+          BodyCareMealItem(name: 'Aveia', portion: '40 g', calories: 152),
+          BodyCareMealItem(name: 'Banana', portion: '1 un', calories: 90),
+          BodyCareMealItem(
+            name: 'Pasta de amendoim',
+            portion: '10 g',
+            calories: 58,
+          ),
+        ],
+      ),
     ];
 
     if (lower.contains('massa')) {
       return [
         const BodyCareMealSuggestion(
           title: 'Café da manhã reforçado',
-          subtitle: 'Mais sustento para fase de ganho',
+          subtitle: 'Faixa alta • cerca de 684 kcal',
           items: [
             BodyCareMealItem(name: '3 ovos', portion: '3 un', calories: 234),
             BodyCareMealItem(
@@ -1247,7 +1331,7 @@ class BodyCareService {
             BodyCareMealItem(name: 'Banana', portion: '1 un', calories: 90),
           ],
         ),
-        ...defaultMeals.skip(1),
+        ...meals,
       ];
     }
 
@@ -1255,7 +1339,7 @@ class BodyCareService {
       return [
         const BodyCareMealSuggestion(
           title: 'Café da manhã enxuto',
-          subtitle: 'Proteína + fruta + carboidrato simples',
+          subtitle: 'Faixa leve • cerca de 281 kcal',
           items: [
             BodyCareMealItem(name: '2 ovos', portion: '2 un', calories: 156),
             BodyCareMealItem(
@@ -1266,11 +1350,11 @@ class BodyCareService {
             BodyCareMealItem(name: 'Mamão', portion: '1 fatia', calories: 55),
           ],
         ),
-        ...defaultMeals.skip(1),
+        ...meals,
       ];
     }
 
-    return defaultMeals;
+    return meals;
   }
 
   List<BodyCareFoodTableItem> _foodTable() {
@@ -1290,6 +1374,20 @@ class BodyCareService {
         note: 'Base prática para almoço ou jantar.',
       ),
       BodyCareFoodTableItem(
+        group: 'Proteína',
+        item: 'Patinho moído',
+        portion: '100 g',
+        calories: 160,
+        note: 'Boa base para prato simples.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Proteína',
+        item: 'Tilápia grelhada',
+        portion: '100 g',
+        calories: 129,
+        note: 'Leve e fácil de combinar.',
+      ),
+      BodyCareFoodTableItem(
         group: 'Carboidrato',
         item: 'Arroz cozido',
         portion: '100 g',
@@ -1302,6 +1400,20 @@ class BodyCareService {
         portion: '100 g',
         calories: 86,
         note: 'Boa opção para variar do arroz.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Carboidrato',
+        item: 'Macarrão cozido',
+        portion: '100 g',
+        calories: 157,
+        note: 'Energia prática para dias de treino.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Carboidrato',
+        item: 'Cuscuz',
+        portion: '100 g',
+        calories: 112,
+        note: 'Base rápida para café ou jantar.',
       ),
       BodyCareFoodTableItem(
         group: 'Base',
@@ -1344,6 +1456,20 @@ class BodyCareService {
         portion: '1 colher sopa',
         calories: 90,
         note: 'Use com medida, não no olho.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Gordura boa',
+        item: 'Pasta de amendoim',
+        portion: '15 g',
+        calories: 88,
+        note: 'Boa em lanches, mas sem exagero.',
+      ),
+      BodyCareFoodTableItem(
+        group: 'Vegetal',
+        item: 'Brócolis cozido',
+        portion: '100 g',
+        calories: 35,
+        note: 'Volume e fibra com poucas calorias.',
       ),
     ];
   }

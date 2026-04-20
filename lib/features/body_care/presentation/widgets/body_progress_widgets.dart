@@ -8,11 +8,9 @@
 //
 // Como se conecta com o app:
 // - É usado por body_care_page.dart dentro de Meu Dia > Corpo & Saúde.
-// - Lê os registros recentes de peso, alimentação, treino e água já salvos pelo
-//   BodyCareService.
-// - Mantém a identidade roxa do app e troca a leitura antiga por um gráfico de
-//   linhas mais explicativo, com linha ideal adaptada à meta ou à faixa de
-//   referência corporal calculada pelo app.
+// - Lê os registros recentes de peso, alimentação, treino, água e sono já
+//   salvos pelo BodyCareService.
+// - Organiza melhor o gráfico para não ficar um dado por cima do outro.
 // ============================================================================
 
 import 'dart:math' as math;
@@ -43,11 +41,12 @@ class BodyProgressSection extends StatelessWidget {
   final String referenceWeightLabel;
   final String goalLabel;
 
-  static const Color _green = Color(0xFF9CFF3F);
-  static const Color _cyan = Color(0xFF39D0FF);
-  static const Color _purple = Color(0xFF7D5CFF);
-  static const Color _orange = Color(0xFFFFB020);
-  static const Color _pink = Color(0xFFFF74C8);
+  static const Color _green = Color(0xFF88F089);
+  static const Color _cyan = Color(0xFF78B5FF);
+  static const Color _purple = Color(0xFF8E82FF);
+  static const Color _orange = Color(0xFFF9C66B);
+  static const Color _pink = Color(0xFFFF7BC2);
+  static const Color _teal = Color(0xFF63E6D8);
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +61,7 @@ class BodyProgressSection extends StatelessWidget {
     return _SectionShell(
       title: 'Evolução do corpo',
       subtitle:
-          'Agora a leitura é contínua: água, comida, treino, peso e linha ideal no mesmo painel.',
+          'Agora os dados ficam separados, com leitura mais limpa e peso diário entrando de forma clara.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -78,7 +77,10 @@ class BodyProgressSection extends StatelessWidget {
             idealWeight: idealWeight,
             focusedDays: focusedDays,
             idealSourceLabel: _idealSourceLabel(idealWeight),
+            referenceWeightLabel: referenceWeightLabel,
           ),
+          const SizedBox(height: 14),
+          _MetricLegendBoard(days: chartDays),
           const SizedBox(height: 14),
           _MultiMetricLineChart(
             days: chartDays,
@@ -89,6 +91,7 @@ class BodyProgressSection extends StatelessWidget {
             weeklyAverageFood: weeklyAverageFood,
             weeklyAverageTraining: weeklyAverageTraining,
             waterAverage: _averageFromRecent((entry) => entry.water),
+            sleepAverage: _averageFromRecent((entry) => entry.sleep),
             weightAverageScore: _averageWeightScore(chartDays),
           ),
           const SizedBox(height: 12),
@@ -126,7 +129,7 @@ class BodyProgressSection extends StatelessWidget {
   String _idealSourceLabel(double? idealWeight) {
     if (idealWeight == null) return 'Ideal indisponível';
     if (targetWeightKg != null && targetWeightKg! > 0) return 'Meta atual';
-    return 'Faixa IMC de referência';
+    return 'Faixa ideal pela referência';
   }
 
   (double, double)? _parseReferenceRange(String rawLabel) {
@@ -156,6 +159,7 @@ class BodyProgressSection extends StatelessWidget {
         water: _normalizeCare(entry.water),
         food: _normalizeCare(entry.food),
         training: _normalizeCare(entry.training),
+        sleep: _normalizeCare(entry.sleep),
         weight: _weightScore(entry.weightKg, idealWeight),
         ideal: _idealScore(entry: entry, idealWeight: idealWeight),
         rawWeight: entry.weightKg,
@@ -227,7 +231,7 @@ class BodyProgressSection extends StatelessWidget {
     required List<_MetricDay> chartDays,
   }) {
     if (chartDays.isEmpty) {
-      return 'Registre seus dias para o painel mostrar sua caminhada real até o objetivo. O roxo continua firme; agora falta só matéria-prima.';
+      return 'Registre alguns dias para o painel mostrar sua caminhada real até o objetivo.';
     }
 
     if (idealWeight == null) {
@@ -246,12 +250,14 @@ class BodyProgressSection extends StatelessWidget {
     final water = latest.water;
     final food = latest.food;
     final training = latest.training;
+    final sleep = latest.sleep;
     final weight = latest.weight;
 
     final strongHabits = [
       water,
       food,
       training,
+      sleep,
     ].whereType<double>().where((value) => value >= 70).length;
 
     if (currentWeight == null) {
@@ -259,23 +265,23 @@ class BodyProgressSection extends StatelessWidget {
     }
 
     if (targetDistance != null && targetDistance.abs() <= 0.6) {
-      return 'Você está muito perto da meta ideal. O foco agora é sustentar água, comida e treino no verde para não devolver resultado.';
+      return 'Você está muito perto da meta ideal. O foco agora é sustentar água, comida, treino e sono no verde.';
     }
 
     if (weight != null &&
         previousWeightPoint != null &&
         weight > previousWeightPoint) {
-      if (strongHabits >= 2) {
-        return 'O peso ficou mais perto do ideal e os hábitos acompanharam. Esse é o tipo de semana que convence até a balança a colaborar.';
+      if (strongHabits >= 3) {
+        return 'O peso ficou mais perto do ideal e os hábitos acompanharam bem. Continue nesse ritmo.';
       }
-      return 'O peso melhorou, mas ainda dá para blindar mais o resultado com água, comida e treino mais estáveis.';
+      return 'O peso melhorou, mas ainda dá para blindar mais o resultado com água, comida, treino e sono mais estáveis.';
     }
 
-    if (strongHabits >= 2) {
-      return 'Você ainda pode não ter chegado na meta, mas o corpo já está recebendo os sinais certos. Continue empilhando dias bons.';
+    if (strongHabits >= 3) {
+      return 'Você ainda pode não ter chegado na meta, mas o corpo já está recebendo os sinais certos.';
     }
 
-    return 'Hoje o painel mostra distância da linha ideal principalmente por constância. Priorize água, alimentação e treino antes de cobrar pressa do peso.';
+    return 'Hoje o painel mostra distância da linha ideal principalmente por constância. Priorize água, alimentação, treino e sono antes de cobrar pressa do peso.';
   }
 }
 
@@ -285,6 +291,7 @@ class _MetricDay {
     required this.water,
     required this.food,
     required this.training,
+    required this.sleep,
     required this.weight,
     required this.ideal,
     required this.rawWeight,
@@ -294,6 +301,7 @@ class _MetricDay {
   final double? water;
   final double? food;
   final double? training;
+  final double? sleep;
   final double? weight;
   final double ideal;
   final double? rawWeight;
@@ -357,12 +365,14 @@ class _DailyClosenessCard extends StatelessWidget {
     required this.idealWeight,
     required this.focusedDays,
     required this.idealSourceLabel,
+    required this.referenceWeightLabel,
   });
 
   final double? currentWeight;
   final double? idealWeight;
   final int focusedDays;
   final String idealSourceLabel;
+  final String referenceWeightLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -419,6 +429,13 @@ class _DailyClosenessCard extends StatelessWidget {
                 tone: BodyProgressSection._green,
               ),
               _StatusChip(
+                label: 'Faixa de ref.',
+                value: referenceWeightLabel.isEmpty
+                    ? '—'
+                    : referenceWeightLabel,
+                tone: BodyProgressSection._teal,
+              ),
+              _StatusChip(
                 label: 'Peso atual',
                 value: currentWeight == null
                     ? 'sem peso'
@@ -447,6 +464,83 @@ class _DailyClosenessCard extends StatelessWidget {
   }
 }
 
+class _MetricLegendBoard extends StatelessWidget {
+  const _MetricLegendBoard({required this.days});
+
+  final List<_MetricDay> days;
+
+  @override
+  Widget build(BuildContext context) {
+    String latestValue(double? value, {String suffix = '%'}) {
+      if (value == null) return '—';
+      return '${value.toStringAsFixed(0)}$suffix';
+    }
+
+    final last = days.isEmpty ? null : days.last;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _ChartInfoPill(
+                title: 'Água',
+                body: latestValue(last?.water),
+                accent: BodyProgressSection._cyan,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ChartInfoPill(
+                title: 'Comida',
+                body: latestValue(last?.food),
+                accent: BodyProgressSection._green,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ChartInfoPill(
+                title: 'Treino',
+                body: latestValue(last?.training),
+                accent: BodyProgressSection._purple,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _ChartInfoPill(
+                title: 'Sono',
+                body: latestValue(last?.sleep),
+                accent: BodyProgressSection._teal,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ChartInfoPill(
+                title: 'Peso',
+                body: last?.rawWeight == null
+                    ? '—'
+                    : '${last!.rawWeight!.toStringAsFixed(1).replaceAll('.', ',')}kg',
+                accent: BodyProgressSection._orange,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ChartInfoPill(
+                title: 'Ideal',
+                body: '${last?.ideal.toStringAsFixed(0) ?? '—'}%',
+                accent: BodyProgressSection._pink,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _MultiMetricLineChart extends StatelessWidget {
   const _MultiMetricLineChart({
     required this.days,
@@ -461,7 +555,7 @@ class _MultiMetricLineChart extends StatelessWidget {
     if (days.length < 2) {
       return const _EmptyChartHint(
         text:
-            'Registre pelo menos 2 dias com dados de água, comida, treino ou peso para enxergar a evolução contínua.',
+            'Registre pelo menos 2 dias com dados de água, comida, treino, sono ou peso para enxergar a evolução contínua.',
       );
     }
 
@@ -475,13 +569,13 @@ class _MultiMetricLineChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Linha de cuidados x ideal',
-            style: const TextStyle(fontWeight: FontWeight.w900),
+            style: TextStyle(fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 4),
           Text(
-            'Cada linha mostra o quanto o dia ficou perto do que ajuda seu objetivo. A linha ideal usa ${idealSourceLabel.toLowerCase()}.',
+            'Cada linha mostra o quanto o dia ficou perto do que ajuda seu objetivo. O ideal usa ${idealSourceLabel.toLowerCase()}.',
             style: TextStyle(
               color: Colors.white.withOpacity(0.66),
               fontSize: 12,
@@ -497,54 +591,35 @@ class _MultiMetricLineChart extends StatelessWidget {
               _LegendDot(color: BodyProgressSection._cyan, text: 'água'),
               _LegendDot(color: BodyProgressSection._green, text: 'comida'),
               _LegendDot(color: BodyProgressSection._purple, text: 'treino'),
+              _LegendDot(color: BodyProgressSection._teal, text: 'sono'),
               _LegendDot(color: BodyProgressSection._orange, text: 'peso'),
               _LegendDot(color: BodyProgressSection._pink, text: 'ideal'),
             ],
           ),
           const SizedBox(height: 14),
           SizedBox(
-            height: 230,
+            height: 248,
             child: CustomPaint(
               painter: _CareProgressPainter(days: days),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(30, 10, 12, 26),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Row(
-                      children: days.map((day) {
-                        return Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (day.rawWeight != null)
-                                Text(
-                                  day.rawWeight!
-                                      .toStringAsFixed(1)
-                                      .replaceAll('.', ','),
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.52),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                )
-                              else
-                                const SizedBox(height: 12),
-                              const SizedBox(height: 132),
-                              Text(
-                                '${day.date.day.toString().padLeft(2, '0')}/${day.date.month.toString().padLeft(2, '0')}',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.58),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
+                padding: const EdgeInsets.fromLTRB(34, 12, 12, 30),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: days.map((day) {
+                    return Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Text(
+                          '${day.date.day.toString().padLeft(2, '0')}/${day.date.month.toString().padLeft(2, '0')}',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.58),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
             ),
@@ -556,13 +631,15 @@ class _MultiMetricLineChart extends StatelessWidget {
                 child: _ChartInfoPill(
                   title: 'Melhor dia',
                   body: _bestDayLabel(days),
+                  accent: BodyProgressSection._green,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _ChartInfoPill(
-                  title: 'Peso no gráfico',
+                  title: 'Leitura do peso',
                   body: _weightGraphHint(days),
+                  accent: BodyProgressSection._orange,
                 ),
               ),
             ],
@@ -578,6 +655,7 @@ class _MultiMetricLineChart extends StatelessWidget {
         day.water,
         day.food,
         day.training,
+        day.sleep,
         day.weight,
       ].whereType<double>().toList();
       if (values.isEmpty) return 0;
@@ -586,7 +664,7 @@ class _MultiMetricLineChart extends StatelessWidget {
 
     final ranked = [...days]..sort((a, b) => score(b).compareTo(score(a)));
     final best = ranked.first;
-    return '${best.date.day.toString().padLeft(2, '0')}/${best.date.month.toString().padLeft(2, '0')} com média ${score(best).toStringAsFixed(0)}%';
+    return '${best.date.day.toString().padLeft(2, '0')}/${best.date.month.toString().padLeft(2, '0')} • ${score(best).toStringAsFixed(0)}%';
   }
 
   static String _weightGraphHint(List<_MetricDay> days) {
@@ -606,9 +684,9 @@ class _CareProgressPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const leftPad = 4.0;
-    const topPad = 6.0;
-    const bottomPad = 28.0;
+    const leftPad = 6.0;
+    const topPad = 8.0;
+    const bottomPad = 30.0;
     final chartHeight = size.height - topPad - bottomPad;
     final chartWidth = size.width - leftPad;
 
@@ -635,7 +713,6 @@ class _CareProgressPainter extends CustomPainter {
 
     _paintSeries(
       canvas: canvas,
-      size: size,
       color: BodyProgressSection._cyan,
       points: _pointsFor(
         (day) => day.water,
@@ -647,7 +724,6 @@ class _CareProgressPainter extends CustomPainter {
     );
     _paintSeries(
       canvas: canvas,
-      size: size,
       color: BodyProgressSection._green,
       points: _pointsFor(
         (day) => day.food,
@@ -659,7 +735,6 @@ class _CareProgressPainter extends CustomPainter {
     );
     _paintSeries(
       canvas: canvas,
-      size: size,
       color: BodyProgressSection._purple,
       points: _pointsFor(
         (day) => day.training,
@@ -671,7 +746,17 @@ class _CareProgressPainter extends CustomPainter {
     );
     _paintSeries(
       canvas: canvas,
-      size: size,
+      color: BodyProgressSection._teal,
+      points: _pointsFor(
+        (day) => day.sleep,
+        chartWidth,
+        chartHeight,
+        leftPad,
+        topPad,
+      ),
+    );
+    _paintSeries(
+      canvas: canvas,
       color: BodyProgressSection._orange,
       points: _pointsFor(
         (day) => day.weight,
@@ -683,7 +768,6 @@ class _CareProgressPainter extends CustomPainter {
     );
     _paintSeries(
       canvas: canvas,
-      size: size,
       color: BodyProgressSection._pink,
       points: _pointsFor(
         (day) => day.ideal,
@@ -728,7 +812,6 @@ class _CareProgressPainter extends CustomPainter {
 
   void _paintSeries({
     required Canvas canvas,
-    required Size size,
     required Color color,
     required List<Offset?> points,
     bool dashed = false,
@@ -798,12 +881,14 @@ class _HabitImpactPanel extends StatelessWidget {
     required this.weeklyAverageFood,
     required this.weeklyAverageTraining,
     required this.waterAverage,
+    required this.sleepAverage,
     required this.weightAverageScore,
   });
 
   final double? weeklyAverageFood;
   final double? weeklyAverageTraining;
   final double? waterAverage;
+  final double? sleepAverage;
   final double? weightAverageScore;
 
   @override
@@ -829,6 +914,13 @@ class _HabitImpactPanel extends StatelessWidget {
           value: _scoreToPercent(weeklyAverageTraining),
           accent: BodyProgressSection._purple,
           detail: _trainingText(weeklyAverageTraining),
+        ),
+        const SizedBox(height: 10),
+        _ImpactBar(
+          title: 'Sono',
+          value: sleepAverage,
+          accent: BodyProgressSection._teal,
+          detail: _sleepText(sleepAverage),
         ),
         const SizedBox(height: 10),
         _ImpactBar(
@@ -870,6 +962,14 @@ class _HabitImpactPanel extends StatelessWidget {
     if (value >= 3.2) return 'Treino forte ajudando o corpo a responder.';
     if (value >= 2.2) return 'Treino moderado: manter ritmo já ajuda.';
     return 'Pouco treino: movimento pode destravar progresso.';
+  }
+
+  String _sleepText(double? value) {
+    if (value == null) return 'Sem dados suficientes de sono nesta semana.';
+    if (value >= 78)
+      return 'Sono forte, ajudando recuperação e controle do dia.';
+    if (value >= 58) return 'Sono razoável, mas ainda pode melhorar.';
+    return 'Sono fraco: isso costuma atrapalhar fome, foco e treino.';
   }
 
   String _weightText(double? value) {
@@ -949,19 +1049,24 @@ class _ImpactBar extends StatelessWidget {
 }
 
 class _ChartInfoPill extends StatelessWidget {
-  const _ChartInfoPill({required this.title, required this.body});
+  const _ChartInfoPill({
+    required this.title,
+    required this.body,
+    required this.accent,
+  });
 
   final String title;
   final String body;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: accent.withOpacity(0.10),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: accent.withOpacity(0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1094,7 +1199,7 @@ class _SectionShell extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF071112),
+        color: const Color(0xFF08101E),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: Colors.white.withOpacity(0.06)),
       ),
