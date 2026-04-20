@@ -6,12 +6,7 @@
 // - Lista as subáreas válidas para o perfil atual
 // - Exibe score, status, fonte, tendência e última atualização
 // - Abre um painel com explicação objetiva de como cada subárea está sendo lida
-//
-// Correções desta versão:
-// - Mantém a arquitetura original do projeto
-// - Remove a divergência entre o score geral exibido e o status geral do topo
-// - O topo agora deriva o status diretamente do SCORE da área
-// - remove a dependência do overallStatus legado, que estava conflitando com a régua nova
+// - Permite entrar já direto em uma subárea específica via initialItemId
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,10 +21,16 @@ import 'package:vida_app/features/areas/presentation/widgets/area_status_dot.dar
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 
 class AreaDetailPage extends StatefulWidget {
-  const AreaDetailPage({super.key, required this.areaId, required this.title});
+  const AreaDetailPage({
+    super.key,
+    required this.areaId,
+    required this.title,
+    this.initialItemId,
+  });
 
   final String areaId;
   final String title;
+  final String? initialItemId;
 
   @override
   State<AreaDetailPage> createState() => _AreaDetailPageState();
@@ -39,6 +40,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
   final AreasStore _store = AreasStore();
   final AreasBootstrapService _bootstrap = AreasBootstrapService();
   late Future<bool> _includeWomenCycleFuture;
+  bool _didAutoOpenInitialItem = false;
 
   @override
   void initState() {
@@ -351,6 +353,31 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     }
   }
 
+  void _maybeAutoOpenInitialItem(AreaDef def, List<AreaItemDef> items) {
+    if (_didAutoOpenInitialItem) return;
+
+    final initialItemId = widget.initialItemId?.trim();
+    if (initialItemId == null || initialItemId.isEmpty) return;
+
+    AreaItemDef? item;
+    for (final candidate in items) {
+      if (candidate.id == initialItemId) {
+        item = candidate;
+        break;
+      }
+    }
+
+    if (item == null) return;
+    _didAutoOpenInitialItem = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final assessment = await _store.getComputedAssessment(def.id, item!.id);
+      if (!mounted) return;
+      await _openItemDetails(def, item!, assessment);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final def = AreasCatalog.byId(widget.areaId);
@@ -363,6 +390,8 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
           def.id,
           includeWomenCycle: includeWomenCycle,
         );
+
+        _maybeAutoOpenInitialItem(def, items);
 
         return Scaffold(
           backgroundColor: Colors.black,

@@ -1,3 +1,12 @@
+// ============================================================================
+// FILE: lib/data/models/life_alert.dart
+//
+// O que este arquivo faz:
+// - Centraliza os tipos e prioridades do centro de alertas do app
+// - Permite marcar alertas como lidos
+// - Suporta alertas do radar, corpo em dia, jornada, finanças e metas
+// ============================================================================
+
 import 'package:flutter/foundation.dart';
 
 enum LifeAlertPriority { low, medium, high, critical }
@@ -10,6 +19,11 @@ enum LifeAlertType {
   highSpendingMonth,
   upcomingTimelineEvent,
   overdueTimelineEvent,
+  alwaysOnRelevant,
+  bodyCarePending,
+  goalMomentum,
+  lifeJourneyUnlocked,
+  genericUnlock,
 }
 
 @immutable
@@ -25,6 +39,8 @@ class LifeAlert {
     this.relatedId,
     this.isRead = false,
     this.actionLabel,
+    this.routeHint,
+    this.metadata = const <String, dynamic>{},
   });
 
   final String id;
@@ -37,6 +53,8 @@ class LifeAlert {
   final String? relatedId;
   final bool isRead;
   final String? actionLabel;
+  final String? routeHint;
+  final Map<String, dynamic> metadata;
 
   LifeAlert copyWith({
     String? id,
@@ -49,6 +67,8 @@ class LifeAlert {
     String? relatedId,
     bool? isRead,
     String? actionLabel,
+    String? routeHint,
+    Map<String, dynamic>? metadata,
   }) {
     return LifeAlert(
       id: id ?? this.id,
@@ -61,6 +81,50 @@ class LifeAlert {
       relatedId: relatedId ?? this.relatedId,
       isRead: isRead ?? this.isRead,
       actionLabel: actionLabel ?? this.actionLabel,
+      routeHint: routeHint ?? this.routeHint,
+      metadata: metadata ?? this.metadata,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'type': type.name,
+    'title': title,
+    'message': message,
+    'priority': priority.name,
+    'createdAt': createdAt.toIso8601String(),
+    'areaId': areaId,
+    'relatedId': relatedId,
+    'isRead': isRead,
+    'actionLabel': actionLabel,
+    'routeHint': routeHint,
+    'metadata': metadata,
+  };
+
+  static LifeAlert fromMap(Map<String, dynamic> map) {
+    return LifeAlert(
+      id: map['id'] as String? ?? '',
+      type: LifeAlertType.values.firstWhere(
+        (item) => item.name == (map['type'] as String? ?? ''),
+        orElse: () => LifeAlertType.genericUnlock,
+      ),
+      title: map['title'] as String? ?? '',
+      message: map['message'] as String? ?? '',
+      priority: LifeAlertPriority.values.firstWhere(
+        (item) => item.name == (map['priority'] as String? ?? ''),
+        orElse: () => LifeAlertPriority.low,
+      ),
+      createdAt:
+          DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      areaId: map['areaId'] as String?,
+      relatedId: map['relatedId'] as String?,
+      isRead: map['isRead'] == true,
+      actionLabel: map['actionLabel'] as String?,
+      routeHint: map['routeHint'] as String?,
+      metadata: Map<String, dynamic>.from(
+        (map['metadata'] as Map?) ?? const <String, dynamic>{},
+      ),
     );
   }
 

@@ -7,27 +7,15 @@
 // - Abre detalhes de cada área
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
 // - Adiciona o ícone do livro com explicação clara do sistema de score
-//
-// Correções desta versão:
-// - women_cycle só entra no cálculo para perfil feminino
-// - score usa apenas as subáreas visíveis e realmente válidas
-// - atalho do livro mantido sem mexer no layout principal do app
-// - classificação visual unificada com o sistema novo:
-//   85+ Ótimo | 68+ Bom | 45+ Médio | 25+ Ruim | abaixo disso Crítico
-//
-// Correção (bug atual):
-// - score geral agora é média das 9 áreas (null conta como 0)
-// - cor do score geral agora fica cinza quando score == 0 ("Inicial")
-//
-// Ajuste desta revisão:
-// - hudHeight aumentado para 148 para evitar sobreposição visual do avatar
-//   após o card de idade ficar clicável e mais alto
+// - Liga o sino à central real de alertas com badge numérico estilo WhatsApp
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/local/session_storage.dart';
+import 'package:vida_app/features/alerts/life_alerts_service.dart';
+import 'package:vida_app/features/alerts/presentation/widgets/alerts_bell_button.dart';
 import 'package:vida_app/features/areas/application/bootstrap/areas_bootstrap_service.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
@@ -42,9 +30,16 @@ import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dar
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
-  const AreasTab({super.key, this.isActive = false});
+  const AreasTab({
+    super.key,
+    this.isActive = false,
+    required this.alertsService,
+    this.onOpenAlertRoute,
+  });
 
   final bool isActive;
+  final LifeAlertsService alertsService;
+  final ValueChanged<String>? onOpenAlertRoute;
 
   @override
   State<AreasTab> createState() => _AreasTabState();
@@ -287,10 +282,6 @@ class _AreasTabState extends State<AreasTab> {
     _showSoonMessage('Editor de avatar será ligado aqui em breve.');
   }
 
-  void _openAlertsCenter() {
-    _showSoonMessage('Central de alertas será ligada aqui em breve.');
-  }
-
   Future<void> _openScoreRules() async {
     await showModalBottomSheet(
       context: context,
@@ -470,9 +461,10 @@ class _AreasTabState extends State<AreasTab> {
                       totalAreas: defs.length,
                       classification: classification,
                       ageInfo: ageInfo,
+                      alertsService: widget.alertsService,
+                      onOpenAlertRoute: widget.onOpenAlertRoute,
                       onCheckinTap: _openCheckin,
                       onAvatarTap: _openAvatarEditor,
-                      onAlertsTap: _openAlertsCenter,
                       onScoreRulesTap: _openScoreRules,
                       onAgeTimelineTap: _openLifeJourney,
                     ),
@@ -537,9 +529,10 @@ class _TopHudCompact extends StatelessWidget {
     required this.totalAreas,
     required this.classification,
     required this.ageInfo,
+    required this.alertsService,
+    required this.onOpenAlertRoute,
     required this.onCheckinTap,
     required this.onAvatarTap,
-    required this.onAlertsTap,
     required this.onScoreRulesTap,
     required this.onAgeTimelineTap,
   });
@@ -550,9 +543,10 @@ class _TopHudCompact extends StatelessWidget {
   final int totalAreas;
   final String classification;
   final _AgeAccessInfo ageInfo;
+  final LifeAlertsService alertsService;
+  final ValueChanged<String>? onOpenAlertRoute;
   final VoidCallback onCheckinTap;
   final VoidCallback onAvatarTap;
-  final VoidCallback onAlertsTap;
   final VoidCallback onScoreRulesTap;
   final VoidCallback onAgeTimelineTap;
 
@@ -704,9 +698,13 @@ class _TopHudCompact extends StatelessWidget {
                     onTap: onScoreRulesTap,
                   ),
                   const SizedBox(width: 6),
-                  _MiniActionButton(
-                    icon: Icons.notifications_active_rounded,
-                    onTap: onAlertsTap,
+                  _MiniActionShell(
+                    child: AlertsBellButton(
+                      service: alertsService,
+                      onOpenRoute: onOpenAlertRoute,
+                      compact: true,
+                      iconColor: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Container(
@@ -868,6 +866,26 @@ class _TopHudCompact extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MiniActionShell extends StatelessWidget {
+  const _MiniActionShell({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Center(child: child),
     );
   }
 }

@@ -1,15 +1,18 @@
 // ============================================================================
 // FILE: lib/features/home/presentation/pages/home_page.dart
 //
-// O que este arquivo faz:
-// - Controla a navegação principal do app
-// - Mantém Finanças na barra inferior
-// - Passa um FinanceStore compartilhado para Finanças e Voz
-// - Adiciona o botão flutuante do Sempre Ligado sobre as abas principais
+// O que faz:
+// - Página principal do app com bottom navigation
+// - Cria um LifeAlertsService compartilhado
+// - Passa o serviço para a aba Áreas, onde o sino fica visível
+// - Permite abrir rotas principais a partir da central de alertas
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:vida_app/features/always_on/presentation/widgets/always_on_floating_shell.dart';
+import 'package:vida_app/features/areas/areas_store.dart';
+import 'package:vida_app/features/areas/daily_checkin_service.dart';
+import 'package:vida_app/features/alerts/life_alerts_service.dart';
 import 'package:vida_app/features/finance/presentation/pages/finance_tab.dart';
 import 'package:vida_app/features/finance/presentation/stores/finance_store.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas_tab.dart';
@@ -36,6 +39,14 @@ class _HomePageState extends State<HomePage> {
   final TimelineStore _timeline = TimelineStore(repo: HiveTimelineRepository());
   final HomeTasksStore _homeTasks = HomeTasksStore();
   final FinanceStore _finance = FinanceStore();
+  final AreasStore _areas = AreasStore();
+  final DailyCheckinService _dailyCheckin = DailyCheckinService();
+
+  late final LifeAlertsService _alertsService = LifeAlertsService(
+    areasStore: _areas,
+    dailyCheckinService: _dailyCheckin,
+    timelineStore: _timeline,
+  );
 
   late final VoiceCommandRouter _router = VoiceCommandRouter(
     shopping: _shopping,
@@ -47,7 +58,7 @@ class _HomePageState extends State<HomePage> {
   Color _iconColor(bool selected) => selected ? Colors.green : Colors.white70;
 
   void _openVoiceHub() {
-    showModalBottomSheet<void>(
+    showModalBottomSheet(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -65,6 +76,30 @@ class _HomePageState extends State<HomePage> {
     setState(() => _index = 2);
   }
 
+  void handleAlertRoute(String route) {
+    switch (route) {
+      case 'day':
+        _goTo(0);
+        break;
+      case 'areas':
+      case 'body_care':
+      case 'life_journey':
+        _goTo(1);
+        break;
+      case 'finance':
+        _goTo(2);
+        break;
+      case 'always_on':
+        _goTo(0);
+        break;
+      case 'goals':
+        _goTo(0);
+        break;
+      default:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,7 +115,11 @@ class _HomePageState extends State<HomePage> {
                   timelineStore: _timeline,
                   homeTasksStore: _homeTasks,
                 ),
-                AreasTab(isActive: _index == 1),
+                AreasTab(
+                  isActive: _index == 1,
+                  alertsService: _alertsService,
+                  onOpenAlertRoute: handleAlertRoute,
+                ),
                 FinanceTab(store: _finance),
                 const ProfileTab(),
               ],
