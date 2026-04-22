@@ -1315,17 +1315,23 @@ class _BodyCarePageState extends State<BodyCarePage> {
     return _SectionCard(
       title: 'Smartwatch & saúde',
       subtitle:
-          'Conecte o fitness ao Health Connect para puxar sono, passos, minutos ativos e treinos.',
+          'Ligação simples via Health Connect para puxar dados reais sem complicar o módulo.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              color: const Color(0xFF10192A),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: snapshot.isConnected
+                    ? const [Color(0xFF0C3D2B), Color(0xFF0F6A4E)]
+                    : const [Color(0xFF10192A), Color(0xFF18304F)],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1333,23 +1339,17 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 Row(
                   children: [
                     Container(
-                      width: 42,
-                      height: 42,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        color:
-                            (snapshot.isConnected
-                                    ? const Color(0xFF35D26F)
-                                    : const Color(0xFF7A6BFF))
-                                .withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(16),
+                        color: Colors.white.withOpacity(0.12),
                       ),
                       child: Icon(
                         snapshot.isConnected
                             ? Icons.watch_rounded
                             : Icons.watch_off_rounded,
-                        color: snapshot.isConnected
-                            ? const Color(0xFF35D26F)
-                            : const Color(0xFF9B90FF),
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1359,18 +1359,20 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         children: [
                           Text(
                             snapshot.isConnected
-                                ? 'Conectado ao ${snapshot.platformLabel}'
-                                : 'Sem conexão ativa',
+                                ? 'Conexão pronta'
+                                : 'Conectar em 1 toque',
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
-                              fontSize: 16,
+                              fontSize: 18,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Última sincronização: $syncText',
+                            snapshot.isConnected
+                                ? 'Última sincronização: $syncText'
+                                : 'Use o caminho mais simples no Android: Health Connect.',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.68),
+                              color: Colors.white.withOpacity(0.76),
                               height: 1.3,
                             ),
                           ),
@@ -1405,13 +1407,6 @@ class _BodyCarePageState extends State<BodyCarePage> {
             mainAxisSpacing: 10,
             children: [
               _MetricCard(
-                title: 'Sono recente',
-                value: snapshot.sleepHours == null
-                    ? '—'
-                    : '${snapshot.sleepHours!.toStringAsFixed(1).replaceAll('.', ',')}h',
-                accent: const Color(0xFFF9C66B),
-              ),
-              _MetricCard(
                 title: 'Passos hoje',
                 value: snapshot.stepsToday == null
                     ? '—'
@@ -1419,18 +1414,25 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 accent: const Color(0xFF78B5FF),
               ),
               _MetricCard(
-                title: 'Min. ativos hoje',
+                title: 'Sono recente',
+                value: snapshot.sleepHours == null
+                    ? '—'
+                    : '${snapshot.sleepHours!.toStringAsFixed(1).replaceAll('.', ',')}h',
+                accent: const Color(0xFFF9C66B),
+              ),
+              _MetricCard(
+                title: 'Atividade hoje',
                 value: snapshot.activeMinutesToday == null
                     ? '—'
                     : '${snapshot.activeMinutesToday} min',
-                accent: const Color(0xFF8E82FF),
+                accent: const Color(0xFF88F089),
               ),
               _MetricCard(
-                title: 'Exercício 7d',
-                value: snapshot.exerciseMinutes7d == null
+                title: 'Calorias ativas',
+                value: snapshot.activeCaloriesToday == null
                     ? '—'
-                    : '${snapshot.exerciseMinutes7d!.toStringAsFixed(0)} min',
-                accent: const Color(0xFF88F089),
+                    : '${snapshot.activeCaloriesToday} kcal',
+                accent: const Color(0xFF8E82FF),
               ),
             ],
           ),
@@ -1438,14 +1440,55 @@ class _BodyCarePageState extends State<BodyCarePage> {
           _InfoBlock(
             title: 'Como isso entra no fitness',
             body:
-                'Quando existe dado sincronizado, o app aproveita sono, passos e minutos ativos para reforçar o registro do dia sem apagar o que você já lançou manualmente.',
+                'O app usa os dados principais como fonte real para reforçar a leitura do dia. Isso ajuda o Areas sem apagar seus lançamentos manuais.',
           ),
           const SizedBox(height: 10),
-          _InfoBlock(
-            title: 'Treinos detectados',
-            body: snapshot.workoutCount7d == null
-                ? 'Ainda não há treinos sincronizados nos últimos 7 dias.'
-                : 'Foram encontrados ${snapshot.workoutCount7d} treinos nos últimos 7 dias.',
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF10192A),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+                childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                iconColor: Colors.white70,
+                collapsedIconColor: Colors.white54,
+                title: const Text(
+                  'Detalhes secundários',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                subtitle: Text(
+                  'Treinos e leitura complementar ficam escondidos aqui.',
+                  style: TextStyle(color: Colors.white.withOpacity(0.62)),
+                ),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _MetricCard(
+                          title: 'Exercício 7d',
+                          value: snapshot.exerciseMinutes7d == null
+                              ? '—'
+                              : '${snapshot.exerciseMinutes7d!.toStringAsFixed(0)} min',
+                          accent: const Color(0xFF88F089),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _MetricCard(
+                          title: 'Treinos 7d',
+                          value: snapshot.workoutCount7d?.toString() ?? '—',
+                          accent: const Color(0xFF9EC2FF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

@@ -1,20 +1,23 @@
 // ============================================================================
 // FILE: lib/features/health_sync/health_sync_service.dart
 //
-// O que faz:
-// - Centraliza a conexão com Health Connect no Android
-// - Solicita permissões para ler dados do smartwatch / celular
-// - Sincroniza sono, exercício, passos e minutos ativos
-// - Salva um resumo local em SharedPreferences para o fitness usar
-// - Mantém as chaves antigas para não quebrar nada do app atual
+// Integração Android-first via Health Connect.
 //
-// Nesta versão:
-// - Android-first via Health Connect
-// - sono da última sessão relevante
-// - exercício dos últimos 7 dias
-// - treinos dos últimos 7 dias
+// Objetivo desta versão:
+// - manter a conexão simples
+// - puxar só o básico que realmente importa para o app
+// - funcionar como fonte real para preencher o módulo fitness / Areas
+// - evitar lógica complexa e dependência de marca específica
+//
+// Dados principais:
+// - sono recente
 // - passos de hoje
 // - minutos ativos de hoje
+// - calorias ativas de hoje
+//
+// Dados secundários:
+// - exercício dos últimos 7 dias
+// - treinos dos últimos 7 dias
 // ============================================================================
 
 import 'dart:io';
@@ -32,6 +35,7 @@ class SmartHealthSnapshot {
     this.workoutCount7d,
     this.stepsToday,
     this.activeMinutesToday,
+    this.activeCaloriesToday,
   });
 
   final bool isConnected;
@@ -42,13 +46,16 @@ class SmartHealthSnapshot {
   final int? workoutCount7d;
   final int? stepsToday;
   final int? activeMinutesToday;
+  final int? activeCaloriesToday;
+
+  bool get hasPrimaryData =>
+      sleepHours != null ||
+      stepsToday != null ||
+      activeMinutesToday != null ||
+      activeCaloriesToday != null;
 
   bool get hasAnyData =>
-      sleepHours != null ||
-      exerciseMinutes7d != null ||
-      workoutCount7d != null ||
-      stepsToday != null ||
-      activeMinutesToday != null;
+      hasPrimaryData || exerciseMinutes7d != null || workoutCount7d != null;
 }
 
 class SmartHealthSyncResult {
@@ -73,6 +80,8 @@ class SmartHealthSyncService {
   static String _kStepsToday(String uid) => '$uid:smart_health_steps_today';
   static String _kActiveMinutesToday(String uid) =>
       '$uid:smart_health_active_minutes_today';
+  static String _kActiveCaloriesToday(String uid) =>
+      '$uid:smart_health_active_calories_today';
 
   String get _platformLabel => 'Health Connect';
 
@@ -90,6 +99,7 @@ class SmartHealthSyncService {
       workoutCount7d: prefs.getInt(_kWorkoutCount7d(uid)),
       stepsToday: prefs.getInt(_kStepsToday(uid)),
       activeMinutesToday: prefs.getInt(_kActiveMinutesToday(uid)),
+      activeCaloriesToday: prefs.getInt(_kActiveCaloriesToday(uid)),
     );
   }
 
@@ -107,9 +117,9 @@ class SmartHealthSyncService {
       final readTypes = <HealthDataType>[
         HealthDataType.SLEEP_SESSION,
         HealthDataType.SLEEP_ASLEEP,
+        HealthDataType.STEPS,
         HealthDataType.EXERCISE_TIME,
         HealthDataType.WORKOUT,
-        HealthDataType.STEPS,
         HealthDataType.ACTIVE_ENERGY_BURNED,
       ];
 
@@ -143,7 +153,7 @@ class SmartHealthSyncService {
         ),
       );
 
-      final exercisePoints = _health.removeDuplicates(
+      final weekPoints = _health.removeDuplicates(
         await _health.getHealthDataFromTypes(
           types: const [HealthDataType.EXERCISE_TIME, HealthDataType.WORKOUT],
           startTime: now.subtract(const Duration(days: 7)),
@@ -155,9 +165,9 @@ class SmartHealthSyncService {
         await _health.getHealthDataFromTypes(
           types: const [
             HealthDataType.STEPS,
-            HealthDataType.ACTIVE_ENERGY_BURNED,
             HealthDataType.EXERCISE_TIME,
             HealthDataType.WORKOUT,
+            HealthDataType.ACTIVE_ENERGY_BURNED,
           ],
           startTime: startOfToday,
           endTime: now,
@@ -165,10 +175,11 @@ class SmartHealthSyncService {
       );
 
       final sleepHours = _extractLatestSleepHours(sleepPoints, now);
-      final exerciseMinutes = _extractExerciseMinutes(exercisePoints);
-      final workoutCount = _extractWorkoutCount(exercisePoints);
+      final exerciseMinutes7d = _extractExerciseMinutes(weekPoints);
+      final workoutCount7d = _extractWorkoutCount(weekPoints);
       final stepsToday = _extractStepsToday(todayPoints);
       final activeMinutesToday = _extractActiveMinutesToday(todayPoints);
+      final activeCaloriesToday = _extractActiveCaloriesToday(todayPoints);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kConnected(uid), true);
@@ -179,45 +190,41 @@ class SmartHealthSyncService {
         await prefs.setDouble(_kSleepHours(uid), sleepHours);
         await prefs.setString(_kSleepUpdatedAt(uid), now.toIso8601String());
       }
-
-      if (exerciseMinutes != null) {
-        await prefs.setDouble(_kExerciseMinutes7d(uid), exerciseMinutes);
+      if (exerciseMinutes7d != null) {
+        await prefs.setDouble(_kExerciseMinutes7d(uid), exerciseMinutes7d);
       }
-
+      await prefs.setInt(_kWorkoutCount7d(uid), workoutCount7d);
       if (stepsToday != null) {
         await prefs.setInt(_kStepsToday(uid), stepsToday);
       }
-
       if (activeMinutesToday != null) {
         await prefs.setInt(_kActiveMinutesToday(uid), activeMinutesToday);
       }
-
-      await prefs.setInt(_kWorkoutCount7d(uid), workoutCount);
+      if (activeCaloriesToday != null) {
+        await prefs.setInt(_kActiveCaloriesToday(uid), activeCaloriesToday);
+      }
 
       final parts = <String>[];
-      if (sleepHours != null) {
+      if (sleepHours != null)
         parts.add('${sleepHours.toStringAsFixed(1)}h sono');
-      }
-      if (exerciseMinutes != null) {
-        parts.add('${exerciseMinutes.toStringAsFixed(0)} min/7d');
-      }
-      parts.add('Treinos $workoutCount');
-      if (stepsToday != null) {
-        parts.add('$stepsToday passos hoje');
-      }
-      if (activeMinutesToday != null) {
-        parts.add('$activeMinutesToday min ativos hoje');
+      if (stepsToday != null) parts.add('$stepsToday passos');
+      if (activeMinutesToday != null)
+        parts.add('$activeMinutesToday min ativos');
+      if (activeCaloriesToday != null)
+        parts.add('$activeCaloriesToday kcal ativas');
+      if (parts.isEmpty) {
+        parts.add('conexão pronta, mas ainda sem dados visíveis');
       }
 
       return SmartHealthSyncResult(
         ok: true,
-        message: 'Health Connect sincronizado. ${parts.join(' · ')}.',
+        message: 'Conexão concluída. ${parts.join(' · ')}.',
       );
     } catch (e) {
       return SmartHealthSyncResult(
         ok: false,
         message:
-            'Não foi possível sincronizar agora. No Android, confirme se o Health Connect está instalado e com permissões liberadas.\n\nDetalhe: $e',
+            'Não foi possível sincronizar agora. No Android, confirme se o Health Connect está instalado, aberto e com permissões liberadas.\n\nDetalhe: $e',
       );
     }
   }
@@ -233,6 +240,7 @@ class SmartHealthSyncService {
     await prefs.remove(_kWorkoutCount7d(uid));
     await prefs.remove(_kStepsToday(uid));
     await prefs.remove(_kActiveMinutesToday(uid));
+    await prefs.remove(_kActiveCaloriesToday(uid));
   }
 
   double? _extractLatestSleepHours(List<HealthDataPoint> points, DateTime now) {
@@ -302,6 +310,20 @@ class SmartHealthSyncService {
         total += (point.value as NumericHealthValue).numericValue.toDouble();
       } else if (point.type == HealthDataType.WORKOUT) {
         total += point.dateTo.difference(point.dateFrom).inMinutes.toDouble();
+      }
+    }
+
+    if (total <= 0) return null;
+    return total.round();
+  }
+
+  int? _extractActiveCaloriesToday(List<HealthDataPoint> points) {
+    double total = 0;
+
+    for (final point in points) {
+      if (point.type == HealthDataType.ACTIVE_ENERGY_BURNED &&
+          point.value is NumericHealthValue) {
+        total += (point.value as NumericHealthValue).numericValue.toDouble();
       }
     }
 
