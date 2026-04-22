@@ -2,10 +2,9 @@
 // FILE: lib/features/goals/data/models/goals_models.dart
 //
 // O que este arquivo faz:
-// - Define os modelos novos da central de metas/objetivos
-// - Troca a ideia de árvore fixa por um sistema mais útil para vida real:
-//   captura livre -> marcos -> próximas ações -> progresso
-// - Mantém tudo serializável para Hive
+// - Define os modelos da central de objetivos / pendências da vida
+// - Permite misturar tarefas rápidas, projetos grandes, problemas e rotinas
+// - Mantém tudo serializável para Hive sem quebrar a base do módulo
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -117,6 +116,12 @@ class GoalMilestoneModel {
   int get doneActions => actions.where((item) => item.isDone).length;
   double get progress =>
       actions.isEmpty ? (isDone ? 1 : 0) : doneActions / actions.length;
+
+  bool get isQuickTask =>
+      actions.length <= 1 &&
+      description.trim().isEmpty &&
+      title.trim().isNotEmpty &&
+      !title.toLowerCase().contains('fase');
 
   Map<String, dynamic> toMap() => {
     'id': id,
@@ -240,6 +245,31 @@ class GoalPlanModel {
       status == GoalStatus.completed ||
       (milestones.isNotEmpty && milestones.every((item) => item.isDone));
 
+  bool get hasDeadline => targetDateMs != null;
+
+  bool isOverdue(DateTime now) {
+    final target = targetDateMs;
+    if (target == null || isCompleted) return false;
+    return DateTime.fromMillisecondsSinceEpoch(
+      target,
+    ).isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  bool isDueSoon(DateTime now, {int withinDays = 7}) {
+    final target = targetDateMs;
+    if (target == null || isCompleted) return false;
+    final date = DateTime.fromMillisecondsSinceEpoch(target);
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(Duration(days: withinDays));
+    return !date.isBefore(start) && !date.isAfter(end);
+  }
+
+  bool get isQuickTask {
+    if (kind != GoalKind.problem) return false;
+    if (milestones.length != 1) return false;
+    return milestones.first.isQuickTask;
+  }
+
   Map<String, dynamic> toMap() => {
     'id': id,
     'title': title,
@@ -259,7 +289,7 @@ class GoalPlanModel {
     final raw = (map['milestones'] as List?) ?? const [];
     return GoalPlanModel(
       id: map['id'] as String? ?? '',
-      title: map['title'] as String? ?? 'Nova meta',
+      title: map['title'] as String? ?? 'Novo item',
       captureText: map['captureText'] as String? ?? '',
       kind: GoalKind.values.firstWhere(
         (item) => item.name == (map['kind'] as String? ?? ''),
@@ -346,7 +376,7 @@ class GoalSummaryModel {
   static GoalSummaryModel fromMap(Map<String, dynamic> map) {
     return GoalSummaryModel(
       id: map['id'] as String? ?? '',
-      title: map['title'] as String? ?? 'Nova meta',
+      title: map['title'] as String? ?? 'Novo item',
       kind: GoalKind.values.firstWhere(
         (item) => item.name == (map['kind'] as String? ?? ''),
         orElse: () => GoalKind.objective,

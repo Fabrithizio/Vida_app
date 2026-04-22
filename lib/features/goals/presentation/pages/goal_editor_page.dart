@@ -2,11 +2,10 @@
 // FILE: lib/features/goals/presentation/pages/goal_editor_page.dart
 //
 // O que este arquivo faz:
-// - Cria ou edita uma missão/projeto/boss/hábito
-// - Aceita captura livre
-// - Quebra em fases e próximas jogadas
-// - Sugere um plano inicial automaticamente para não deixar o usuário travado
-// - Já nasce com tom mais gamificado
+// - Cria ou edita um item da vida real: tarefa, projeto, objetivo ou rotina
+// - Aceita captura livre e rápida
+// - Gera uma estrutura inicial útil para não deixar o usuário travado
+// - Serve tanto para coisa pequena quanto para coisa grande
 // ============================================================================
 
 import 'dart:math' as math;
@@ -28,9 +27,10 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
   final _captureCtrl = TextEditingController();
   final _whyCtrl = TextEditingController();
 
-  GoalKind _kind = GoalKind.objective;
+  GoalKind _kind = GoalKind.problem;
   GoalArea _area = GoalArea.pessoal;
   final List<_MilestoneDraft> _milestones = [];
+  DateTime? _targetDate;
 
   bool get _editing => widget.initialPlan != null;
 
@@ -44,6 +44,11 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       _whyCtrl.text = initial.whyItMatters;
       _kind = initial.kind;
       _area = initial.area;
+      if (initial.targetDateMs != null) {
+        _targetDate = DateTime.fromMillisecondsSinceEpoch(
+          initial.targetDateMs!,
+        );
+      }
       for (final milestone in initial.milestones) {
         _milestones.add(
           _MilestoneDraft(
@@ -79,11 +84,31 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     });
   }
 
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _targetDate ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 15),
+    );
+    if (picked == null) return;
+    setState(() => _targetDate = picked);
+  }
+
+  void _clearDate() {
+    setState(() => _targetDate = null);
+  }
+
   void _generateSuggestion() {
     final title = _titleCtrl.text.trim();
     final capture = _captureCtrl.text.trim();
 
-    final suggestions = _suggestMilestones(title: title, capture: capture);
+    final suggestions = _suggestMilestones(
+      title: title,
+      capture: capture,
+      kind: _kind,
+    );
     setState(() {
       _milestones
         ..clear()
@@ -94,106 +119,95 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
   List<_MilestoneDraft> _suggestMilestones({
     required String title,
     required String capture,
+    required GoalKind kind,
   }) {
     final text = '${title.toLowerCase()} ${capture.toLowerCase()}';
 
-    if (text.contains('cozin')) {
+    if (kind == GoalKind.problem) {
       return [
         _MilestoneDraft(
-          title: 'Montar a base',
-          description: 'Tirar a trava inicial e entender por onde começar.',
-          actions: [
-            'Escolher 3 pratos simples que quero aprender',
-            'Ver 1 vídeo curto de básicos de cozinha',
-            'Anotar utensílios que estão faltando',
-          ],
-        ),
-        _MilestoneDraft(
-          title: 'Dominar o simples',
-          description: 'Ganhar confiança com refeições básicas.',
-          actions: [
-            'Fazer arroz sozinho',
-            'Fazer ovo de 2 jeitos',
-            'Fazer macarrão sem ajuda',
-          ],
-        ),
-        _MilestoneDraft(
-          title: 'Criar rotina mínima',
+          title: 'Resolver',
           description:
-              'Transformar habilidade em algo que acontece de verdade.',
+              'A menor forma possível de tirar isso da cabeça e levar para o mundo real.',
           actions: [
-            'Cozinhar 1 refeição completa na semana',
-            'Separar 1 dia fixo para praticar',
-            'Repetir as receitas que deram certo',
+            if (title.trim().isNotEmpty)
+              title.trim()
+            else
+              'Executar a pendência',
           ],
         ),
       ];
     }
 
-    if (text.contains('organizar') ||
-        text.contains('bagun') ||
-        text.contains('área de serviço') ||
-        text.contains('area de serviço')) {
+    if (text.contains('casa') ||
+        text.contains('constru') ||
+        text.contains('obra')) {
       return [
         _MilestoneDraft(
-          title: 'Entender o caos',
-          description: 'Ver o que existe e o que precisa sair.',
+          title: 'Planejamento base',
+          description:
+              'Entender custo, formato e viabilidade antes de sair comprando ou fechando serviço.',
           actions: [
-            'Tirar foto do espaço atual',
-            'Separar o que fica, sai ou precisa de conserto',
-            'Escolher uma pequena área para atacar primeiro',
+            'Definir o que a casa precisa ter',
+            'Levantar materiais principais',
+            'Pesquisar faixa de custo inicial',
           ],
         ),
         _MilestoneDraft(
-          title: 'Criar ordem',
-          description: 'Dar lugar para o que importa.',
+          title: 'Orçamento e fornecedores',
+          description: 'Comparar preço e não decidir no escuro.',
           actions: [
-            'Definir onde cada grupo de itens vai ficar',
-            'Separar caixas ou sacos para descarte e doação',
-            'Limpar a primeira área escolhida',
+            'Pedir orçamento de material',
+            'Ver pedreiro / mão de obra',
+            'Separar planilha simples de custos',
           ],
         ),
         _MilestoneDraft(
-          title: 'Fechar o sistema',
-          description: 'Evitar voltar para a bagunça antiga.',
+          title: 'Execução por etapas',
+          description: 'Quebrar a obra para não virar um monstro sem fim.',
           actions: [
-            'Finalizar o restante por blocos',
-            'Criar regra simples de manutenção',
-            'Fazer revisão rápida 1 vez por semana',
+            'Definir primeira etapa da obra',
+            'Reservar valor mínimo para começar',
+            'Marcar a próxima decisão importante',
           ],
         ),
       ];
     }
 
-    if (text.contains('empresa') ||
-        text.contains('negócio') ||
-        text.contains('negocio')) {
+    if (text.contains('médic') ||
+        text.contains('consulta') ||
+        text.contains('fono')) {
       return [
         _MilestoneDraft(
-          title: 'Definir o boss real',
-          description: 'Trocar preocupação solta por clareza.',
+          title: 'Agendamento',
+          description: 'Resolver o contato e garantir a data.',
           actions: [
-            'Escrever em uma frase o que precisa ser resolvido',
-            'Listar o que está travando hoje',
-            'Escolher o problema principal para atacar primeiro',
+            'Procurar número ou local',
+            'Enviar mensagem ou ligar',
+            'Salvar data e horário',
           ],
         ),
         _MilestoneDraft(
-          title: 'Criar plano enxuto',
-          description: 'Saber a próxima jogada em vez de tentar resolver tudo.',
+          title: 'Preparação',
+          description: 'Chegar na consulta sem esquecer o que precisa.',
           actions: [
-            'Separar o problema em 3 partes menores',
-            'Definir o que pode ser feito esta semana',
-            'Escolher 1 ação de alto impacto',
+            'Separar documentos ou exames',
+            'Anotar dúvidas principais',
           ],
         ),
+      ];
+    }
+
+    if (text.contains('costur') ||
+        text.contains('calça') ||
+        text.contains('barbeador') ||
+        text.contains('comprar')) {
+      return [
         _MilestoneDraft(
-          title: 'Executar e revisar',
-          description: 'Andar sem depender de perfeição.',
+          title: 'Resolver isso logo',
+          description: 'Pendência pequena, ideal para destravar rápido.',
           actions: [
-            'Executar a ação mais importante',
-            'Revisar o resultado',
-            'Definir o próximo movimento',
+            title.trim().isNotEmpty ? title.trim() : 'Resolver a pendência',
           ],
         ),
       ];
@@ -201,31 +215,17 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
 
     return [
       _MilestoneDraft(
-        title: 'Clareza',
-        description: 'Entender o que essa missão realmente significa.',
+        title: 'Entender melhor',
+        description: 'Clareza antes de sair fazendo qualquer coisa.',
         actions: [
-          'Escrever o objetivo de forma simples',
-          'Definir por que isso importa agora',
-          'Escolher o primeiro passo possível',
+          'Escrever a primeira decisão que preciso tomar',
+          'Escolher o menor próximo passo possível',
         ],
       ),
       _MilestoneDraft(
-        title: 'Primeiro avanço',
-        description: 'Sair da intenção e entrar em movimento.',
-        actions: [
-          'Executar uma jogada pequena',
-          'Remover um bloqueio óbvio',
-          'Registrar o que funcionou',
-        ],
-      ),
-      _MilestoneDraft(
-        title: 'Constância',
-        description: 'Continuar mesmo sem dia perfeito.',
-        actions: [
-          'Definir a próxima jogada',
-          'Criar um ritmo mínimo',
-          'Revisar a missão no fim da semana',
-        ],
+        title: 'Executar',
+        description: 'Levar do papel para a prática.',
+        actions: ['Fazer a próxima ação', 'Registrar o que falta depois disso'],
       ),
     ];
   }
@@ -248,7 +248,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         GoalMilestoneModel(
           id: 'm_${i + 1}_$id',
           title: draft.title.trim().isEmpty
-              ? 'Fase ${i + 1}'
+              ? 'Etapa ${i + 1}'
               : draft.title.trim(),
           description: draft.description.trim(),
           order: i,
@@ -270,14 +270,18 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       milestones.add(
         GoalMilestoneModel(
           id: 'm_1_$id',
-          title: 'Primeiro avanço',
-          description: 'Saída mínima do zero.',
+          title: _kind == GoalKind.problem ? 'Resolver' : 'Primeiro avanço',
+          description: _kind == GoalKind.problem
+              ? 'Pendência mínima para sair da cabeça.'
+              : 'Saída mínima do zero.',
           order: 0,
           isDone: false,
           actions: [
             GoalActionModel(
               id: 'a_1_1_$id',
-              title: 'Definir a próxima jogada',
+              title: _titleCtrl.text.trim().isEmpty
+                  ? 'Definir a próxima ação'
+                  : _titleCtrl.text.trim(),
               isDone: false,
               createdAtMs: now,
             ),
@@ -289,7 +293,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     return GoalPlanModel(
       id: id,
       title: _titleCtrl.text.trim().isEmpty
-          ? 'Nova missão'
+          ? 'Novo item'
           : _titleCtrl.text.trim(),
       captureText: _captureCtrl.text.trim(),
       kind: _kind,
@@ -300,7 +304,13 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       milestones: milestones,
       whyItMatters: _whyCtrl.text.trim(),
       currentStageLabel: milestones.first.title,
-      targetDateMs: widget.initialPlan?.targetDateMs,
+      targetDateMs: _targetDate == null
+          ? widget.initialPlan?.targetDateMs
+          : DateTime(
+              _targetDate!.year,
+              _targetDate!.month,
+              _targetDate!.day,
+            ).millisecondsSinceEpoch,
     );
   }
 
@@ -312,13 +322,13 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
   String _kindLabel(GoalKind value) {
     switch (value) {
       case GoalKind.objective:
-        return 'Missão';
+        return 'Objetivo';
       case GoalKind.project:
         return 'Projeto';
       case GoalKind.problem:
-        return 'Boss';
+        return 'Pendência';
       case GoalKind.habit:
-        return 'Hábito';
+        return 'Rotina';
     }
   }
 
@@ -345,6 +355,14 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     }
   }
 
+  String _dateLabel(DateTime? date) {
+    if (date == null) return 'Sem prazo';
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final y = date.year.toString();
+    return '$d/$m/$y';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -352,7 +370,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(_editing ? 'Editar missão' : 'Nova missão'),
+        title: Text(_editing ? 'Editar item' : 'Novo item'),
         actions: [TextButton(onPressed: _save, child: const Text('Salvar'))],
       ),
       body: ListView(
@@ -363,10 +381,10 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             decoration: BoxDecoration(
               color: const Color(0xFF10182B),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+              border: Border.all(color: Colors.white.withOpacity(0.07)),
             ),
             child: const Text(
-              'Jogue aqui o que está travando sua cabeça. Depois o app quebra isso em fases e próximas jogadas.',
+              'Jogue aqui qualquer coisa que você precisa resolver: tarefa pequena, consulta, compra, pendência chata, problema da empresa ou projeto grande.',
               style: TextStyle(
                 color: Colors.white70,
                 fontWeight: FontWeight.w600,
@@ -378,7 +396,10 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
           TextField(
             controller: _titleCtrl,
             style: const TextStyle(color: Colors.white),
-            decoration: _input('Nome principal', 'Ex: aprender a cozinhar'),
+            decoration: _input(
+              'Nome principal',
+              'Ex: marcar fono / construir minha casa',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -388,7 +409,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             style: const TextStyle(color: Colors.white),
             decoration: _input(
               'Texto bruto',
-              'Escreva do seu jeito: problema, meta, confusão, vontade, trava, tudo junto...',
+              'Escreva do seu jeito: tudo que precisa, o que está envolvido, o que está travando, o que não quer esquecer...',
             ),
           ),
           const SizedBox(height: 12),
@@ -398,8 +419,8 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             maxLines: 4,
             style: const TextStyle(color: Colors.white),
             decoration: _input(
-              'Por que essa missão importa',
-              'O que muda na sua vida quando isso andar?',
+              'Por que isso importa',
+              'O que muda na sua vida quando isso for resolvido?',
             ),
           ),
           const SizedBox(height: 12),
@@ -446,6 +467,39 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.06)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Prazo: ${_dateLabel(_targetDate)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.event_rounded),
+                  label: const Text('Escolher'),
+                ),
+                if (_targetDate != null)
+                  TextButton.icon(
+                    onPressed: _clearDate,
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Limpar'),
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -453,14 +507,14 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
                 child: FilledButton.icon(
                   onPressed: _generateSuggestion,
                   icon: const Icon(Icons.auto_awesome_rounded),
-                  label: const Text('Gerar fases'),
+                  label: const Text('Gerar estrutura'),
                 ),
               ),
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: _addMilestone,
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Fase'),
+                label: const Text('Etapa'),
               ),
             ],
           ),
@@ -469,12 +523,12 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
+                color: Colors.white.withOpacity(0.04),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
               ),
               child: const Text(
-                'Ainda não existem fases. Gere uma base automática ou crie manualmente.',
+                'Ainda não existem etapas. Gere uma base automática ou crie manualmente. Para pendência pequena, uma etapa com uma ação já resolve.',
                 style: TextStyle(color: Colors.white70),
               ),
             ),
@@ -497,8 +551,8 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             height: 52,
             child: FilledButton.icon(
               onPressed: _save,
-              icon: const Icon(Icons.flag_rounded),
-              label: const Text('Salvar missão'),
+              icon: const Icon(Icons.save_rounded),
+              label: Text(_editing ? 'Salvar alterações' : 'Salvar item'),
             ),
           ),
         ],
@@ -510,17 +564,17 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     return InputDecoration(
       labelText: label,
       hintText: hint.isEmpty ? null : hint,
-      labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
-      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.38)),
+      labelStyle: TextStyle(color: Colors.white.withOpacity(0.78)),
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.38)),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.04),
+      fillColor: Colors.white.withOpacity(0.04),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(18)),
-        borderSide: BorderSide(color: Color(0xFFA855F7), width: 1.6),
+        borderSide: BorderSide(color: Color(0xFF7C3AED), width: 1.6),
       ),
     );
   }
@@ -558,7 +612,7 @@ class _MilestoneEditorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF10182B),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
       ),
       child: Column(
         children: [
@@ -566,7 +620,7 @@ class _MilestoneEditorCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Fase ${index + 1}',
+                  'Etapa ${index + 1}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
@@ -583,7 +637,7 @@ class _MilestoneEditorCard extends StatelessWidget {
           TextFormField(
             initialValue: draft.title,
             style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(labelText: 'Nome da fase'),
+            decoration: const InputDecoration(labelText: 'Nome da etapa'),
             onChanged: (value) {
               draft.title = value;
               onChanged();
@@ -612,7 +666,7 @@ class _MilestoneEditorCard extends StatelessWidget {
                       initialValue: draft.actions[actionIndex],
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: 'Próxima jogada ${actionIndex + 1}',
+                        labelText: 'Ação ${actionIndex + 1}',
                       ),
                       onChanged: (value) {
                         draft.actions[actionIndex] = value;
@@ -640,7 +694,7 @@ class _MilestoneEditorCard extends StatelessWidget {
                 onChanged();
               },
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Adicionar jogada'),
+              label: const Text('Adicionar ação'),
             ),
           ),
         ],

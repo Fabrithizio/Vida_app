@@ -2,9 +2,9 @@
 // FILE: lib/features/goals/presentation/pages/goal_details_page.dart
 //
 // O que este arquivo faz:
-// - Mostra a missão já pronta para uso real
-// - Exibe fase atual, próxima jogada, progresso, trilha e pequenas vitórias
-// - Dá tom mais de jogo sem perder clareza para vida real
+// - Mostra o item da vida real já pronto para execução
+// - Serve tanto para tarefa rápida quanto para projeto grande
+// - Deixa claro prazo, etapa atual, próxima ação e checklist
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -76,9 +76,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          action.isDone ? 'Ação reaberta.' : 'Pequena vitória desbloqueada.',
-        ),
+        content: Text(action.isDone ? 'Ação reaberta.' : 'Ação concluída.'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -113,7 +111,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(nextDone ? 'Fase concluída.' : 'Fase reaberta.'),
+        content: Text(nextDone ? 'Etapa concluída.' : 'Etapa reaberta.'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -138,7 +136,11 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
   }
 
   Color _accentForStatus() {
+    final now = DateTime.now();
     if (_plan.isCompleted) return const Color(0xFF22C55E);
+    if (_plan.isOverdue(now)) return const Color(0xFFEF4444);
+    if (_plan.isDueSoon(now, withinDays: 2)) return const Color(0xFFF59E0B);
+
     switch (_plan.kind) {
       case GoalKind.objective:
         return const Color(0xFFA855F7);
@@ -154,13 +156,13 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
   String _kindLabel(GoalKind value) {
     switch (value) {
       case GoalKind.objective:
-        return 'Missão';
+        return 'Objetivo';
       case GoalKind.project:
         return 'Projeto';
       case GoalKind.problem:
-        return 'Boss';
+        return 'Pendência';
       case GoalKind.habit:
-        return 'Hábito';
+        return 'Rotina';
     }
   }
 
@@ -187,19 +189,24 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     }
   }
 
-  int get _xpTotal {
-    final actionsXp = _plan.doneActions * 10;
-    final milestonesXp = _plan.doneMilestones * 40;
-    final finalBonus = _plan.isCompleted ? 120 : 0;
-    return actionsXp + milestonesXp + finalBonus;
+  String get _energyLabel {
+    final now = DateTime.now();
+    if (_plan.isCompleted) return 'Resolvido';
+    if (_plan.isOverdue(now)) return 'Precisa atenção';
+    if (_plan.isDueSoon(now, withinDays: 2)) return 'Prazo próximo';
+    if (_plan.progress >= 0.80) return 'Reta final';
+    if (_plan.progress >= 0.55) return 'Andando bem';
+    if (_plan.progress >= 0.25) return 'Em movimento';
+    return 'Começo';
   }
 
-  String get _energyLabel {
-    if (_plan.isCompleted) return 'Missão finalizada';
-    if (_plan.progress >= 0.80) return 'Reta final';
-    if (_plan.progress >= 0.55) return 'Ritmo forte';
-    if (_plan.progress >= 0.25) return 'Evoluindo';
-    return 'Saindo do zero';
+  String _dateLabel(int? ms) {
+    if (ms == null) return 'Sem data definida';
+    final date = DateTime.fromMillisecondsSinceEpoch(ms);
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final y = date.year.toString();
+    return '$d/$m/$y';
   }
 
   @override
@@ -208,7 +215,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     final progressPercent = (_plan.progress * 100)
         .clamp(0, 100)
         .toStringAsFixed(0);
-    final nextAction = _plan.nextAction?.title ?? 'Sem próxima jogada definida';
+    final nextAction = _plan.nextAction?.title ?? 'Sem próxima ação definida';
 
     return Scaffold(
       backgroundColor: const Color(0xFF060A14),
@@ -231,17 +238,14 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(26),
               gradient: LinearGradient(
-                colors: [
-                  accent.withValues(alpha: 0.18),
-                  const Color(0xFF10182B),
-                ],
+                colors: [accent.withOpacity(0.18), const Color(0xFF10182B)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              border: Border.all(color: accent.withValues(alpha: 0.26)),
+              border: Border.all(color: accent.withOpacity(0.26)),
               boxShadow: [
                 BoxShadow(
-                  color: accent.withValues(alpha: 0.12),
+                  color: accent.withOpacity(0.12),
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -261,7 +265,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  _plan.currentMilestone?.title ?? 'Sem fase atual',
+                  _plan.currentMilestone?.title ?? 'Sem etapa atual',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -271,10 +275,10 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 const SizedBox(height: 6),
                 Text(
                   _plan.whyItMatters.isEmpty
-                      ? 'A missão já começou. Agora é continuar até a barra encher.'
+                      ? 'Este item existe para te ajudar a parar de empurrar a vida com a barriga.'
                       : _plan.whyItMatters,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.82),
+                    color: Colors.white.withOpacity(0.82),
                     height: 1.35,
                     fontWeight: FontWeight.w600,
                   ),
@@ -282,55 +286,34 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Expanded(child: _metricCard('XP', '$_xpTotal')),
+                    Expanded(
+                      child: _metricCard('Progresso', '$progressPercent%'),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _metricCard(
-                        'Fases',
+                        'Etapas',
                         '${_plan.doneMilestones}/${_plan.totalMilestones}',
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _metricCard(
-                        'Vitórias',
+                        'Ações',
                         '${_plan.doneActions}/${_plan.totalActions}',
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.07),
+                Row(
+                  children: [
+                    Expanded(child: _infoCard('Próxima ação', nextAction)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _infoCard('Prazo', _dateLabel(_plan.targetDateMs)),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Próxima jogada',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.68),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        nextAction,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 ClipRRect(
@@ -338,15 +321,15 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                   child: LinearProgressIndicator(
                     value: _plan.progress,
                     minHeight: 12,
-                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    backgroundColor: Colors.white.withOpacity(0.08),
                     valueColor: AlwaysStoppedAnimation<Color>(accent),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   _plan.isCompleted
-                      ? 'Barra cheia • missão concluída'
-                      : '$progressPercent% carregado • siga até a próxima virada',
+                      ? 'Barra cheia • item concluído'
+                      : '$progressPercent% carregado • continue na próxima ação',
                   style: TextStyle(color: accent, fontWeight: FontWeight.w800),
                 ),
               ],
@@ -359,13 +342,13 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
               decoration: BoxDecoration(
                 color: const Color(0xFF10182B),
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+                border: Border.all(color: Colors.white.withOpacity(0.07)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Texto bruto da missão',
+                    'Anotação original',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
@@ -375,7 +358,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                   Text(
                     _plan.captureText,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.78),
+                      color: Colors.white.withOpacity(0.78),
                       height: 1.35,
                       fontWeight: FontWeight.w600,
                     ),
@@ -385,7 +368,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
             ),
           const SizedBox(height: 14),
           const Text(
-            'Mapa de fases',
+            'Etapas e ações',
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w900,
@@ -425,9 +408,9 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
       ),
       child: Column(
         children: [
@@ -444,9 +427,42 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.66),
+              color: Colors.white.withOpacity(0.66),
               fontWeight: FontWeight.w700,
               fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoCard(String label, String value) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.68),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
             ),
           ),
         ],
@@ -458,9 +474,9 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: color.withOpacity(0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.26)),
+        border: Border.all(color: color.withOpacity(0.26)),
       ),
       child: Text(
         label,
@@ -505,8 +521,8 @@ class _MilestoneCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: milestone.isDone || isCurrent
-              ? stageAccent.withValues(alpha: 0.28)
-              : Colors.white.withValues(alpha: 0.07),
+              ? stageAccent.withOpacity(0.28)
+              : Colors.white.withOpacity(0.07),
         ),
       ),
       child: Column(
@@ -517,21 +533,21 @@ class _MilestoneCard extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: stageAccent.withValues(alpha: 0.12),
+                color: stageAccent.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: stageAccent.withValues(alpha: 0.22)),
+                border: Border.all(color: stageAccent.withOpacity(0.22)),
               ),
               child: Icon(
                 milestone.isDone
                     ? Icons.check_circle_rounded
                     : isCurrent
-                    ? Icons.auto_awesome_rounded
+                    ? Icons.play_circle_fill_rounded
                     : Icons.radio_button_unchecked_rounded,
                 color: stageAccent,
               ),
             ),
             title: Text(
-              'Fase ${index + 1}: ${milestone.title}',
+              milestone.title,
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w900,
@@ -541,9 +557,9 @@ class _MilestoneCard extends StatelessWidget {
               milestone.description.isEmpty
                   ? (milestone.actions.isEmpty
                         ? 'Sem ações'
-                        : '${milestone.doneActions}/${milestone.totalActions} pequenas vitórias feitas')
+                        : '${milestone.doneActions}/${milestone.totalActions} ações concluídas')
                   : milestone.description,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.64)),
+              style: TextStyle(color: Colors.white.withOpacity(0.64)),
             ),
             trailing: Text(
               '${(milestone.progress * 100).toStringAsFixed(0)}%',
@@ -566,10 +582,8 @@ class _MilestoneCard extends StatelessWidget {
                   ),
                 ),
                 subtitle: Text(
-                  action.isDone
-                      ? 'Vitória registrada'
-                      : 'Ação pronta para ataque',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.54)),
+                  action.isDone ? 'Concluído' : 'Ainda falta fazer',
+                  style: TextStyle(color: Colors.white.withOpacity(0.54)),
                 ),
                 dense: true,
                 activeColor: accent,
