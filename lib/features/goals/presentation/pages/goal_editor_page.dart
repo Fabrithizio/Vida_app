@@ -6,6 +6,7 @@
 // - Aceita captura livre e rápida
 // - Gera uma estrutura inicial útil para não deixar o usuário travado
 // - Adiciona prazo, lembrete, recorrência, aguardando alguém e algum dia
+// - Corrige overflows de layout nos cards de data e nos blocos do editor
 // ============================================================================
 
 import 'dart:math' as math;
@@ -523,6 +524,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
           ),
           const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: _dateCard(
@@ -697,30 +699,70 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
         children: [
           Text(title, style: TextStyle(color: Colors.white.withOpacity(0.80))),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
             ),
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              TextButton.icon(
-                onPressed: onPick,
-                icon: const Icon(Icons.event_rounded),
-                label: const Text('Escolher'),
+              _smallActionButton(
+                icon: Icons.event_rounded,
+                label: 'Escolher',
+                onTap: onPick,
               ),
               if (onClear != null)
-                TextButton.icon(
-                  onPressed: onClear,
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('Limpar'),
+                _smallActionButton(
+                  icon: Icons.close_rounded,
+                  label: 'Limpar',
+                  onTap: onClear,
                 ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _smallActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: const Color(0xFFA7F3D0)),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFFD1FAE5),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
