@@ -4,14 +4,15 @@
 // O que este arquivo faz:
 // - Transforma "missões" em uma central de pendências da vida
 // - Mistura tarefas rápidas, projetos grandes, objetivos e rotinas
-// - Dá filtros úteis para hoje, próximas, atrasadas, projetos e concluídas
-// - Mantém a base atual do módulo sem perder progresso já salvo
+// - Adiciona filtros para hoje, aguardando alguém e algum dia / talvez
+// - Mantém visão forte de lembretes, recorrência e itens puxados para o Meu Dia
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
 import '../../data/models/goals_models.dart';
 import '../../data/repositories/hive_goals_repository.dart';
+import '../../domain/goals_runtime_service.dart';
 import 'goal_details_page.dart';
 import 'goal_editor_page.dart';
 
@@ -22,10 +23,11 @@ class GoalsHubPage extends StatefulWidget {
   State<GoalsHubPage> createState() => _GoalsHubPageState();
 }
 
-enum _GoalHubTab { inbox, today, upcoming, projects, done }
+enum _GoalHubTab { today, inbox, upcoming, projects, waiting, someday, done }
 
 class _GoalsHubPageState extends State<GoalsHubPage> {
   final _repo = HiveGoalsRepository();
+  final _runtime = GoalsRuntimeService();
   final _searchCtrl = TextEditingController();
 
   bool _loading = true;
@@ -47,17 +49,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
 
   Future<void> _reload() async {
     setState(() => _loading = true);
-    final summaries = await _repo.listGoals();
-    final plans = <GoalPlanModel>[];
-
-    for (final item in summaries) {
-      final plan = await _repo.loadGoal(item.id);
-      if (plan != null) {
-        plans.add(plan);
-      }
-    }
-
-    plans.sort((a, b) => b.updatedAtMs.compareTo(a.updatedAtMs));
+    final plans = await _runtime.loadAllPlans(_repo);
 
     if (!mounted) return;
     setState(() {
@@ -98,25 +90,8 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
   }
 
   Future<void> _quickComplete(GoalPlanModel plan) async {
-    final doneMilestones = plan.milestones
-        .map(
-          (milestone) => milestone.copyWith(
-            isDone: true,
-            actions: milestone.actions
-                .map((action) => action.copyWith(isDone: true))
-                .toList(),
-          ),
-        )
-        .toList();
-
-    await _repo.saveGoal(
-      plan.copyWith(
-        milestones: doneMilestones,
-        status: GoalStatus.completed,
-        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-        currentStageLabel: 'Concluído',
-      ),
-    );
+    final next = _runtime.completePlan(plan, DateTime.now());
+    await _repo.saveGoal(next);
     await _reload();
   }
 
@@ -137,27 +112,32 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
         plan.whyItMatters,
         plan.currentStageLabel,
         plan.nextAction?.title ?? '',
+        plan.waitingNote,
       ].join(' ').toLowerCase();
       return text.contains(query);
     }
 
     bool matchesTab(GoalPlanModel plan) {
       switch (_tab) {
-        case _GoalHubTab.inbox:
-          return !plan.isCompleted;
         case _GoalHubTab.today:
-          return !plan.isCompleted &&
-              (plan.isOverdue(now) ||
-                  plan.isDueSoon(now, withinDays: 2) ||
-                  plan.isQuickTask);
+          return plan.shouldAppearInMyDay(now);
+        case _GoalHubTab.inbox:
+          return !plan.isCompleted && !plan.somedayMaybe;
         case _GoalHubTab.upcoming:
           return !plan.isCompleted &&
+              !plan.waitingForSomeone &&
+              !plan.somedayMaybe &&
               !plan.isOverdue(now) &&
-              plan.isDueSoon(now, withinDays: 14);
+              (plan.isDueSoon(now, withinDays: 14) || plan.isReminderDue(now));
         case _GoalHubTab.projects:
           return !plan.isCompleted &&
+              !plan.somedayMaybe &&
               (plan.kind == GoalKind.project ||
                   plan.kind == GoalKind.objective);
+        case _GoalHubTab.waiting:
+          return !plan.isCompleted && plan.waitingForSomeone;
+        case _GoalHubTab.someday:
+          return !plan.isCompleted && plan.somedayMaybe;
         case _GoalHubTab.done:
           return plan.isCompleted;
       }
@@ -171,6 +151,10 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
       final aOverdue = a.isOverdue(now) ? 1 : 0;
       final bOverdue = b.isOverdue(now) ? 1 : 0;
       if (aOverdue != bOverdue) return bOverdue.compareTo(aOverdue);
+
+      final aReminder = a.reminderAtMs ?? 1 << 60;
+      final bReminder = b.reminderAtMs ?? 1 << 60;
+      if (aReminder != bReminder) return aReminder.compareTo(bReminder);
 
       final aDue = a.targetDateMs ?? 1 << 60;
       final bDue = b.targetDateMs ?? 1 << 60;
@@ -194,9 +178,16 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
       .length;
   int get _quickCount =>
       _plans.where((item) => !item.isCompleted && item.isQuickTask).length;
+  int get _waitingCount => _plans
+      .where((item) => !item.isCompleted && item.waitingForSomeone)
+      .length;
+  int get _somedayCount =>
+      _plans.where((item) => !item.isCompleted && item.somedayMaybe).length;
 
   double get _avgProgress {
-    final open = _plans.where((item) => !item.isCompleted).toList();
+    final open = _plans
+        .where((item) => !item.isCompleted && !item.somedayMaybe)
+        .toList();
     if (open.isEmpty) return 0;
     final total = open.fold<double>(0, (sum, item) => sum + item.progress);
     return total / open.length;
@@ -241,7 +232,11 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
   Color _accentForGoal(GoalPlanModel goal) {
     if (goal.isCompleted) return const Color(0xFF22C55E);
     if (goal.isOverdue(_today)) return const Color(0xFFEF4444);
-    if (goal.isDueSoon(_today, withinDays: 2)) return const Color(0xFFF59E0B);
+    if (goal.waitingForSomeone) return const Color(0xFF0EA5E9);
+    if (goal.somedayMaybe) return const Color(0xFF64748B);
+    if (goal.isDueSoon(_today, withinDays: 2) || goal.isReminderDue(_today)) {
+      return const Color(0xFFF59E0B);
+    }
 
     switch (goal.kind) {
       case GoalKind.objective:
@@ -255,8 +250,11 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
     }
   }
 
-  IconData _iconForKind(GoalKind kind) {
-    switch (kind) {
+  IconData _iconForGoal(GoalPlanModel goal) {
+    if (goal.waitingForSomeone) return Icons.hourglass_top_rounded;
+    if (goal.somedayMaybe) return Icons.self_improvement_rounded;
+
+    switch (goal.kind) {
       case GoalKind.objective:
         return Icons.flag_rounded;
       case GoalKind.project:
@@ -277,10 +275,26 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
     return '$d/$m/$y';
   }
 
+  String _recurrenceLabel(GoalRecurrenceType recurrence) {
+    switch (recurrence) {
+      case GoalRecurrenceType.none:
+        return 'Sem recorrência';
+      case GoalRecurrenceType.daily:
+        return 'Recorrente diária';
+      case GoalRecurrenceType.weekly:
+        return 'Recorrente semanal';
+      case GoalRecurrenceType.monthly:
+        return 'Recorrente mensal';
+    }
+  }
+
   String _statusText(GoalPlanModel goal) {
     if (goal.isCompleted) return 'Concluído';
+    if (goal.waitingForSomeone) return 'Aguardando alguém';
+    if (goal.somedayMaybe) return 'Algum dia / talvez';
     if (goal.isOverdue(_today)) return 'Atrasado';
     if (goal.isDueSoon(_today, withinDays: 2)) return 'Perto do prazo';
+    if (goal.isReminderDue(_today)) return 'Lembrete ativo';
     if (goal.isQuickTask) return 'Tarefa rápida';
     if (goal.progress >= 0.7) return 'Bem encaminhado';
     if (goal.progress > 0) return 'Em andamento';
@@ -291,7 +305,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
     if (_plans.isEmpty) {
       return 'Jogue aqui tudo que precisa resolver na vida: tarefa pequena, projeto grande, pendência esquecida ou objetivo de longo prazo.';
     }
-    return 'Você está com $_activeCount itens ativos, $_overdueCount atrasados, $_dueSoonCount chegando perto do prazo e $_quickCount tarefas rápidas para destravar.';
+    return 'Você está com $_activeCount itens ativos, $_overdueCount atrasados, $_waitingCount aguardando alguém, $_somedayCount em algum dia / talvez e $_quickCount tarefas rápidas para destravar.';
   }
 
   @override
@@ -436,7 +450,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
                             hintText:
-                                'Buscar por título, texto bruto ou próxima ação',
+                                'Buscar por título, texto bruto, próxima ação ou anotação',
                             hintStyle: TextStyle(
                               color: Colors.white.withOpacity(0.42),
                             ),
@@ -474,10 +488,12 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      _hubTabChip(_GoalHubTab.today, 'Meu Dia'),
                       _hubTabChip(_GoalHubTab.inbox, 'Todos'),
-                      _hubTabChip(_GoalHubTab.today, 'Hoje'),
                       _hubTabChip(_GoalHubTab.upcoming, 'Próximas'),
                       _hubTabChip(_GoalHubTab.projects, 'Projetos'),
+                      _hubTabChip(_GoalHubTab.waiting, 'Aguardando'),
+                      _hubTabChip(_GoalHubTab.someday, 'Algum dia'),
                       _hubTabChip(_GoalHubTab.done, 'Concluídos'),
                     ],
                   ),
@@ -514,7 +530,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                           Text(
                             _tab == _GoalHubTab.done
                                 ? 'Quando você concluir itens da vida real, eles passam a morar aqui.'
-                                : 'Crie um novo item ou troque o filtro. Pode ser uma tarefa rápida, um projeto grande ou uma rotina.',
+                                : 'Crie um novo item ou troque o filtro. Pode ser tarefa pequena, projeto grande, coisa aguardando alguém ou algo para algum dia.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.74),
@@ -538,10 +554,21 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                               goal.nextAction?.title ?? 'Sem próxima ação',
                           progress: goal.progress,
                           completed: goal.isCompleted,
-                          icon: _iconForKind(goal.kind),
+                          icon: _iconForGoal(goal),
                           accent: _accentForGoal(goal),
                           statusText: _statusText(goal),
                           dueDateLabel: _dateLabel(goal.targetDateMs),
+                          reminderLabel: goal.reminderAtMs == null
+                              ? null
+                              : 'Lembrete: ${_dateLabel(goal.reminderAtMs)}',
+                          recurrenceLabel: goal.isRecurring
+                              ? _recurrenceLabel(goal.recurrence)
+                              : null,
+                          waitingLabel:
+                              goal.waitingForSomeone &&
+                                  goal.waitingNote.trim().isNotEmpty
+                              ? 'Aguardando: ${goal.waitingNote.trim()}'
+                              : null,
                           onTap: () => _openGoal(goal.id),
                           onDelete: () => _deleteGoal(goal.id),
                           onQuickDone: goal.isCompleted
@@ -639,6 +666,9 @@ class _GoalSummaryCard extends StatelessWidget {
     required this.onTap,
     required this.onDelete,
     this.onQuickDone,
+    this.reminderLabel,
+    this.recurrenceLabel,
+    this.waitingLabel,
   });
 
   final String title;
@@ -651,6 +681,9 @@ class _GoalSummaryCard extends StatelessWidget {
   final Color accent;
   final String statusText;
   final String dueDateLabel;
+  final String? reminderLabel;
+  final String? recurrenceLabel;
+  final String? waitingLabel;
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final VoidCallback? onQuickDone;
@@ -738,8 +771,22 @@ class _GoalSummaryCard extends StatelessWidget {
               children: [
                 _miniBadge(statusText, accent),
                 _miniBadge('Prazo: $dueDateLabel', Colors.white70),
+                if (reminderLabel != null)
+                  _miniBadge(reminderLabel!, Colors.amber),
+                if (recurrenceLabel != null)
+                  _miniBadge(recurrenceLabel!, const Color(0xFF22C55E)),
               ],
             ),
+            if (waitingLabel != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                waitingLabel!,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.72),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),

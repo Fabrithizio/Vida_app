@@ -5,7 +5,7 @@
 // - Cria ou edita um item da vida real: tarefa, projeto, objetivo ou rotina
 // - Aceita captura livre e rápida
 // - Gera uma estrutura inicial útil para não deixar o usuário travado
-// - Serve tanto para coisa pequena quanto para coisa grande
+// - Adiciona prazo, lembrete, recorrência, aguardando alguém e algum dia
 // ============================================================================
 
 import 'dart:math' as math;
@@ -26,11 +26,19 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
   final _titleCtrl = TextEditingController();
   final _captureCtrl = TextEditingController();
   final _whyCtrl = TextEditingController();
+  final _waitingCtrl = TextEditingController();
 
   GoalKind _kind = GoalKind.problem;
   GoalArea _area = GoalArea.pessoal;
-  final List<_MilestoneDraft> _milestones = [];
+  GoalRecurrenceType _recurrence = GoalRecurrenceType.none;
+  bool _waitingForSomeone = false;
+  bool _somedayMaybe = false;
+  bool _pinToMyDay = true;
   DateTime? _targetDate;
+  DateTime? _reminderDate;
+  int _recurrenceInterval = 1;
+
+  final List<_MilestoneDraft> _milestones = [];
 
   bool get _editing => widget.initialPlan != null;
 
@@ -42,11 +50,24 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       _titleCtrl.text = initial.title;
       _captureCtrl.text = initial.captureText;
       _whyCtrl.text = initial.whyItMatters;
+      _waitingCtrl.text = initial.waitingNote;
       _kind = initial.kind;
       _area = initial.area;
+      _recurrence = initial.recurrence;
+      _waitingForSomeone = initial.waitingForSomeone;
+      _somedayMaybe = initial.somedayMaybe;
+      _pinToMyDay = initial.pinToMyDay;
+      _recurrenceInterval = initial.recurrenceInterval <= 0
+          ? 1
+          : initial.recurrenceInterval;
       if (initial.targetDateMs != null) {
         _targetDate = DateTime.fromMillisecondsSinceEpoch(
           initial.targetDateMs!,
+        );
+      }
+      if (initial.reminderAtMs != null) {
+        _reminderDate = DateTime.fromMillisecondsSinceEpoch(
+          initial.reminderAtMs!,
         );
       }
       for (final milestone in initial.milestones) {
@@ -66,6 +87,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     _titleCtrl.dispose();
     _captureCtrl.dispose();
     _whyCtrl.dispose();
+    _waitingCtrl.dispose();
     super.dispose();
   }
 
@@ -84,20 +106,23 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     });
   }
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate({required bool reminder}) async {
     final now = DateTime.now();
+    final initial = reminder ? (_reminderDate ?? now) : (_targetDate ?? now);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _targetDate ?? now,
+      initialDate: initial,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 15),
     );
     if (picked == null) return;
-    setState(() => _targetDate = picked);
-  }
-
-  void _clearDate() {
-    setState(() => _targetDate = null);
+    setState(() {
+      if (reminder) {
+        _reminderDate = picked;
+      } else {
+        _targetDate = picked;
+      }
+    });
   }
 
   void _generateSuggestion() {
@@ -305,12 +330,28 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       whyItMatters: _whyCtrl.text.trim(),
       currentStageLabel: milestones.first.title,
       targetDateMs: _targetDate == null
-          ? widget.initialPlan?.targetDateMs
+          ? null
           : DateTime(
               _targetDate!.year,
               _targetDate!.month,
               _targetDate!.day,
             ).millisecondsSinceEpoch,
+      reminderAtMs: _reminderDate == null
+          ? null
+          : DateTime(
+              _reminderDate!.year,
+              _reminderDate!.month,
+              _reminderDate!.day,
+              9,
+            ).millisecondsSinceEpoch,
+      recurrence: _recurrence,
+      recurrenceInterval: _recurrenceInterval <= 0 ? 1 : _recurrenceInterval,
+      waitingForSomeone: _waitingForSomeone,
+      waitingNote: _waitingCtrl.text.trim(),
+      somedayMaybe: _somedayMaybe,
+      pinToMyDay: _pinToMyDay,
+      lastCompletedAtMs: widget.initialPlan?.lastCompletedAtMs,
+      lastSeenReminderAtMs: widget.initialPlan?.lastSeenReminderAtMs,
     );
   }
 
@@ -355,8 +396,21 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     }
   }
 
+  String _recurrenceLabel(GoalRecurrenceType value) {
+    switch (value) {
+      case GoalRecurrenceType.none:
+        return 'Sem recorrência';
+      case GoalRecurrenceType.daily:
+        return 'Diária';
+      case GoalRecurrenceType.weekly:
+        return 'Semanal';
+      case GoalRecurrenceType.monthly:
+        return 'Mensal';
+    }
+  }
+
   String _dateLabel(DateTime? date) {
-    if (date == null) return 'Sem prazo';
+    if (date == null) return 'Sem data';
     final d = date.day.toString().padLeft(2, '0');
     final m = date.month.toString().padLeft(2, '0');
     final y = date.year.toString();
@@ -468,36 +522,101 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withOpacity(0.06)),
+          Row(
+            children: [
+              Expanded(
+                child: _dateCard(
+                  title: 'Prazo',
+                  value: _dateLabel(_targetDate),
+                  onPick: () => _pickDate(reminder: false),
+                  onClear: _targetDate == null
+                      ? null
+                      : () => setState(() => _targetDate = null),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _dateCard(
+                  title: 'Lembrete',
+                  value: _dateLabel(_reminderDate),
+                  onPick: () => _pickDate(reminder: true),
+                  onClear: _reminderDate == null
+                      ? null
+                      : () => setState(() => _reminderDate = null),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<GoalRecurrenceType>(
+            value: _recurrence,
+            dropdownColor: const Color(0xFF10182B),
+            decoration: _input('Recorrência', ''),
+            items: GoalRecurrenceType.values
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(_recurrenceLabel(item)),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _recurrence = value);
+            },
+          ),
+          if (_recurrence != GoalRecurrenceType.none) ...[
+            const SizedBox(height: 10),
+            TextField(
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: _input(
+                'Intervalo da recorrência',
+                'Ex: 1 para toda semana, 2 para a cada 2 semanas',
+              ),
+              controller: TextEditingController(
+                text: _recurrenceInterval.toString(),
+              ),
+              onChanged: (value) {
+                final parsed = int.tryParse(value) ?? 1;
+                _recurrenceInterval = parsed <= 0 ? 1 : parsed;
+              },
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Prazo: ${_dateLabel(_targetDate)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.event_rounded),
-                  label: const Text('Escolher'),
-                ),
-                if (_targetDate != null)
-                  TextButton.icon(
-                    onPressed: _clearDate,
-                    icon: const Icon(Icons.close_rounded),
-                    label: const Text('Limpar'),
-                  ),
-              ],
+          ],
+          const SizedBox(height: 12),
+          SwitchListTile.adaptive(
+            value: _pinToMyDay,
+            onChanged: (value) => setState(() => _pinToMyDay = value),
+            title: const Text('Puxar para o Meu Dia'),
+            subtitle: const Text(
+              'Itens importantes, rápidos ou com lembrete entram no painel do dia.',
+            ),
+          ),
+          SwitchListTile.adaptive(
+            value: _waitingForSomeone,
+            onChanged: (value) => setState(() => _waitingForSomeone = value),
+            title: const Text('Aguardando alguém'),
+            subtitle: const Text(
+              'Use quando a próxima ação não depende mais de você.',
+            ),
+          ),
+          if (_waitingForSomeone) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _waitingCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: _input(
+                'Quem ou o que você está aguardando',
+                'Ex: retorno da clínica / resposta do pedreiro / orçamento',
+              ),
+            ),
+          ],
+          SwitchListTile.adaptive(
+            value: _somedayMaybe,
+            onChanged: (value) => setState(() => _somedayMaybe = value),
+            title: const Text('Algum dia / talvez'),
+            subtitle: const Text(
+              'Tira da fila principal sem perder a ideia ou o plano.',
             ),
           ),
           const SizedBox(height: 16),
@@ -554,6 +673,52 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
               icon: const Icon(Icons.save_rounded),
               label: Text(_editing ? 'Salvar alterações' : 'Salvar item'),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateCard({
+    required String title,
+    required String value,
+    required VoidCallback onPick,
+    VoidCallback? onClear,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: TextStyle(color: Colors.white.withOpacity(0.80))),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: onPick,
+                icon: const Icon(Icons.event_rounded),
+                label: const Text('Escolher'),
+              ),
+              if (onClear != null)
+                TextButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('Limpar'),
+                ),
+            ],
           ),
         ],
       ),

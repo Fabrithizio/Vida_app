@@ -4,7 +4,7 @@
 // O que este arquivo faz:
 // - Define os modelos da central de objetivos / pendências da vida
 // - Permite misturar tarefas rápidas, projetos grandes, problemas e rotinas
-// - Mantém tudo serializável para Hive sem quebrar a base do módulo
+// - Adiciona recorrência, lembretes, aguardando alguém e algum dia / talvez
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -24,6 +24,8 @@ enum GoalArea {
   relacionamento,
   outro,
 }
+
+enum GoalRecurrenceType { none, daily, weekly, monthly }
 
 @immutable
 class GoalActionModel {
@@ -165,6 +167,15 @@ class GoalPlanModel {
     this.whyItMatters = '',
     this.currentStageLabel = '',
     this.targetDateMs,
+    this.reminderAtMs,
+    this.recurrence = GoalRecurrenceType.none,
+    this.recurrenceInterval = 1,
+    this.waitingForSomeone = false,
+    this.waitingNote = '',
+    this.somedayMaybe = false,
+    this.pinToMyDay = true,
+    this.lastCompletedAtMs,
+    this.lastSeenReminderAtMs,
   });
 
   final String id;
@@ -179,6 +190,15 @@ class GoalPlanModel {
   final String whyItMatters;
   final String currentStageLabel;
   final int? targetDateMs;
+  final int? reminderAtMs;
+  final GoalRecurrenceType recurrence;
+  final int recurrenceInterval;
+  final bool waitingForSomeone;
+  final String waitingNote;
+  final bool somedayMaybe;
+  final bool pinToMyDay;
+  final int? lastCompletedAtMs;
+  final int? lastSeenReminderAtMs;
 
   GoalPlanModel copyWith({
     String? id,
@@ -193,6 +213,15 @@ class GoalPlanModel {
     String? whyItMatters,
     String? currentStageLabel,
     int? targetDateMs,
+    int? reminderAtMs,
+    GoalRecurrenceType? recurrence,
+    int? recurrenceInterval,
+    bool? waitingForSomeone,
+    String? waitingNote,
+    bool? somedayMaybe,
+    bool? pinToMyDay,
+    int? lastCompletedAtMs,
+    int? lastSeenReminderAtMs,
   }) {
     return GoalPlanModel(
       id: id ?? this.id,
@@ -207,6 +236,15 @@ class GoalPlanModel {
       whyItMatters: whyItMatters ?? this.whyItMatters,
       currentStageLabel: currentStageLabel ?? this.currentStageLabel,
       targetDateMs: targetDateMs ?? this.targetDateMs,
+      reminderAtMs: reminderAtMs ?? this.reminderAtMs,
+      recurrence: recurrence ?? this.recurrence,
+      recurrenceInterval: recurrenceInterval ?? this.recurrenceInterval,
+      waitingForSomeone: waitingForSomeone ?? this.waitingForSomeone,
+      waitingNote: waitingNote ?? this.waitingNote,
+      somedayMaybe: somedayMaybe ?? this.somedayMaybe,
+      pinToMyDay: pinToMyDay ?? this.pinToMyDay,
+      lastCompletedAtMs: lastCompletedAtMs ?? this.lastCompletedAtMs,
+      lastSeenReminderAtMs: lastSeenReminderAtMs ?? this.lastSeenReminderAtMs,
     );
   }
 
@@ -246,10 +284,11 @@ class GoalPlanModel {
       (milestones.isNotEmpty && milestones.every((item) => item.isDone));
 
   bool get hasDeadline => targetDateMs != null;
+  bool get isRecurring => recurrence != GoalRecurrenceType.none;
 
   bool isOverdue(DateTime now) {
     final target = targetDateMs;
-    if (target == null || isCompleted) return false;
+    if (target == null || isCompleted || somedayMaybe) return false;
     return DateTime.fromMillisecondsSinceEpoch(
       target,
     ).isBefore(DateTime(now.year, now.month, now.day));
@@ -270,6 +309,23 @@ class GoalPlanModel {
     return milestones.first.isQuickTask;
   }
 
+  bool isReminderDue(DateTime now) {
+    final reminder = reminderAtMs;
+    if (reminder == null || isCompleted || somedayMaybe) return false;
+    return DateTime.fromMillisecondsSinceEpoch(reminder).isBefore(now) ||
+        DateTime.fromMillisecondsSinceEpoch(reminder).isAtSameMomentAs(now);
+  }
+
+  bool shouldAppearInMyDay(DateTime now) {
+    if (isCompleted || somedayMaybe || waitingForSomeone) return false;
+    if (pinToMyDay && isQuickTask) return true;
+    if (isOverdue(now)) return true;
+    if (isDueSoon(now, withinDays: 0)) return true;
+    if (isReminderDue(now)) return true;
+    if (pinToMyDay && progress < 1) return true;
+    return false;
+  }
+
   Map<String, dynamic> toMap() => {
     'id': id,
     'title': title,
@@ -282,6 +338,15 @@ class GoalPlanModel {
     'whyItMatters': whyItMatters,
     'currentStageLabel': currentStageLabel,
     'targetDateMs': targetDateMs,
+    'reminderAtMs': reminderAtMs,
+    'recurrence': recurrence.name,
+    'recurrenceInterval': recurrenceInterval,
+    'waitingForSomeone': waitingForSomeone,
+    'waitingNote': waitingNote,
+    'somedayMaybe': somedayMaybe,
+    'pinToMyDay': pinToMyDay,
+    'lastCompletedAtMs': lastCompletedAtMs,
+    'lastSeenReminderAtMs': lastSeenReminderAtMs,
     'milestones': milestones.map((item) => item.toMap()).toList(),
   };
 
@@ -308,6 +373,18 @@ class GoalPlanModel {
       whyItMatters: map['whyItMatters'] as String? ?? '',
       currentStageLabel: map['currentStageLabel'] as String? ?? '',
       targetDateMs: (map['targetDateMs'] as num?)?.toInt(),
+      reminderAtMs: (map['reminderAtMs'] as num?)?.toInt(),
+      recurrence: GoalRecurrenceType.values.firstWhere(
+        (item) => item.name == (map['recurrence'] as String? ?? ''),
+        orElse: () => GoalRecurrenceType.none,
+      ),
+      recurrenceInterval: (map['recurrenceInterval'] as num?)?.toInt() ?? 1,
+      waitingForSomeone: map['waitingForSomeone'] == true,
+      waitingNote: map['waitingNote'] as String? ?? '',
+      somedayMaybe: map['somedayMaybe'] == true,
+      pinToMyDay: map['pinToMyDay'] != false,
+      lastCompletedAtMs: (map['lastCompletedAtMs'] as num?)?.toInt(),
+      lastSeenReminderAtMs: (map['lastSeenReminderAtMs'] as num?)?.toInt(),
       milestones: raw
           .whereType<Map>()
           .map(

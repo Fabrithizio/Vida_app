@@ -7,6 +7,8 @@
 // - Prioriza o que realmente merece atenção do usuário
 // - Lê radar, corpo em dia, jornada, finanças, check-in, timeline e metas
 // - Remove alertas automaticamente quando o estado real já foi resolvido
+// - Agora integra a nova central de objetivos com lembretes, atrasos,
+//   tarefas puxadas para o Meu Dia, aguardando alguém e recorrência
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,6 +19,7 @@ import 'package:vida_app/features/alerts/alerts_center_repository.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/body_care/body_care_service.dart';
+import 'package:vida_app/features/goals/goals_alerts_bridge.dart';
 import 'package:vida_app/features/timeline/timeline_store.dart';
 
 class LifeAlertsService {
@@ -26,17 +29,20 @@ class LifeAlertsService {
     required TimelineStore timelineStore,
     AlertsCenterRepository? repository,
     BodyCareService? bodyCareService,
+    GoalsAlertsBridge? goalsAlertsBridge,
   }) : _areasStore = areasStore,
        _dailyCheckinService = dailyCheckinService,
        _timelineStore = timelineStore,
        _repository = repository ?? AlertsCenterRepository(),
-       _bodyCareService = bodyCareService ?? BodyCareService();
+       _bodyCareService = bodyCareService ?? BodyCareService(),
+       _goalsAlertsBridge = goalsAlertsBridge ?? GoalsAlertsBridge();
 
   final AreasStore _areasStore;
   final DailyCheckinService _dailyCheckinService;
   final TimelineStore _timelineStore;
   final AlertsCenterRepository _repository;
   final BodyCareService _bodyCareService;
+  final GoalsAlertsBridge _goalsAlertsBridge;
 
   Future<List<LifeAlert>> generate({
     required DateTime now,
@@ -65,7 +71,7 @@ class LifeAlertsService {
     alerts.addAll(_buildTimelineAlerts(now));
     alerts.addAll(await _buildAlwaysOnAlerts(now, prefs, uid));
     alerts.addAll(await _buildBodyCareAlerts(now));
-    alerts.addAll(await _buildGoalsAlerts(now, prefs, uid));
+    alerts.addAll(await _buildGoalsAlerts(now));
     alerts.addAll(await _buildLifeJourneyAlerts(now, prefs, uid));
 
     alerts.sort((a, b) {
@@ -139,7 +145,7 @@ class LifeAlertsService {
           type: LifeAlertType.overdueCheckup,
           title: 'Check-up atrasado',
           message:
-              'Já faz $days dias desde o último check-up. Vale marcar uma revisão.',
+              'Já faz $days dias desde o último check-up.\nVale marcar uma revisão.',
           priority: LifeAlertPriority.critical,
           createdAt: now,
           areaId: 'body_health',
@@ -155,7 +161,7 @@ class LifeAlertsService {
           type: LifeAlertType.overdueCheckup,
           title: 'Check-up precisa de atenção',
           message:
-              'Já faz $days dias desde o último check-up. Fique atento às datas.',
+              'Já faz $days dias desde o último check-up.\nFique atento às datas.',
           priority: LifeAlertPriority.medium,
           createdAt: now,
           areaId: 'body_health',
@@ -179,10 +185,12 @@ class LifeAlertsService {
         now.month,
         now.day,
       ).subtract(Duration(days: i));
+
       final questions = await _dailyCheckinService.questionsForToday(now: day);
 
       var sum = 0;
       var count = 0;
+
       for (final q in questions) {
         final answer = await _dailyCheckinService.getAnswer(
           day: day,
@@ -207,7 +215,7 @@ class LifeAlertsService {
           type: LifeAlertType.badCheckinStreak,
           title: 'Vários dias difíceis seguidos',
           message:
-              'Seu check-in mostrou sinais ruins por $badDays dias seguidos. Vale revisar suas áreas prioritárias.',
+              'Seu check-in mostrou sinais ruins por $badDays dias seguidos.\nVale revisar suas áreas prioritárias.',
           priority: LifeAlertPriority.high,
           createdAt: now,
           actionLabel: 'Abrir check-in',
@@ -234,6 +242,7 @@ class LifeAlertsService {
     for (final areaId in areaIds) {
       final last = await _areasStore.getAreaLastUpdate(areaId);
       if (last == null) continue;
+
       final days = now.difference(last).inDays;
       if (days < 30) continue;
 
@@ -288,6 +297,7 @@ class LifeAlertsService {
     }
 
     final ratio = spending / budget;
+
     if (ratio >= 1.0) {
       alerts.add(
         LifeAlert(
@@ -328,6 +338,7 @@ class LifeAlertsService {
 
     for (final item in _timelineStore.all) {
       if (item.type != TimelineBlockType.event) continue;
+
       final diff = item.start.difference(now);
 
       if (!diff.isNegative && diff.inHours <= 24) {
@@ -355,7 +366,7 @@ class LifeAlertsService {
             type: LifeAlertType.overdueTimelineEvent,
             title: 'Evento passou',
             message:
-                'O evento "${item.title}" já passou. Veja se precisa remarcar ou concluir.',
+                'O evento "${item.title}" já passou.\nVeja se precisa remarcar ou concluir.',
             priority: LifeAlertPriority.medium,
             createdAt: now,
             relatedId: item.id,
@@ -375,6 +386,7 @@ class LifeAlertsService {
     String uid,
   ) async {
     final alerts = <LifeAlert>[];
+
     final title = (prefs.getString('$uid:always_on_last_top_title') ?? '')
         .trim();
     final reason = (prefs.getString('$uid:always_on_last_top_reason') ?? '')
@@ -422,7 +434,7 @@ class LifeAlertsService {
           type: LifeAlertType.bodyCarePending,
           title: 'Corpo em dia incompleto hoje',
           message:
-              'Ainda falta cuidar de: ${pending.join(', ')}. Fechar isso mantém o ritmo vivo.',
+              'Ainda falta cuidar de: ${pending.join(', ')}.\nFechar isso mantém o ritmo vivo.',
           priority: pending.length >= 2
               ? LifeAlertPriority.high
               : LifeAlertPriority.medium,
@@ -436,52 +448,10 @@ class LifeAlertsService {
     return alerts;
   }
 
-  Future<List<LifeAlert>> _buildGoalsAlerts(
-    DateTime now,
-    SharedPreferences prefs,
-    String uid,
-  ) async {
-    final alerts = <LifeAlert>[];
-    final rawGoals =
-        prefs.getStringList('$uid:goals_index') ?? const <String>[];
-
-    if (rawGoals.isEmpty) return alerts;
-
-    final stalled = prefs.getInt('$uid:goals_last_progress_days') ?? 0;
-    if (stalled >= 7) {
-      alerts.add(
-        LifeAlert(
-          id: 'goals_momentum_stalled',
-          type: LifeAlertType.goalMomentum,
-          title: 'Suas missões perderam ritmo',
-          message:
-              'Já faz $stalled dias sem avanço relevante nas missões. Vale fazer uma próxima jogada pequena.',
-          priority: LifeAlertPriority.medium,
-          createdAt: now,
-          actionLabel: 'Abrir missões',
-          routeHint: 'goals',
-        ),
-      );
-    }
-
-    final readyCount = prefs.getInt('$uid:goals_almost_done_count') ?? 0;
-    if (readyCount > 0) {
-      alerts.add(
-        LifeAlert(
-          id: 'goals_almost_done_$readyCount',
-          type: LifeAlertType.goalMomentum,
-          title: 'Missões quase virando fase',
-          message:
-              'Você tem $readyCount missão${readyCount > 1 ? 'ões' : ''} quase concluída${readyCount > 1 ? 's' : ''}.',
-          priority: LifeAlertPriority.high,
-          createdAt: now,
-          actionLabel: 'Finalizar missão',
-          routeHint: 'goals',
-        ),
-      );
-    }
-
-    return alerts;
+  Future<List<LifeAlert>> _buildGoalsAlerts(DateTime now) async {
+    // Integração nova:
+    // agora o sino lê a central de objetivos real em vez dos prefs antigos.
+    return _goalsAlertsBridge.build(now);
   }
 
   Future<List<LifeAlert>> _buildLifeJourneyAlerts(
@@ -490,6 +460,7 @@ class LifeAlertsService {
     String uid,
   ) async {
     final alerts = <LifeAlert>[];
+
     final unlockLabel =
         (prefs.getString('$uid:life_journey_last_unlock_label') ?? '').trim();
     final unlockKey =
