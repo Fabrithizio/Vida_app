@@ -8,6 +8,8 @@
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
 // - Adiciona o ícone do livro com explicação clara do sistema de score
 // - Liga o sino à central real de alertas com badge numérico estilo WhatsApp
+// - Agora o selo etário muda automaticamente conforme a idade do usuário
+//   seguindo a lógica: 10+, 12+, 14+, 16+, 18+
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -562,6 +564,8 @@ class _TopHudCompact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scoreColor = _scoreColor();
+    final accessColor = ageInfo.accessBadgeColor;
+    final accessTextColor = ageInfo.accessBadgeTextColor;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -791,30 +795,16 @@ class _TopHudCompact extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: ageInfo.canUnlock(18)
-                                ? const Color(
-                                    0xFF16A34A,
-                                  ).withValues(alpha: 0.18)
-                                : const Color(
-                                    0xFFF59E0B,
-                                  ).withValues(alpha: 0.18),
+                            color: accessColor.withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
-                              color: ageInfo.canUnlock(18)
-                                  ? const Color(
-                                      0xFF16A34A,
-                                    ).withValues(alpha: 0.34)
-                                  : const Color(
-                                      0xFFF59E0B,
-                                    ).withValues(alpha: 0.34),
+                              color: accessColor.withValues(alpha: 0.34),
                             ),
                           ),
                           child: Text(
-                            ageInfo.canUnlock(18) ? '18+' : 'menor',
+                            ageInfo.accessLabel,
                             style: TextStyle(
-                              color: ageInfo.canUnlock(18)
-                                  ? const Color(0xFF86EFAC)
-                                  : const Color(0xFFFCD34D),
+                              color: accessTextColor,
                               fontSize: 9,
                               fontWeight: FontWeight.w800,
                             ),
@@ -983,6 +973,47 @@ class _AgeAccessInfo {
   }
 
   bool canUnlock(int minimumAge) => hasBirthDate && age >= minimumAge;
+
+  int get contentAccessAge {
+    if (!hasBirthDate) return 10;
+    if (age >= 18) return 18;
+    if (age >= 16) return 16;
+    if (age >= 14) return 14;
+    if (age >= 12) return 12;
+    return 10;
+  }
+
+  String get accessLabel => '$contentAccessAge+';
+
+  Color get accessBadgeColor {
+    switch (contentAccessAge) {
+      case 18:
+        return const Color(0xFF16A34A);
+      case 16:
+        return const Color(0xFF0EA5E9);
+      case 14:
+        return const Color(0xFFF59E0B);
+      case 12:
+        return const Color(0xFFFB923C);
+      default:
+        return const Color(0xFF8B5CF6);
+    }
+  }
+
+  Color get accessBadgeTextColor {
+    switch (contentAccessAge) {
+      case 18:
+        return const Color(0xFF86EFAC);
+      case 16:
+        return const Color(0xFF7DD3FC);
+      case 14:
+        return const Color(0xFFFCD34D);
+      case 12:
+        return const Color(0xFFFDAA74);
+      default:
+        return const Color(0xFFC4B5FD);
+    }
+  }
 
   static _AgeAccessInfo fromBirthDate(DateTime? birthDate, DateTime now) {
     if (birthDate == null) {
