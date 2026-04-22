@@ -3,16 +3,17 @@
 //
 // Tela principal de Corpo & Saúde / Body Care.
 //
-// O que este arquivo faz:
-// - Mostra um painel vivo do módulo fitness dentro do Meu Dia
-// - Mantém os registros de alimentação, treino, água e sono já existentes
-// - Deixa o peso diário mais visível e fácil de atualizar
-// - Exibe gráficos mais organizados e explicativos
-// - Agrupa refeições por faixa de calorias totais para ficar mais útil
+// Ajuste desta versão:
+// - reorganiza o módulo fitness em abas, no estilo do módulo de Finanças
+// - mantém todas as seções já existentes, sem apagar informação
+// - separa o conteúdo em Visão / Registro / Nutrição / Smartwatch / Histórico
+// - mantém a integração com Health Connect / smartwatch
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
+import '../../../health_sync/health_sync_service.dart';
+import '../../../health_sync/presentation/pages/smart_health_page.dart';
 import '../../body_care_service.dart';
 import '../widgets/body_progress_widgets.dart';
 
@@ -32,6 +33,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
   bool _isLoading = true;
   bool _savingWeight = false;
   DateTime _selectedDay = _dayOnly(DateTime.now());
+  int _selectedModuleTab = 0;
 
   final TextEditingController _weightController = TextEditingController();
 
@@ -41,6 +43,18 @@ class _BodyCarePageState extends State<BodyCarePage> {
   BodyCareNutritionGuide _nutrition = BodyCareNutritionGuide.fallback();
   List<BodyCareWeekPoint> _week = const [];
   List<MapEntry<DateTime, BodyCareEntry>> _recent = const [];
+  SmartHealthSnapshot _smartwatchSnapshot = const SmartHealthSnapshot(
+    isConnected: false,
+    platformLabel: 'Health Connect',
+  );
+
+  static const List<_ModuleTabItem> _moduleTabs = [
+    _ModuleTabItem(label: 'Visão', icon: Icons.visibility_outlined),
+    _ModuleTabItem(label: 'Registro', icon: Icons.edit_note_rounded),
+    _ModuleTabItem(label: 'Nutrição', icon: Icons.restaurant_menu_rounded),
+    _ModuleTabItem(label: 'Smartwatch', icon: Icons.watch_rounded),
+    _ModuleTabItem(label: 'Histórico', icon: Icons.history_rounded),
+  ];
 
   @override
   void initState() {
@@ -61,12 +75,15 @@ class _BodyCarePageState extends State<BodyCarePage> {
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
 
+    await _service.applySmartwatchSnapshotToToday(day: _selectedDay);
+
     final profile = await _service.loadProfile();
     final entry = await _service.loadDay(_selectedDay);
     final overview = await _service.loadOverview();
     final nutrition = await _service.loadNutritionGuide();
     final week = await _service.last7Days(_selectedDay);
     final recent = await _service.loadRecentEntries(days: 21);
+    final smartwatchSnapshot = await _service.loadSmartwatchSnapshot();
 
     if (!mounted) return;
     setState(() {
@@ -76,6 +93,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
       _nutrition = nutrition;
       _week = week;
       _recent = recent;
+      _smartwatchSnapshot = smartwatchSnapshot;
       _weightController.text = entry.weightKg == null
           ? ''
           : entry.weightKg!.toStringAsFixed(1).replaceAll('.', ',');
@@ -110,6 +128,13 @@ class _BodyCarePageState extends State<BodyCarePage> {
     await _service.saveWeight(_selectedDay, value <= 0 ? null : value);
     if (!mounted) return;
     setState(() => _savingWeight = false);
+    await _loadAll();
+  }
+
+  Future<void> _openSmartHealthPage() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SmartHealthPage()));
     await _loadAll();
   }
 
@@ -480,6 +505,37 @@ class _BodyCarePageState extends State<BodyCarePage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModuleTabs() {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF050A13),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(_moduleTabs.length, (index) {
+            final item = _moduleTabs[index];
+            final selected = _selectedModuleTab == index;
+            return Padding(
+              padding: EdgeInsets.only(
+                right: index == _moduleTabs.length - 1 ? 0 : 8,
+              ),
+              child: _ModuleTabChip(
+                label: item.label,
+                icon: item.icon,
+                selected: selected,
+                onTap: () => setState(() => _selectedModuleTab = index),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }
@@ -1252,6 +1308,150 @@ class _BodyCarePageState extends State<BodyCarePage> {
     );
   }
 
+  Widget _buildSmartwatchSection() {
+    final snapshot = _smartwatchSnapshot;
+    final syncText = _service.formatSmartwatchSync(snapshot.lastSyncAt);
+
+    return _SectionCard(
+      title: 'Smartwatch & saúde',
+      subtitle:
+          'Conecte o fitness ao Health Connect para puxar sono, passos, minutos ativos e treinos.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: const Color(0xFF10192A),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color:
+                            (snapshot.isConnected
+                                    ? const Color(0xFF35D26F)
+                                    : const Color(0xFF7A6BFF))
+                                .withOpacity(0.16),
+                      ),
+                      child: Icon(
+                        snapshot.isConnected
+                            ? Icons.watch_rounded
+                            : Icons.watch_off_rounded,
+                        color: snapshot.isConnected
+                            ? const Color(0xFF35D26F)
+                            : const Color(0xFF9B90FF),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            snapshot.isConnected
+                                ? 'Conectado ao ${snapshot.platformLabel}'
+                                : 'Sem conexão ativa',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Última sincronização: $syncText',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.68),
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _openSmartHealthPage,
+                    icon: const Icon(Icons.sync_rounded),
+                    label: Text(
+                      snapshot.isConnected
+                          ? 'Abrir conexão e sincronização'
+                          : 'Conectar smartwatch / Health Connect',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            childAspectRatio: 1.55,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            children: [
+              _MetricCard(
+                title: 'Sono recente',
+                value: snapshot.sleepHours == null
+                    ? '—'
+                    : '${snapshot.sleepHours!.toStringAsFixed(1).replaceAll('.', ',')}h',
+                accent: const Color(0xFFF9C66B),
+              ),
+              _MetricCard(
+                title: 'Passos hoje',
+                value: snapshot.stepsToday == null
+                    ? '—'
+                    : '${snapshot.stepsToday}',
+                accent: const Color(0xFF78B5FF),
+              ),
+              _MetricCard(
+                title: 'Min. ativos hoje',
+                value: snapshot.activeMinutesToday == null
+                    ? '—'
+                    : '${snapshot.activeMinutesToday} min',
+                accent: const Color(0xFF8E82FF),
+              ),
+              _MetricCard(
+                title: 'Exercício 7d',
+                value: snapshot.exerciseMinutes7d == null
+                    ? '—'
+                    : '${snapshot.exerciseMinutes7d!.toStringAsFixed(0)} min',
+                accent: const Color(0xFF88F089),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _InfoBlock(
+            title: 'Como isso entra no fitness',
+            body:
+                'Quando existe dado sincronizado, o app aproveita sono, passos e minutos ativos para reforçar o registro do dia sem apagar o que você já lançou manualmente.',
+          ),
+          const SizedBox(height: 10),
+          _InfoBlock(
+            title: 'Treinos detectados',
+            body: snapshot.workoutCount7d == null
+                ? 'Ainda não há treinos sincronizados nos últimos 7 dias.'
+                : 'Foram encontrados ${snapshot.workoutCount7d} treinos nos últimos 7 dias.',
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRecentHistory() {
     return _SectionCard(
       title: 'Histórico recente',
@@ -1304,6 +1504,10 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         _TinyTag(label: 'Treino ${entry.training ?? '—'}'),
                         _TinyTag(label: 'Água ${entry.water ?? '—'}'),
                         _TinyTag(label: 'Sono ${entry.sleep ?? '—'}'),
+                        if (entry.steps != null)
+                          _TinyTag(label: 'Passos ${entry.steps}'),
+                        if (entry.activeMinutes != null)
+                          _TinyTag(label: 'Ativo ${entry.activeMinutes} min'),
                         if (entry.weightKg != null)
                           _TinyTag(
                             label:
@@ -1325,6 +1529,108 @@ class _BodyCarePageState extends State<BodyCarePage> {
         ],
       ),
     );
+  }
+
+  List<Widget> _buildTabSections() {
+    switch (_selectedModuleTab) {
+      case 0:
+        return [
+          _buildQuickOverview(),
+          const SizedBox(height: 14),
+          BodyProgressSection(
+            week: _week,
+            recent: _recent,
+            targetWeightKg: _profile.targetWeightKg,
+            latestWeightKg: _overview.latestWeightKg,
+            weeklyAverageFood: _overview.weeklyAverageFood,
+            weeklyAverageTraining: _overview.weeklyAverageTraining,
+            referenceWeightLabel: _overview.referenceWeightLabel,
+            goalLabel: _overview.goalLabel,
+          ),
+          if (_overview.quickTips.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _SectionCard(
+              title: 'Dicas rápidas',
+              subtitle: 'Pequenas correções que ajudam muito no módulo.',
+              child: Column(
+                children: _overview.quickTips.map((tip) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _TipRow(
+                      icon: Icons.check_circle_outline_rounded,
+                      text: tip,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ];
+      case 1:
+        return [
+          _buildDaySelector(),
+          const SizedBox(height: 14),
+          _buildWeightSection(),
+          const SizedBox(height: 12),
+          _buildQuestionCard(
+            title: 'Alimentação',
+            subtitle: 'Como seu corpo foi alimentado nesse dia.',
+            icon: Icons.restaurant_outlined,
+            accent: const Color(0xFF88F089),
+            value: _entry.food,
+            options: BodyCareService.foodOptions,
+            onSave: (score) => _saveScore(score, _service.saveFood),
+          ),
+          const SizedBox(height: 12),
+          _buildQuestionCard(
+            title: 'Movimento / treino',
+            subtitle: 'O quanto você se mexeu ou treinou.',
+            icon: Icons.fitness_center_rounded,
+            accent: const Color(0xFF8E82FF),
+            value: _entry.training,
+            options: BodyCareService.trainingOptions,
+            onSave: (score) => _saveScore(score, _service.saveTraining),
+          ),
+          const SizedBox(height: 12),
+          _buildQuestionCard(
+            title: 'Água',
+            subtitle: 'Seu nível de hidratação no dia.',
+            icon: Icons.water_drop_outlined,
+            accent: const Color(0xFF78B5FF),
+            value: _entry.water,
+            options: BodyCareService.waterOptions,
+            onSave: (score) => _saveScore(score, _service.saveWater),
+          ),
+          const SizedBox(height: 12),
+          _buildQuestionCard(
+            title: 'Sono',
+            subtitle: 'Como seu corpo descansou.',
+            icon: Icons.bedtime_outlined,
+            accent: const Color(0xFFF9C66B),
+            value: _entry.sleep,
+            options: BodyCareService.sleepOptions,
+            onSave: (score) => _saveScore(score, _service.saveSleep),
+          ),
+        ];
+      case 2:
+        return [
+          _buildNutritionSummary(),
+          const SizedBox(height: 14),
+          _buildPlateSection(),
+          const SizedBox(height: 14),
+          _buildMealSuggestions(),
+          const SizedBox(height: 14),
+          _buildFoodTable(),
+          const SizedBox(height: 14),
+          _buildCareTips(),
+        ];
+      case 3:
+        return [_buildSmartwatchSection()];
+      case 4:
+        return [_buildRecentHistory()];
+      default:
+        return [_buildQuickOverview()];
+    }
   }
 
   @override
@@ -1352,96 +1658,81 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 children: [
                   _buildHero(),
                   const SizedBox(height: 14),
-                  _buildDaySelector(),
+                  _buildModuleTabs(),
                   const SizedBox(height: 14),
-                  _buildWeightSection(),
-                  const SizedBox(height: 14),
-                  BodyProgressSection(
-                    week: _week,
-                    recent: _recent,
-                    targetWeightKg: _profile.targetWeightKg,
-                    latestWeightKg: _overview.latestWeightKg,
-                    weeklyAverageFood: _overview.weeklyAverageFood,
-                    weeklyAverageTraining: _overview.weeklyAverageTraining,
-                    referenceWeightLabel: _overview.referenceWeightLabel,
-                    goalLabel: _overview.goalLabel,
-                  ),
-                  const SizedBox(height: 14),
-                  _buildQuickOverview(),
-                  const SizedBox(height: 14),
-                  _buildQuestionCard(
-                    title: 'Alimentação',
-                    subtitle: 'Como seu corpo foi alimentado nesse dia.',
-                    icon: Icons.restaurant_outlined,
-                    accent: const Color(0xFF88F089),
-                    value: _entry.food,
-                    options: BodyCareService.foodOptions,
-                    onSave: (score) => _saveScore(score, _service.saveFood),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuestionCard(
-                    title: 'Movimento / treino',
-                    subtitle: 'O quanto você se mexeu ou treinou.',
-                    icon: Icons.fitness_center_rounded,
-                    accent: const Color(0xFF8E82FF),
-                    value: _entry.training,
-                    options: BodyCareService.trainingOptions,
-                    onSave: (score) => _saveScore(score, _service.saveTraining),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuestionCard(
-                    title: 'Água',
-                    subtitle: 'Seu nível de hidratação no dia.',
-                    icon: Icons.water_drop_outlined,
-                    accent: const Color(0xFF78B5FF),
-                    value: _entry.water,
-                    options: BodyCareService.waterOptions,
-                    onSave: (score) => _saveScore(score, _service.saveWater),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildQuestionCard(
-                    title: 'Sono',
-                    subtitle: 'Como seu corpo descansou.',
-                    icon: Icons.bedtime_outlined,
-                    accent: const Color(0xFFF9C66B),
-                    value: _entry.sleep,
-                    options: BodyCareService.sleepOptions,
-                    onSave: (score) => _saveScore(score, _service.saveSleep),
-                  ),
-                  const SizedBox(height: 14),
-                  _buildNutritionSummary(),
-                  const SizedBox(height: 14),
-                  _buildPlateSection(),
-                  const SizedBox(height: 14),
-                  _buildMealSuggestions(),
-                  const SizedBox(height: 14),
-                  _buildFoodTable(),
-                  const SizedBox(height: 14),
-                  _buildCareTips(),
-                  if (_overview.quickTips.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _SectionCard(
-                      title: 'Dicas rápidas',
-                      subtitle:
-                          'Pequenas correções que ajudam muito no módulo.',
-                      child: Column(
-                        children: _overview.quickTips.map((tip) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _TipRow(
-                              icon: Icons.check_circle_outline_rounded,
-                              text: tip,
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  _buildRecentHistory(),
+                  ..._buildTabSections(),
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _ModuleTabItem {
+  const _ModuleTabItem({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+}
+
+class _ModuleTabChip extends StatelessWidget {
+  const _ModuleTabChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: selected ? const Color(0xFF41D26C) : Colors.transparent,
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF41D26C).withOpacity(0.26),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  ),
+                ]
+              : null,
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF41D26C)
+                : Colors.white.withOpacity(0.06),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? Colors.black : Colors.white.withOpacity(0.76),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.black : Colors.white.withOpacity(0.76),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

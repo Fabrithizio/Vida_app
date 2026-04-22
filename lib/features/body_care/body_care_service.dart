@@ -19,6 +19,8 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../health_sync/health_sync_service.dart';
+
 class BodyCareAnswerOption {
   const BodyCareAnswerOption({
     required this.value,
@@ -75,6 +77,9 @@ class BodyCareEntry {
   }
 
   bool get dedicatedDay => (food ?? 0) >= 3 && (training ?? 0) >= 3;
+
+  bool get hasSmartwatchSignals =>
+      (steps ?? 0) > 0 || (activeMinutes ?? 0) > 0 || (sleep ?? 0) > 0;
 
   BodyCareEntry copyWith({
     int? food,
@@ -202,6 +207,14 @@ class BodyCareOverview {
     required this.ageYears,
     required this.insight,
     required this.quickTips,
+    required this.smartwatchConnected,
+    required this.smartwatchLabel,
+    required this.smartwatchLastSyncAt,
+    required this.syncedStepsToday,
+    required this.syncedActiveMinutesToday,
+    required this.syncedSleepHours,
+    required this.syncedExerciseMinutes7d,
+    required this.syncedWorkoutCount7d,
   });
 
   final int currentStreak;
@@ -218,6 +231,14 @@ class BodyCareOverview {
   final int? ageYears;
   final String insight;
   final List<String> quickTips;
+  final bool smartwatchConnected;
+  final String smartwatchLabel;
+  final DateTime? smartwatchLastSyncAt;
+  final int? syncedStepsToday;
+  final int? syncedActiveMinutesToday;
+  final double? syncedSleepHours;
+  final double? syncedExerciseMinutes7d;
+  final int? syncedWorkoutCount7d;
 
   factory BodyCareOverview.empty() {
     return const BodyCareOverview(
@@ -240,6 +261,14 @@ class BodyCareOverview {
         'Água, sono e comida boa já mudam muito o jogo.',
         'Treino leve e constante vale mais do que picos raros.',
       ],
+      smartwatchConnected: false,
+      smartwatchLabel: 'Smartwatch desconectado',
+      smartwatchLastSyncAt: null,
+      syncedStepsToday: null,
+      syncedActiveMinutesToday: null,
+      syncedSleepHours: null,
+      syncedExerciseMinutes7d: null,
+      syncedWorkoutCount7d: null,
     );
   }
 }
@@ -808,6 +837,58 @@ class BodyCareService {
     return avg.round().clamp(0, 4);
   }
 
+  int? _sleepScoreFromHours(double? hours) {
+    if (hours == null || hours <= 0) return null;
+    if (hours >= 8) return 4;
+    if (hours >= 7) return 3;
+    if (hours >= 6) return 2;
+    if (hours >= 5) return 1;
+    return 0;
+  }
+
+  int? _trainingScoreFromActiveMinutes(int? minutes) {
+    if (minutes == null || minutes <= 0) return null;
+    if (minutes >= 60) return 4;
+    if (minutes >= 40) return 3;
+    if (minutes >= 20) return 2;
+    if (minutes >= 10) return 1;
+    return 0;
+  }
+
+  Future<SmartHealthSnapshot> loadSmartwatchSnapshot() async {
+    final uid = _uid();
+    return SmartHealthSyncService().readSnapshot(uid);
+  }
+
+  Future<void> applySmartwatchSnapshotToToday({DateTime? day}) async {
+    final targetDay = dayOnly(day ?? DateTime.now());
+    final snapshot = await loadSmartwatchSnapshot();
+    if (!snapshot.hasAnyData) return;
+
+    final current = await loadDay(targetDay);
+    await saveDay(
+      targetDay,
+      current.copyWith(
+        steps: snapshot.stepsToday ?? current.steps,
+        activeMinutes: snapshot.activeMinutesToday ?? current.activeMinutes,
+        sleep: _sleepScoreFromHours(snapshot.sleepHours) ?? current.sleep,
+        training:
+            _trainingScoreFromActiveMinutes(snapshot.activeMinutesToday) ??
+            current.training,
+      ),
+    );
+  }
+
+  String formatSmartwatchSync(DateTime? date) {
+    if (date == null) return 'Nunca sincronizado';
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final y = date.year.toString().padLeft(4, '0');
+    final hh = date.hour.toString().padLeft(2, '0');
+    final mm = date.minute.toString().padLeft(2, '0');
+    return '$d/$m/$y às $hh:$mm';
+  }
+
   String _goalLabel(BodyCareProfile profile) {
     final goal = (profile.goal ?? '').trim();
     if (goal.isEmpty) return 'Sem meta definida';
@@ -895,6 +976,7 @@ class BodyCareService {
     final birthDate = await _loadBirthDate();
     final ageYears = _ageFromBirthDate(birthDate, DateTime.now());
     final sex = await _loadBiologicalSex();
+    final smartwatch = await loadSmartwatchSnapshot();
 
     if (items.isEmpty) {
       final ref = _referenceWeightInfo(
@@ -911,6 +993,14 @@ class BodyCareService {
         referenceWeightLabel: ref.label,
         referenceWeightHint: ref.hint,
         ageYears: ageYears,
+        smartwatchConnected: smartwatch.isConnected,
+        smartwatchLabel: smartwatch.platformLabel,
+        smartwatchLastSyncAt: smartwatch.lastSyncAt,
+        syncedStepsToday: smartwatch.stepsToday,
+        syncedActiveMinutesToday: smartwatch.activeMinutesToday,
+        syncedSleepHours: smartwatch.sleepHours,
+        syncedExerciseMinutes7d: smartwatch.exerciseMinutes7d,
+        syncedWorkoutCount7d: smartwatch.workoutCount7d,
       );
     }
 
@@ -1000,6 +1090,14 @@ class BodyCareService {
         weeklyFocusedDays: weeklyFocusedDays,
       ),
       quickTips: _buildTips(latest: latest, profile: profile),
+      smartwatchConnected: smartwatch.isConnected,
+      smartwatchLabel: smartwatch.platformLabel,
+      smartwatchLastSyncAt: smartwatch.lastSyncAt,
+      syncedStepsToday: smartwatch.stepsToday,
+      syncedActiveMinutesToday: smartwatch.activeMinutesToday,
+      syncedSleepHours: smartwatch.sleepHours,
+      syncedExerciseMinutes7d: smartwatch.exerciseMinutes7d,
+      syncedWorkoutCount7d: smartwatch.workoutCount7d,
     );
   }
 
@@ -1532,6 +1630,14 @@ extension on BodyCareOverview {
     int? ageYears,
     String? insight,
     List<String>? quickTips,
+    bool? smartwatchConnected,
+    String? smartwatchLabel,
+    DateTime? smartwatchLastSyncAt,
+    int? syncedStepsToday,
+    int? syncedActiveMinutesToday,
+    double? syncedSleepHours,
+    double? syncedExerciseMinutes7d,
+    int? syncedWorkoutCount7d,
   }) {
     return BodyCareOverview(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -1549,6 +1655,16 @@ extension on BodyCareOverview {
       ageYears: ageYears ?? this.ageYears,
       insight: insight ?? this.insight,
       quickTips: quickTips ?? this.quickTips,
+      smartwatchConnected: smartwatchConnected ?? this.smartwatchConnected,
+      smartwatchLabel: smartwatchLabel ?? this.smartwatchLabel,
+      smartwatchLastSyncAt: smartwatchLastSyncAt ?? this.smartwatchLastSyncAt,
+      syncedStepsToday: syncedStepsToday ?? this.syncedStepsToday,
+      syncedActiveMinutesToday:
+          syncedActiveMinutesToday ?? this.syncedActiveMinutesToday,
+      syncedSleepHours: syncedSleepHours ?? this.syncedSleepHours,
+      syncedExerciseMinutes7d:
+          syncedExerciseMinutes7d ?? this.syncedExerciseMinutes7d,
+      syncedWorkoutCount7d: syncedWorkoutCount7d ?? this.syncedWorkoutCount7d,
     );
   }
 }

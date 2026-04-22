@@ -1,21 +1,19 @@
 // ============================================================================
 // FILE: lib/features/health_sync/presentation/pages/smart_health_page.dart
 //
-// O que faz:
-// - Mostra o ponto central de conexão com smartwatch / saúde
-// - Permite conectar e sincronizar dados de saúde no app
-// - Exibe um resumo do que foi sincronizado
+// Área de conexão do smartwatch / saúde.
 //
-// Nesta versão:
-// - o melhor lugar escolhido foi o Perfil, porque é uma configuração do usuário
-// - o foco inicial é sincronizar sono e exercício
-// - os dados sincronizados já começam a alimentar Corpo & Saúde automaticamente
+// O que faz:
+// - mostra estado da conexão
+// - permite sincronizar com Health Connect
+// - mostra últimos dados recebidos do smartwatch
+// - permite desconectar sem apagar o resto do módulo fitness
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'package:vida_app/features/health_sync/health_sync_service.dart';
+import '../../health_sync_service.dart';
 
 class SmartHealthPage extends StatefulWidget {
   const SmartHealthPage({super.key});
@@ -26,10 +24,12 @@ class SmartHealthPage extends StatefulWidget {
 
 class _SmartHealthPageState extends State<SmartHealthPage> {
   final SmartHealthSyncService _service = SmartHealthSyncService();
-  final User? _user = FirebaseAuth.instance.currentUser;
 
-  bool _busy = false;
+  bool _loading = true;
+  bool _syncing = false;
   SmartHealthSnapshot? _snapshot;
+
+  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? 'guest';
 
   @override
   void initState() {
@@ -38,262 +38,262 @@ class _SmartHealthPageState extends State<SmartHealthPage> {
   }
 
   Future<void> _load() async {
-    final user = _user;
-    if (user == null) return;
-    final snapshot = await _service.readSnapshot(user.uid);
+    setState(() => _loading = true);
+    final snapshot = await _service.readSnapshot(_uid);
     if (!mounted) return;
-    setState(() => _snapshot = snapshot);
+    setState(() {
+      _snapshot = snapshot;
+      _loading = false;
+    });
   }
 
   Future<void> _sync() async {
-    final user = _user;
-    if (user == null || _busy) return;
-
-    setState(() => _busy = true);
-    final result = await _service.sync(user.uid);
+    setState(() => _syncing = true);
+    final result = await _service.sync(_uid);
+    if (!mounted) return;
+    setState(() => _syncing = false);
     await _load();
     if (!mounted) return;
-    setState(() => _busy = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result.message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(result.message)));
   }
 
   Future<void> _disconnect() async {
-    final user = _user;
-    if (user == null || _busy) return;
-
-    setState(() => _busy = true);
-    await _service.disconnect(user.uid);
+    await _service.disconnect(_uid);
     await _load();
     if (!mounted) return;
-    setState(() => _busy = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Conexão local removida. As permissões do sistema continuam no Health Connect / Apple Health.'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Conexão removida do app.')));
   }
 
   String _formatDate(DateTime? date) {
-    if (date == null) return '—';
+    if (date == null) return 'Nunca';
     final d = date.day.toString().padLeft(2, '0');
     final m = date.month.toString().padLeft(2, '0');
-    final y = date.year.toString();
+    final y = date.year.toString().padLeft(4, '0');
     final hh = date.hour.toString().padLeft(2, '0');
     final mm = date.minute.toString().padLeft(2, '0');
-    return '$d/$m/$y $hh:$mm';
+    return '$d/$m/$y às $hh:$mm';
   }
 
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
+    final connected = snapshot?.isConnected ?? false;
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: const Text('Saúde conectada'),
+        title: const Text('Conectar saúde / smartwatch'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(14),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F0F1A),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(14),
               children: [
                 Container(
-                  width: 54,
-                  height: 54,
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
+                    color: const Color(0xFF08101E),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white12),
                   ),
-                  child: const Icon(Icons.watch_rounded, color: Colors.green),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        snapshot?.platformLabel ?? 'Saúde conectada',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundColor: connected
+                                ? const Color(0xFF88F089).withOpacity(0.18)
+                                : const Color(0xFF78B5FF).withOpacity(0.18),
+                            child: Icon(
+                              connected
+                                  ? Icons.watch_rounded
+                                  : Icons.watch_off_rounded,
+                              color: connected
+                                  ? const Color(0xFF88F089)
+                                  : const Color(0xFF78B5FF),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  connected
+                                      ? 'Smartwatch conectado'
+                                      : 'Smartwatch ainda não conectado',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  snapshot?.platformLabel ?? 'Health Connect',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 14),
                       Text(
-                        snapshot?.isConnected == true
-                            ? 'Conexão salva no app e pronta para sincronizar.'
-                            : 'Conecte seu telefone ao Health Connect / Apple Health para alimentar Corpo & Saúde automaticamente.',
-                        style: const TextStyle(color: Colors.white70, height: 1.35),
+                        'Última sincronização: ${_formatDate(snapshot?.lastSyncAt)}',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _syncing ? null : _sync,
+                              icon: _syncing
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Icon(
+                                      connected
+                                          ? Icons.sync_rounded
+                                          : Icons.link_rounded,
+                                    ),
+                              label: Text(
+                                connected ? 'Sincronizar agora' : 'Conectar',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: connected ? _disconnect : null,
+                            icon: const Icon(Icons.link_off_rounded),
+                            label: const Text('Desconectar'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F0F1A),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'O que entra agora no app',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
+                const SizedBox(height: 14),
+                _MetricGrid(snapshot: snapshot),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F0F1A),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: const Text(
+                    'No Android, o app usa Health Connect para receber dados de sono, exercício, treinos, passos e minutos ativos. O módulo fitness continua com seus registros manuais e agora soma essas leituras automáticas.',
+                    style: TextStyle(color: Colors.white70, height: 1.4),
                   ),
                 ),
-                const SizedBox(height: 10),
-const Text(
-  '• Sono da última sessão sincronizada\n'
-  '• Minutos de exercício dos últimos 7 dias\n'
-  '• Quantidade de treinos dos últimos 7 dias\n'
-  '\n'
-  'Nesta primeira versão, o app começa usando isso principalmente em Corpo & Saúde, com foco em Sono e Movimento.',
-  style: TextStyle(color: Colors.white70, height: 1.45),
-),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F0F1A),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Resumo sincronizado',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _InfoRow(label: 'Plataforma', value: snapshot?.platformLabel ?? '—'),
-                _InfoRow(label: 'Conectado', value: snapshot?.isConnected == true ? 'Sim' : 'Não'),
-                _InfoRow(label: 'Última sincronização', value: _formatDate(snapshot?.lastSyncAt)),
-                _InfoRow(
-                  label: 'Sono',
-                  value: snapshot?.sleepHours == null
-                      ? '—'
-                      : '${snapshot!.sleepHours!.toStringAsFixed(1)} h',
-                ),
-                _InfoRow(
-                  label: 'Exercício (7 dias)',
-                  value: snapshot?.exerciseMinutes7d == null
-                      ? '—'
-                      : '${snapshot!.exerciseMinutes7d!.toStringAsFixed(0)} min',
-                ),
-                _InfoRow(
-                  label: 'Treinos (7 dias)',
-                  value: snapshot?.workoutCount7d?.toString() ?? '—',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: _busy ? null : _sync,
-              icon: _busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync_rounded),
-              label: Text(snapshot?.isConnected == true ? 'Sincronizar agora' : 'Conectar e sincronizar'),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 46,
-            child: OutlinedButton.icon(
-              onPressed: _busy ? null : _disconnect,
-              icon: const Icon(Icons.link_off_rounded),
-              label: const Text('Remover conexão local'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F0F1A),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: const Text(
-              'No Android, o app usa o Health Connect. Em Android 14+ ele já pode vir integrado ao sistema; em Android 13 ou inferior, pode ser necessário instalar o app Health Connect e liberar as permissões. No iPhone, a integração usa Apple Health.',
-              style: TextStyle(color: Colors.white70, height: 1.45),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+class _MetricGrid extends StatelessWidget {
+  const _MetricGrid({required this.snapshot});
 
-  final String label;
-  final String value;
+  final SmartHealthSnapshot? snapshot;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      childAspectRatio: 1.6,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      children: [
+        _MetricCard(
+          title: 'Sono recente',
+          value: snapshot?.sleepHours == null
+              ? '—'
+              : '${snapshot!.sleepHours!.toStringAsFixed(1).replaceAll('.', ',')}h',
+          accent: const Color(0xFFF9C66B),
+        ),
+        _MetricCard(
+          title: 'Exercício 7d',
+          value: snapshot?.exerciseMinutes7d == null
+              ? '—'
+              : '${snapshot!.exerciseMinutes7d!.toStringAsFixed(0)} min',
+          accent: const Color(0xFF88F089),
+        ),
+        _MetricCard(
+          title: 'Treinos 7d',
+          value: snapshot?.workoutCount7d?.toString() ?? '—',
+          accent: const Color(0xFF8E82FF),
+        ),
+        _MetricCard(
+          title: 'Passos hoje',
+          value: snapshot?.stepsToday?.toString() ?? '—',
+          accent: const Color(0xFF78B5FF),
+        ),
+        _MetricCard(
+          title: 'Min ativos hoje',
+          value: snapshot?.activeMinutesToday?.toString() ?? '—',
+          accent: const Color(0xFF9EC2FF),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.title,
+    required this.value,
+    required this.accent,
+  });
+
+  final String title;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F0F1A),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 132,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white60,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: accent,
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
             ),
           ),
         ],

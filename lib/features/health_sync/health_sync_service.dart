@@ -2,16 +2,19 @@
 // FILE: lib/features/health_sync/health_sync_service.dart
 //
 // O que faz:
-// - Centraliza a conexão com o Health Connect no Android
-// - Solicita permissões de leitura dos dados de saúde
-// - Sincroniza sono e exercício para o app
-// - Salva um resumo local em SharedPreferences para o Areas usar
+// - Centraliza a conexão com Health Connect no Android
+// - Solicita permissões para ler dados do smartwatch / celular
+// - Sincroniza sono, exercício, passos e minutos ativos
+// - Salva um resumo local em SharedPreferences para o fitness usar
+// - Mantém as chaves antigas para não quebrar nada do app atual
 //
-// Nesta versão Android-only:
-// - sincroniza sono da última sessão
-// - sincroniza minutos de exercício dos últimos 7 dias
-// - sincroniza quantidade de treinos dos últimos 7 dias
-// - não inclui nada de iPhone / Apple Health por enquanto
+// Nesta versão:
+// - Android-first via Health Connect
+// - sono da última sessão relevante
+// - exercício dos últimos 7 dias
+// - treinos dos últimos 7 dias
+// - passos de hoje
+// - minutos ativos de hoje
 // ============================================================================
 
 import 'dart:io';
@@ -27,6 +30,8 @@ class SmartHealthSnapshot {
     this.sleepHours,
     this.exerciseMinutes7d,
     this.workoutCount7d,
+    this.stepsToday,
+    this.activeMinutesToday,
   });
 
   final bool isConnected;
@@ -35,6 +40,15 @@ class SmartHealthSnapshot {
   final double? sleepHours;
   final double? exerciseMinutes7d;
   final int? workoutCount7d;
+  final int? stepsToday;
+  final int? activeMinutesToday;
+
+  bool get hasAnyData =>
+      sleepHours != null ||
+      exerciseMinutes7d != null ||
+      workoutCount7d != null ||
+      stepsToday != null ||
+      activeMinutesToday != null;
 }
 
 class SmartHealthSyncResult {
@@ -56,6 +70,9 @@ class SmartHealthSyncService {
   static String _kExerciseMinutes7d(String uid) =>
       '$uid:smart_health_exercise_minutes_7d';
   static String _kWorkoutCount7d(String uid) => '$uid:smart_health_workouts_7d';
+  static String _kStepsToday(String uid) => '$uid:smart_health_steps_today';
+  static String _kActiveMinutesToday(String uid) =>
+      '$uid:smart_health_active_minutes_today';
 
   String get _platformLabel => 'Health Connect';
 
@@ -71,6 +88,8 @@ class SmartHealthSyncService {
       sleepHours: prefs.getDouble(_kSleepHours(uid)),
       exerciseMinutes7d: prefs.getDouble(_kExerciseMinutes7d(uid)),
       workoutCount7d: prefs.getInt(_kWorkoutCount7d(uid)),
+      stepsToday: prefs.getInt(_kStepsToday(uid)),
+      activeMinutesToday: prefs.getInt(_kActiveMinutesToday(uid)),
     );
   }
 
@@ -90,6 +109,8 @@ class SmartHealthSyncService {
         HealthDataType.SLEEP_ASLEEP,
         HealthDataType.EXERCISE_TIME,
         HealthDataType.WORKOUT,
+        HealthDataType.STEPS,
+        HealthDataType.ACTIVE_ENERGY_BURNED,
       ];
 
       final granted = await _health.requestAuthorization(
@@ -109,6 +130,7 @@ class SmartHealthSyncService {
       }
 
       final now = DateTime.now();
+      final startOfToday = DateTime(now.year, now.month, now.day);
 
       final sleepPoints = _health.removeDuplicates(
         await _health.getHealthDataFromTypes(
@@ -129,9 +151,24 @@ class SmartHealthSyncService {
         ),
       );
 
+      final todayPoints = _health.removeDuplicates(
+        await _health.getHealthDataFromTypes(
+          types: const [
+            HealthDataType.STEPS,
+            HealthDataType.ACTIVE_ENERGY_BURNED,
+            HealthDataType.EXERCISE_TIME,
+            HealthDataType.WORKOUT,
+          ],
+          startTime: startOfToday,
+          endTime: now,
+        ),
+      );
+
       final sleepHours = _extractLatestSleepHours(sleepPoints, now);
       final exerciseMinutes = _extractExerciseMinutes(exercisePoints);
       final workoutCount = _extractWorkoutCount(exercisePoints);
+      final stepsToday = _extractStepsToday(todayPoints);
+      final activeMinutesToday = _extractActiveMinutesToday(todayPoints);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kConnected(uid), true);
@@ -147,16 +184,34 @@ class SmartHealthSyncService {
         await prefs.setDouble(_kExerciseMinutes7d(uid), exerciseMinutes);
       }
 
+      if (stepsToday != null) {
+        await prefs.setInt(_kStepsToday(uid), stepsToday);
+      }
+
+      if (activeMinutesToday != null) {
+        await prefs.setInt(_kActiveMinutesToday(uid), activeMinutesToday);
+      }
+
       await prefs.setInt(_kWorkoutCount7d(uid), workoutCount);
 
-      final sleepText = sleepHours == null
-          ? 'sem sono recente'
-          : '${sleepHours.toStringAsFixed(1)}h de sono';
+      final parts = <String>[];
+      if (sleepHours != null) {
+        parts.add('${sleepHours.toStringAsFixed(1)}h sono');
+      }
+      if (exerciseMinutes != null) {
+        parts.add('${exerciseMinutes.toStringAsFixed(0)} min/7d');
+      }
+      parts.add('Treinos $workoutCount');
+      if (stepsToday != null) {
+        parts.add('$stepsToday passos hoje');
+      }
+      if (activeMinutesToday != null) {
+        parts.add('$activeMinutesToday min ativos hoje');
+      }
 
       return SmartHealthSyncResult(
         ok: true,
-        message:
-            'Health Connect sincronizado. $sleepText · ${(exerciseMinutes ?? 0).toStringAsFixed(0)} min/7d · Treinos $workoutCount.',
+        message: 'Health Connect sincronizado. ${parts.join(' · ')}.',
       );
     } catch (e) {
       return SmartHealthSyncResult(
@@ -176,6 +231,8 @@ class SmartHealthSyncService {
     await prefs.remove(_kSleepUpdatedAt(uid));
     await prefs.remove(_kExerciseMinutes7d(uid));
     await prefs.remove(_kWorkoutCount7d(uid));
+    await prefs.remove(_kStepsToday(uid));
+    await prefs.remove(_kActiveMinutesToday(uid));
   }
 
   double? _extractLatestSleepHours(List<HealthDataPoint> points, DateTime now) {
@@ -222,5 +279,33 @@ class SmartHealthSyncService {
 
   int _extractWorkoutCount(List<HealthDataPoint> points) {
     return points.where((p) => p.type == HealthDataType.WORKOUT).length;
+  }
+
+  int? _extractStepsToday(List<HealthDataPoint> points) {
+    double total = 0;
+    for (final point in points) {
+      if (point.type == HealthDataType.STEPS &&
+          point.value is NumericHealthValue) {
+        total += (point.value as NumericHealthValue).numericValue.toDouble();
+      }
+    }
+    if (total <= 0) return null;
+    return total.round();
+  }
+
+  int? _extractActiveMinutesToday(List<HealthDataPoint> points) {
+    double total = 0;
+
+    for (final point in points) {
+      if (point.type == HealthDataType.EXERCISE_TIME &&
+          point.value is NumericHealthValue) {
+        total += (point.value as NumericHealthValue).numericValue.toDouble();
+      } else if (point.type == HealthDataType.WORKOUT) {
+        total += point.dateTo.difference(point.dateFrom).inMinutes.toDouble();
+      }
+    }
+
+    if (total <= 0) return null;
+    return total.round();
   }
 }
