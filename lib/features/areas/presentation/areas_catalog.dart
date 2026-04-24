@@ -6,11 +6,10 @@
 // - Centraliza títulos, descrições, pesos e fonte padrão de cada item
 // - Controla o que aparece ou não conforme o perfil do usuário
 //
-// Observações desta revisão:
-// - preserva todas as áreas já existentes
-// - ajusta Corpo & Saúde e Mente & Emoções
-// - remove a subárea fraca de "Entrega" em Trabalho & Vocação
-// - mantém Trabalho & Vocação com 3 subáreas mais coerentes
+// Ajuste desta revisão:
+// - mantém as mudanças já feitas nas áreas anteriores
+// - ajusta Digital & Tecnologia
+// - reforça "Distrações" como subárea cruzada, não manual pura
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -91,8 +90,7 @@ class AreasCatalog {
         AreaItemDef(
           id: 'sleep',
           title: 'Sono',
-          description:
-              'Qualidade do sono recente, priorizando smartwatch quando existir.',
+          description: 'Qualidade do sono recente percebida no dia a dia.',
           defaultSource: AreaDataSource.automatic,
           weight: 1.2,
           recommendedAction:
@@ -117,7 +115,7 @@ class AreasCatalog {
           defaultSource: AreaDataSource.mixed,
           weight: 1.1,
           recommendedAction:
-              'Registrar como esteve sua alimentação no Corpo & Saúde.',
+              'Registrar como esteve sua alimentação no fitness.',
         ),
         AreaItemDef(
           id: 'hydration',
@@ -125,7 +123,7 @@ class AreasCatalog {
           description: 'Percepção de hidratação e cuidado básico diário.',
           defaultSource: AreaDataSource.mixed,
           weight: 1.1,
-          recommendedAction: 'Registrar sua água no Corpo & Saúde.',
+          recommendedAction: 'Registrar sua água no fitness.',
         ),
         AreaItemDef(
           id: 'imc',
@@ -163,54 +161,46 @@ class AreasCatalog {
       id: mindEmotion,
       title: 'Mente & Emoções',
       titleShort: 'Emoções',
-      subtitle: 'Humor, pressão e foco',
+      subtitle: 'Humor, estresse e foco',
       description:
-          'Resume sua cabeça no dia a dia usando perguntas diretas e sinais indiretos do resto do app.',
+          'Resume seu estado mental usando sinais do dia a dia e percepção recente.',
       icon: Icons.psychology,
       items: [
         AreaItemDef(
           id: 'mood',
           title: 'Humor',
-          description:
-              'Combina pergunta diária com sono, conexão social e base recente da rotina.',
+          description: 'Leitura do humor recente.',
           defaultSource: AreaDataSource.mixed,
           weight: 1.1,
           recommendedAction:
-              'Responder seu humor e manter sono e conexão social minimamente bons.',
-          supportsAutomaticData: true,
+              'Manter o check-in e os sinais do dia a dia atualizados.',
         ),
         AreaItemDef(
           id: 'stress',
-          title: 'Estresse / pressão',
-          description:
-              'Combina pergunta diária com pressão financeira, sono, rotina e uso noturno.',
+          title: 'Estresse / Pressão',
+          description: 'Peso mental e pressão recente.',
           defaultSource: AreaDataSource.mixed,
           weight: 1.2,
           recommendedAction:
-              'Responder seu nível de pressão e observar sono, finanças e sobrecarga.',
-          supportsAutomaticData: true,
+              'O app cruza rotina, finanças, sono e sinais recentes.',
         ),
         AreaItemDef(
           id: 'focus',
           title: 'Foco',
-          description:
-              'Combina pergunta diária com sono, rotina e sinais digitais que atrapalham atenção.',
+          description: 'Capacidade recente de manter a mente no que importa.',
           defaultSource: AreaDataSource.mixed,
           weight: 1.1,
           recommendedAction:
-              'Responder como esteve seu foco e reduzir bagunça digital quando precisar.',
-          supportsAutomaticData: true,
+              'O app cruza uso digital, rotina, sono e respostas recentes.',
         ),
         AreaItemDef(
           id: 'mental_load',
           title: 'Sobrecarga mental',
-          description:
-              'Usa pergunta diária e sinais indiretos para estimar o peso mental recente.',
-          defaultSource: AreaDataSource.estimated,
+          description: 'Acúmulo de peso mental e dificuldade de dar conta.',
+          defaultSource: AreaDataSource.mixed,
           weight: 1.2,
           recommendedAction:
-              'Responder a percepção do dia e observar sinais de pressão acumulada.',
-          supportsAutomaticData: true,
+              'O app cruza carga da rotina, sono, finanças e sinais emocionais.',
         ),
       ],
     ),
@@ -290,96 +280,85 @@ class AreasCatalog {
       id: workVocation,
       title: 'Trabalho & Vocação',
       titleShort: 'Trabalho',
-      subtitle: 'Rotina, constância e equilíbrio',
+      subtitle: 'Rotina e consistência',
       description:
-          'Avalia se sua rotina principal está funcionando com alguma constância, sem depender de uma subárea fraca de achismo.',
+          'Avalia sua constância produtiva e o equilíbrio da rotina principal.',
       icon: Icons.work,
       items: [
         AreaItemDef(
           id: 'routine',
           title: 'Rotina',
-          description:
-              'Base da rotina principal, cruzando contexto inicial, sinais do app e ajustes futuros do check-in adaptativo.',
-          defaultSource: AreaDataSource.mixed,
-          weight: 1.1,
-          recommendedAction:
-              'Manter o contexto de vida atualizado e registrar sua rotina principal no app quando houver esse fluxo.',
-          supportsAutomaticData: true,
+          description: 'Organização da rotina principal no dia a dia.',
+          defaultSource: AreaDataSource.dailyQuestions,
+          recommendedAction: 'Responder como esteve sua rotina.',
         ),
         AreaItemDef(
           id: 'consistency',
           title: 'Consistência',
-          description:
-              'Capacidade de repetir o básico com frequência, usando histórico real do app e sinais de constância.',
-          defaultSource: AreaDataSource.estimated,
-          weight: 1.2,
+          description: 'Capacidade de repetir o básico com frequência.',
+          defaultSource: AreaDataSource.dailyQuestions,
           recommendedAction:
-              'Usar o app com constância e manter seus registros atualizados.',
-          supportsAutomaticData: true,
+              'Responder o check-in diário para alimentar esta subárea.',
         ),
         AreaItemDef(
           id: 'balance',
           title: 'Equilíbrio',
-          description:
-              'Equilíbrio entre cobrança, descanso e pressão, cruzando rotina, saúde e cabeça.',
+          description: 'Equilíbrio entre produtividade, descanso e pressão.',
           defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Observar sinais de excesso de pressão e manter sono, rotina e recuperação minimamente estáveis.',
+              'Calculada automaticamente pelos sinais recentes de rotina, estresse e recuperação.',
           supportsAutomaticData: true,
         ),
       ],
     ),
     AreaDef(
       id: learningIntellect,
-      title: 'Aprendizado & Intelecto',
-      titleShort: 'Estudos',
-      subtitle: 'Estudo e prática',
-      description: 'Mostra constância de estudo e evolução intelectual.',
-      icon: Icons.school,
+      title: 'Projetos & Progresso',
+      titleShort: 'Projetos',
+      subtitle: 'Planejamento, execução e avanço',
+      description:
+          'Resume o quanto você está conseguindo planejar, executar e manter avanço real no que importa.',
+      icon: Icons.rocket_launch_rounded,
       items: [
         AreaItemDef(
-          id: 'study',
-          title: 'Tempo de estudo',
-          description: 'Constância do estudo recente.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder se houve estudo hoje.',
-        ),
-        AreaItemDef(
-          id: 'courses',
-          title: 'Cursos / Progresso',
-          description: 'Evolução em cursos e trilhas em andamento.',
-          defaultSource: AreaDataSource.estimated,
-          recommendedAction:
-              'Calculada automaticamente pela constância e qualidade recente do estudo.',
-          supportsAutomaticData: true,
-        ),
-        AreaItemDef(
-          id: 'reading',
-          title: 'Leitura',
-          description: 'Ritmo de leitura e contato com conteúdo de qualidade.',
-          defaultSource: AreaDataSource.estimated,
-          recommendedAction:
-              'Calculada automaticamente pelos sinais recentes de foco e qualidade do estudo.',
-          supportsAutomaticData: true,
-        ),
-        AreaItemDef(
-          id: 'skills',
-          title: 'Habilidades',
-          description: 'Desenvolvimento de competências relevantes.',
+          id: 'planning',
+          title: 'Planejamento',
+          description: 'Organização de metas, projetos e próximos passos.',
           defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Calculada automaticamente pelos sinais recentes de foco, rotina e qualidade do estudo.',
+              'Registrar metas, tarefas ou projetos para fortalecer essa leitura.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
-          id: 'review_practice',
-          title: 'Revisão / Prática',
-          description: 'Aplicação prática do que foi aprendido.',
+          id: 'execution',
+          title: 'Execução',
+          description: 'Capacidade de sair do plano e fazer acontecer.',
           defaultSource: AreaDataSource.estimated,
+          weight: 1.2,
           recommendedAction:
-              'Calculada automaticamente pela constância e qualidade recente do estudo.',
+              'Marcar progresso real no app ajuda a fortalecer essa leitura.',
+          supportsAutomaticData: true,
+        ),
+        AreaItemDef(
+          id: 'consistency',
+          title: 'Constância',
+          description: 'Capacidade de continuar avançando com regularidade.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.2,
+          recommendedAction:
+              'A repetição de avanço ao longo dos dias fortalece essa subárea.',
+          supportsAutomaticData: true,
+        ),
+        AreaItemDef(
+          id: 'progress',
+          title: 'Progresso',
+          description: 'Evolução percebida e registrada ao longo do tempo.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.2,
+          recommendedAction:
+              'Atualizar progresso de metas, tarefas ou projetos melhora essa leitura.',
           supportsAutomaticData: true,
         ),
       ],
@@ -412,12 +391,12 @@ class AreasCatalog {
         ),
         AreaItemDef(
           id: 'partner',
-          title: 'Relacionamento',
+          title: 'Vínculo afetivo',
           description:
-              'Acompanhamento do relacionamento afetivo, se aplicável.',
+              'Acompanhamento de vínculo afetivo, proximidade emocional e relação próxima quando isso existir na vida do usuário.',
           defaultSource: AreaDataSource.estimated,
           recommendedAction:
-              'Estimado de forma leve pelos sinais recentes de conexão social.',
+              'Estimado de forma leve pelos sinais recentes de conexão social e proximidade afetiva.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
@@ -435,7 +414,7 @@ class AreasCatalog {
       titleShort: 'Hábitos',
       subtitle: 'Base, repetição e recuperação',
       description:
-          'Resume se você está conseguindo manter a base do dia a dia com regularidade, recuperação e repetição do básico.',
+          'Resume se você está conseguindo manter a base do dia a dia com regularidade, autocontrole e retorno ao eixo.',
       icon: Icons.autorenew_rounded,
       items: [
         AreaItemDef(
@@ -466,9 +445,20 @@ class AreasCatalog {
           description:
               'Capacidade de voltar para o eixo depois de dias ruins ou cansativos.',
           defaultSource: AreaDataSource.estimated,
-          weight: 1.0,
+          weight: 1.1,
           recommendedAction:
               'Calculada automaticamente pelos sinais recentes de recuperação, humor, estresse e sono.',
+          supportsAutomaticData: true,
+        ),
+        AreaItemDef(
+          id: 'self_control',
+          title: 'Autocontrole',
+          description:
+              'Capacidade de segurar impulsos, manter limites e não sair do eixo com facilidade.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.1,
+          recommendedAction:
+              'Calculada automaticamente por sinais de constância, digital, rotina e estabilidade recente.',
           supportsAutomaticData: true,
         ),
       ],
@@ -479,7 +469,7 @@ class AreasCatalog {
       titleShort: 'Casa',
       subtitle: 'Ordem, limpeza e manutenção',
       description:
-          'Mostra se sua casa e ambiente estão ajudando sua vida ou atrapalhando, com base nas tarefas reais da casa.',
+          'Mostra se sua casa e ambiente estão ajudando sua vida ou atrapalhando.',
       icon: Icons.home,
       items: [
         AreaItemDef(
@@ -502,12 +492,12 @@ class AreasCatalog {
         ),
         AreaItemDef(
           id: 'home_tasks',
-          title: 'Pendências domésticas',
+          title: 'Peso da casa',
           description:
-              'Quantidade e peso de pendências pequenas que continuam abertas em casa.',
+              'Peso acumulado das tarefas e pendências da casa que continuam abertas ou atrasadas.',
           defaultSource: AreaDataSource.automatic,
           recommendedAction:
-              'Calculada automaticamente pelo volume de pendências domésticas e sua recência.',
+              'Calculada automaticamente pelo volume de tarefas abertas da casa e pela recência dessas pendências.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
@@ -543,11 +533,13 @@ class AreasCatalog {
         AreaItemDef(
           id: 'distraction',
           title: 'Distrações',
-          description: 'Quanto o digital está atrapalhando seu foco.',
+          description:
+              'Leitura cruzada do quanto o digital está atrapalhando seu foco, usando tempo de tela, uso noturno, redes sociais e sinais recentes de foco e rotina.',
           defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Responder o check-in diário para estimar distração digital.',
+              'Essa subárea é estimada pelo cruzamento entre uso digital e impacto real no seu foco e rotina.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'night_use',
@@ -584,9 +576,7 @@ class AreasCatalog {
     final area = byId(areaId);
     return area.items
         .where((item) {
-          if (item.showOnlyForWomen && !includeWomenCycle) {
-            return false;
-          }
+          if (item.showOnlyForWomen && !includeWomenCycle) return false;
           return true;
         })
         .toList(growable: false);
