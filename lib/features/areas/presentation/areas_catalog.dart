@@ -8,8 +8,8 @@
 //
 // Observações desta revisão:
 // - preserva todas as áreas já existentes
-// - ajusta somente os itens de Corpo & Saúde
-// - adiciona IMC sem apagar o resto do catálogo
+// - ajusta Corpo & Saúde e Mente & Emoções
+// - adiciona a leitura híbrida de Mente & Emoções sem apagar o resto do catálogo
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -162,41 +162,54 @@ class AreasCatalog {
       id: mindEmotion,
       title: 'Mente & Emoções',
       titleShort: 'Emoções',
-      subtitle: 'Humor, estresse e foco',
+      subtitle: 'Humor, pressão e foco',
       description:
-          'Resume seu estado mental usando sinais do dia a dia e percepção recente.',
+          'Resume sua cabeça no dia a dia usando perguntas diretas e sinais indiretos do resto do app.',
       icon: Icons.psychology,
       items: [
         AreaItemDef(
           id: 'mood',
           title: 'Humor',
-          description: 'Percepção geral do humor recente.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve seu humor.',
+          description:
+              'Combina pergunta diária com sono, conexão social e base recente da rotina.',
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.1,
+          recommendedAction:
+              'Responder seu humor e manter sono e conexão social minimamente bons.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'stress',
-          title: 'Estresse',
-          description: 'Nível de pressão e estresse recente.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          weight: 1.1,
-          recommendedAction: 'Atualizar o nível de estresse.',
+          title: 'Estresse / pressão',
+          description:
+              'Combina pergunta diária com pressão financeira, sono, rotina e uso noturno.',
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.2,
+          recommendedAction:
+              'Responder seu nível de pressão e observar sono, finanças e sobrecarga.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'focus',
           title: 'Foco',
-          description: 'Capacidade de manter atenção no que importa.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve seu foco.',
+          description:
+              'Combina pergunta diária com sono, rotina e sinais digitais que atrapalham atenção.',
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.1,
+          recommendedAction:
+              'Responder como esteve seu foco e reduzir bagunça digital quando precisar.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'mental_load',
           title: 'Sobrecarga mental',
-          description: 'Percepção de peso mental e excesso de pressão.',
+          description:
+              'Usa pergunta diária e sinais indiretos para estimar o peso mental recente.',
           defaultSource: AreaDataSource.estimated,
-          weight: 1.0,
+          weight: 1.2,
           recommendedAction:
-              'Responder o check-in diário para estimar esta subárea.',
+              'Responder a percepção do dia e observar sinais de pressão acumulada.',
+          supportsAutomaticData: true,
         ),
       ],
     ),

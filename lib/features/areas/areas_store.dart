@@ -7,11 +7,12 @@
 // - Conecta a área "Finanças & Material" ao módulo real de Finanças
 // - Usa respostas do check-in diário para alimentar áreas do painel
 // - Liga Saúde ao módulo Corpo & Saúde e ao Health Connect quando houver dado
+// - Liga Mente & Emoções a sinais indiretos do app + perguntas diárias
 //
 // Observações desta revisão:
 // - preserva a estrutura existente do módulo
 // - corrige os retornos nullable de trendLabel e overallStatus
-// - adiciona os itens novos da saúde sem apagar os antigos
+// - adiciona a leitura híbrida de Mente & Emoções sem apagar o resto
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,6 +28,7 @@ import 'package:vida_app/features/areas/application/scoring/areas_daily_question
 import 'package:vida_app/features/areas/application/scoring/areas_device_usage_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_environment_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_finance_engine.dart';
+import 'package:vida_app/features/areas/application/scoring/areas_mind_emotion_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_purpose_engine.dart';
 import 'package:vida_app/features/areas/data/repositories/areas_storage_repository.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
@@ -41,6 +43,7 @@ class AreasStore {
     AreasDailyQuestionsEngine? dailyQuestions,
     AreasAggregationEngine? aggregation,
     AreasBodyHealthEngine? bodyHealth,
+    AreasMindEmotionEngine? mindEmotion,
     AreasDeviceUsageEngine? deviceUsage,
     AreasEnvironmentEngine? environment,
     AreasPurposeEngine? purpose,
@@ -56,6 +59,7 @@ class AreasStore {
              ),
          aggregation: aggregation,
          bodyHealth: bodyHealth,
+         mindEmotion: mindEmotion,
          deviceUsage: deviceUsage ?? AreasDeviceUsageEngine(),
          environment: environment ?? AreasEnvironmentEngine(),
          purpose: purpose,
@@ -69,6 +73,7 @@ class AreasStore {
     required AreasDailyQuestionsEngine dailyQuestions,
     AreasAggregationEngine? aggregation,
     AreasBodyHealthEngine? bodyHealth,
+    AreasMindEmotionEngine? mindEmotion,
     required AreasDeviceUsageEngine deviceUsage,
     required AreasEnvironmentEngine environment,
     AreasPurposeEngine? purpose,
@@ -81,6 +86,9 @@ class AreasStore {
            AreasAggregationEngine(dailyQuestions: dailyQuestions),
        _bodyHealth =
            bodyHealth ?? AreasBodyHealthEngine(dailyQuestions: dailyQuestions),
+       _mindEmotion =
+           mindEmotion ??
+           AreasMindEmotionEngine(dailyQuestions: dailyQuestions),
        _deviceUsage = deviceUsage,
        _environment = environment,
        _purpose =
@@ -101,6 +109,7 @@ class AreasStore {
   final AreasDailyQuestionsEngine _dailyQuestions;
   final AreasAggregationEngine _aggregation;
   final AreasBodyHealthEngine _bodyHealth;
+  final AreasMindEmotionEngine _mindEmotion;
   final AreasDeviceUsageEngine _deviceUsage;
   final AreasEnvironmentEngine _environment;
   final AreasPurposeEngine _purpose;
@@ -161,6 +170,17 @@ class AreasStore {
       );
       if (imcAssessment != null) {
         return imcAssessment;
+      }
+    }
+
+    if (areaId == 'mind_emotion') {
+      final mindAssessment = await _mindEmotion.computedItem(
+        itemId,
+        getComputedAssessment: getComputedAssessment,
+        onAreaUpdated: markAreaUpdated,
+      );
+      if (mindAssessment != null) {
+        return mindAssessment;
       }
     }
 
