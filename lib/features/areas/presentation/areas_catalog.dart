@@ -9,7 +9,8 @@
 // Observações desta revisão:
 // - preserva todas as áreas já existentes
 // - ajusta Corpo & Saúde e Mente & Emoções
-// - adiciona a leitura híbrida de Mente & Emoções sem apagar o resto do catálogo
+// - remove a subárea fraca de "Entrega" em Trabalho & Vocação
+// - mantém Trabalho & Vocação com 3 subáreas mais coerentes
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -289,43 +290,42 @@ class AreasCatalog {
       id: workVocation,
       title: 'Trabalho & Vocação',
       titleShort: 'Trabalho',
-      subtitle: 'Rotina e consistência',
+      subtitle: 'Rotina, constância e equilíbrio',
       description:
-          'Avalia sua constância produtiva e o equilíbrio da rotina principal.',
+          'Avalia se sua rotina principal está funcionando com alguma constância, sem depender de uma subárea fraca de achismo.',
       icon: Icons.work,
       items: [
         AreaItemDef(
           id: 'routine',
           title: 'Rotina',
-          description: 'Organização da rotina principal no dia a dia.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve sua rotina.',
-        ),
-        AreaItemDef(
-          id: 'output',
-          title: 'Entrega',
-          description: 'Percepção de entrega e avanço em tarefas importantes.',
-          defaultSource: AreaDataSource.estimated,
+          description:
+              'Base da rotina principal, cruzando contexto inicial, sinais do app e ajustes futuros do check-in adaptativo.',
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.1,
           recommendedAction:
-              'Calculada automaticamente pelos sinais recentes de foco, planejamento e rotina.',
+              'Manter o contexto de vida atualizado e registrar sua rotina principal no app quando houver esse fluxo.',
           supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'consistency',
           title: 'Consistência',
-          description: 'Capacidade de repetir o básico com frequência.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          description:
+              'Capacidade de repetir o básico com frequência, usando histórico real do app e sinais de constância.',
+          defaultSource: AreaDataSource.estimated,
+          weight: 1.2,
           recommendedAction:
-              'Responder o check-in diário para alimentar esta subárea.',
+              'Usar o app com constância e manter seus registros atualizados.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'balance',
           title: 'Equilíbrio',
-          description: 'Equilíbrio entre produtividade, descanso e pressão.',
+          description:
+              'Equilíbrio entre cobrança, descanso e pressão, cruzando rotina, saúde e cabeça.',
           defaultSource: AreaDataSource.estimated,
           weight: 1.1,
           recommendedAction:
-              'Calculada automaticamente pelos sinais recentes de rotina, estresse e recuperação.',
+              'Observar sinais de excesso de pressão e manter sono, rotina e recuperação minimamente estáveis.',
           supportsAutomaticData: true,
         ),
       ],
