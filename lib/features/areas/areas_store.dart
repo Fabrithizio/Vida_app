@@ -6,36 +6,12 @@
 // - Calcula itens dinamicamente com base em SharedPreferences
 // - Conecta a área "Finanças & Material" ao módulo real de Finanças
 // - Usa respostas do check-in diário para alimentar áreas do painel
-// - Liga Ambiente & Casa às tarefas reais da casa
-// - Liga Hábitos & Constância a sinais reais de rotina, constância e recuperação
+// - Liga Saúde ao módulo Corpo & Saúde e ao Health Connect quando houver dado
 //
-// Nesta versão:
-// - income     -> vem das entradas reais do mês atual no módulo Finanças
-// - spending   -> vem das saídas reais do mês atual no módulo Finanças
-//                  e usa apoio do check-in diário quando necessário
-// - budget     -> usa gasto real + orçamento manual
-// - debts      -> manual por enquanto
-// - savings    -> manual por enquanto
-// - goals_fin  -> manual por enquanto
-// - energy, sleep, movement, nutrition e hydration
-//   -> passam a vir do check-in diário
-// - mood, stress e focus
-//   -> passam a vir do check-in diário
-// - organization e cleaning
-//   -> passam a vir automaticamente das tarefas reais da casa
-// - direction, goals_review e gratitude
-//   -> passam a vir automaticamente de rotina, constância, recuperação e base do ambiente
-//
-// Atualizações desta revisão:
-// - remove duplicações do sistema antigo de daily check-in
-// - mantém o cálculo novo com histórico escalonado
-// - corrige helpers internos para o modelo atual do DailyCheckinService
-// - preserva o layout e a estrutura geral do app
-//
-// Correção importante:
-// - _spendingAssessmentFromDailyCheckin agora é async (retorna Future)
-//   e o fallback é resolvido dentro de _computedFinanceItem (async),
-//   evitando o erro de tipo Future<AreaAssessment?> vs AreaAssessment?.
+// Observações desta revisão:
+// - preserva a estrutura existente do módulo
+// - corrige os retornos nullable de trendLabel e overallStatus
+// - adiciona os itens novos da saúde sem apagar os antigos
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -152,6 +128,42 @@ class AreasStore {
       }
     }
 
+    if (areaId == 'body_health' && itemId == 'sleep') {
+      final sleepAssessment = await _bodyHealth.computedSleep(
+        onAreaUpdated: markAreaUpdated,
+      );
+      if (sleepAssessment != null) {
+        return sleepAssessment;
+      }
+    }
+
+    if (areaId == 'body_health' && itemId == 'nutrition') {
+      final nutritionAssessment = await _bodyHealth.computedNutrition(
+        onAreaUpdated: markAreaUpdated,
+      );
+      if (nutritionAssessment != null) {
+        return nutritionAssessment;
+      }
+    }
+
+    if (areaId == 'body_health' && itemId == 'hydration') {
+      final hydrationAssessment = await _bodyHealth.computedHydration(
+        onAreaUpdated: markAreaUpdated,
+      );
+      if (hydrationAssessment != null) {
+        return hydrationAssessment;
+      }
+    }
+
+    if (areaId == 'body_health' && itemId == 'imc') {
+      final imcAssessment = await _bodyHealth.computedImc(
+        onAreaUpdated: markAreaUpdated,
+      );
+      if (imcAssessment != null) {
+        return imcAssessment;
+      }
+    }
+
     final dailyAssessment = await _dailyQuestions.computedDailyQuestionItem(
       areaId,
       itemId,
@@ -166,10 +178,6 @@ class AreasStore {
         user.uid,
         getAssessment: getAssessment,
       );
-    }
-
-    if (areaId == 'body_health' && itemId == 'sleep') {
-      return _bodyHealth.computedSleep(onAreaUpdated: markAreaUpdated);
     }
 
     if (areaId == 'digital_tech' && itemId == 'screen_time') {

@@ -1,17 +1,15 @@
 // ============================================================================
-// FILE: lib/features/home/presentation/tabs/areas/areas_catalog.dart
+// FILE: lib/features/areas/presentation/areas_catalog.dart
 //
 // O que faz:
 // - Define o catálogo oficial das áreas e subáreas do painel Areas
 // - Centraliza títulos, descrições, pesos e fonte padrão de cada item
 // - Controla o que aparece ou não conforme o perfil do usuário
 //
-// Atualização desta versão:
-// - alinha o catálogo ao sistema novo de score 0..100
-// - atualiza Ambiente & Casa para refletir a ligação já existente com tarefas reais
-// - troca a apresentação de "Direção Pessoal" para "Hábitos & Constância"
-//   sem quebrar o id interno atual da área
-// - remove textos antigos do tipo "ligar depois" onde a automação já existe
+// Observações desta revisão:
+// - preserva todas as áreas já existentes
+// - ajusta somente os itens de Corpo & Saúde
+// - adiciona IMC sem apagar o resto do catálogo
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -92,35 +90,52 @@ class AreasCatalog {
         AreaItemDef(
           id: 'sleep',
           title: 'Sono',
-          description: 'Qualidade do sono recente percebida no dia a dia.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          description:
+              'Qualidade do sono recente, priorizando smartwatch quando existir.',
+          defaultSource: AreaDataSource.automatic,
           weight: 1.2,
           recommendedAction:
-              'Responder no check-in diário como esteve seu sono.',
+              'Conectar smartwatch ou registrar o sono no Corpo & Saúde.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'movement',
           title: 'Movimento / Exercício',
           description:
               'Constância de atividade física, treinos e movimento geral.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          defaultSource: AreaDataSource.automatic,
+          weight: 1.2,
           recommendedAction:
-              'Responder no check-in diário como esteve seu movimento.',
+              'Conectar smartwatch ou registrar treino no Corpo & Saúde.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'nutrition',
           title: 'Alimentação',
           description: 'Qualidade e consistência da alimentação.',
-          defaultSource: AreaDataSource.dailyQuestions,
-          recommendedAction: 'Responder como esteve sua alimentação.',
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.1,
+          recommendedAction:
+              'Registrar como esteve sua alimentação no Corpo & Saúde.',
         ),
         AreaItemDef(
           id: 'hydration',
           title: 'Hidratação',
           description: 'Percepção de hidratação e cuidado básico diário.',
-          defaultSource: AreaDataSource.dailyQuestions,
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.1,
+          recommendedAction: 'Registrar sua água no Corpo & Saúde.',
+        ),
+        AreaItemDef(
+          id: 'imc',
+          title: 'IMC / Contexto corporal',
+          description:
+              'Usa o IMC já calculado no módulo Corpo & Saúde, sem sistema separado.',
+          defaultSource: AreaDataSource.mixed,
+          weight: 1.1,
           recommendedAction:
-              'Responder no check-in diário como esteve sua hidratação.',
+              'Manter peso e altura atualizados no Corpo & Saúde.',
+          supportsAutomaticData: true,
         ),
         AreaItemDef(
           id: 'checkups',
