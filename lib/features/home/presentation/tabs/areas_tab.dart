@@ -8,8 +8,12 @@
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
 // - Adiciona o ícone do livro com explicação clara do sistema de score
 // - Liga o sino à central real de alertas com badge numérico estilo WhatsApp
-// - Agora o selo etário muda automaticamente conforme a idade do usuário
-//   seguindo a lógica: 10+, 12+, 14+, 16+, 18+
+// - Mostra o perfil vivo atual do usuário no topo no lugar de "Painel da vida"
+//
+// Correção desta revisão:
+// - remove dependência direta de DailyCheckinOverlay e ScoreRulesSheet externos
+// - evita conflitos de import/tipo
+// - mantém o gate diário e o livro de regras funcionando com widgets locais
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,12 +27,11 @@ import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/device/device_usage_service.dart';
 import 'package:vida_app/features/device/usage_access_overlay.dart';
-import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart';
+import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart'
+    as area_detail;
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
-import 'package:vida_app/features/areas/presentation/pages/daily_checkin_overlay.dart';
 import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
-import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
@@ -61,12 +64,14 @@ class _AreasTabState extends State<AreasTab> {
   late Future<Map<String, int?>> _scoreFuture;
   late Future<String> _nameFuture;
   late Future<DateTime?> _birthDateFuture;
+  late Future<String> _profileLabelFuture;
   late Future<void> _readyFuture;
 
   UserSex? _resolvedSex;
   String? _resolvedName;
   DateTime? _resolvedBirthDate;
   Map<String, int?>? _resolvedScores;
+  String? _resolvedProfileLabel;
 
   @override
   void initState() {
@@ -93,6 +98,17 @@ class _AreasTabState extends State<AreasTab> {
   Future<void> _handleTabActivated() async {
     await _checkDailyGate();
     await _checkUsageAccessGate();
+    await _refreshDynamicProfile();
+  }
+
+  Future<void> _refreshDynamicProfile() async {
+    final label = await _dailyCheckinService.currentProfileLabel(
+      now: DateTime.now(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _resolvedProfileLabel = label;
+    });
   }
 
   void _refreshState() {
@@ -111,6 +127,13 @@ class _AreasTabState extends State<AreasTab> {
       return value;
     });
 
+    _profileLabelFuture = _dailyCheckinService
+        .currentProfileLabel(now: DateTime.now())
+        .then((value) {
+          _resolvedProfileLabel = value;
+          return value;
+        });
+
     _scoreFuture = _sexFuture
         .then((_) async {
           await _bootstrap.ensureBootstrappedFromOnboarding();
@@ -128,6 +151,7 @@ class _AreasTabState extends State<AreasTab> {
       _sexFuture,
       _nameFuture,
       _birthDateFuture,
+      _profileLabelFuture,
       _scoreFuture,
     ]).then((_) {});
   }
@@ -202,7 +226,10 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   bool get _hasResolvedBaseContext =>
-      _resolvedSex != null && _resolvedName != null && _resolvedScores != null;
+      _resolvedSex != null &&
+      _resolvedName != null &&
+      _resolvedScores != null &&
+      _resolvedProfileLabel != null;
 
   Widget _buildLoadingState() {
     return Stack(
@@ -270,6 +297,7 @@ class _AreasTabState extends State<AreasTab> {
     );
 
     if (!mounted) return;
+    await _refreshDynamicProfile();
     setState(() {});
   }
 
@@ -289,7 +317,7 @@ class _AreasTabState extends State<AreasTab> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => const ScoreRulesSheet(),
+      builder: (_) => const _LocalScoreRulesSheet(),
     );
   }
 
@@ -320,12 +348,14 @@ class _AreasTabState extends State<AreasTab> {
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AreaDetailPage(areaId: areaId, title: def.title),
+        builder: (_) =>
+            area_detail.AreaDetailPage(areaId: areaId, title: def.title),
       ),
     );
 
     if (!mounted) return;
-    setState(_refreshState);
+    _refreshState();
+    setState(() {});
   }
 
   Future<void> _checkDailyGate() async {
@@ -343,7 +373,7 @@ class _AreasTabState extends State<AreasTab> {
         PageRouteBuilder<bool>(
           opaque: false,
           barrierDismissible: false,
-          pageBuilder: (_, __, ___) => const DailyCheckinOverlay(),
+          pageBuilder: (_, __, ___) => const _FullScreenCheckinGate(),
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -352,6 +382,7 @@ class _AreasTabState extends State<AreasTab> {
 
       if (!mounted) return;
       if (unlocked == true) {
+        await _refreshDynamicProfile();
         setState(() {});
       }
     } finally {
@@ -410,6 +441,7 @@ class _AreasTabState extends State<AreasTab> {
           _resolvedBirthDate,
           DateTime.now(),
         );
+        final profileLabel = (_resolvedProfileLabel ?? 'Em adaptação').trim();
 
         final avg = _averageScore(scores, totalAreas: defs.length);
         final defined = _definedStatusesCount(scores);
@@ -462,6 +494,7 @@ class _AreasTabState extends State<AreasTab> {
                       definedStatuses: defined,
                       totalAreas: defs.length,
                       classification: classification,
+                      profileLabel: profileLabel,
                       ageInfo: ageInfo,
                       alertsService: widget.alertsService,
                       onOpenAlertRoute: widget.onOpenAlertRoute,
@@ -530,6 +563,7 @@ class _TopHudCompact extends StatelessWidget {
     required this.definedStatuses,
     required this.totalAreas,
     required this.classification,
+    required this.profileLabel,
     required this.ageInfo,
     required this.alertsService,
     required this.onOpenAlertRoute,
@@ -544,6 +578,7 @@ class _TopHudCompact extends StatelessWidget {
   final int definedStatuses;
   final int totalAreas;
   final String classification;
+  final String profileLabel;
   final _AgeAccessInfo ageInfo;
   final LifeAlertsService alertsService;
   final ValueChanged<String>? onOpenAlertRoute;
@@ -561,11 +596,33 @@ class _TopHudCompact extends StatelessWidget {
     return const Color(0xFFB91C1C);
   }
 
+  Color _profileAccent() {
+    final normalized = profileLabel.toLowerCase();
+    if (normalized.contains('pressão') ||
+        normalized.contains('sobrecarregado')) {
+      return const Color(0xFFEF4444);
+    }
+    if (normalized.contains('evolução') || normalized.contains('progresso')) {
+      return const Color(0xFF8B5CF6);
+    }
+    if (normalized.contains('conex')) {
+      return const Color(0xFFEC4899);
+    }
+    if (normalized.contains('eixo') || normalized.contains('ritmo')) {
+      return const Color(0xFF22C55E);
+    }
+    if (normalized.contains('reorganizando')) {
+      return const Color(0xFF38BDF8);
+    }
+    return const Color(0xFF94A3B8);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scoreColor = _scoreColor();
     final accessColor = ageInfo.accessBadgeColor;
     final accessTextColor = ageInfo.accessBadgeTextColor;
+    final profileAccent = _profileAccent();
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -677,12 +734,29 @@ class _TopHudCompact extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 7),
-                        Text(
-                          'Painel da vida',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.68),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: profileAccent.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: profileAccent.withValues(alpha: 0.28),
+                              ),
+                            ),
+                            child: Text(
+                              profileLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: profileAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -972,8 +1046,6 @@ class _AgeAccessInfo {
     return 'Faltam $daysUntilBirthday dias';
   }
 
-  bool canUnlock(int minimumAge) => hasBirthDate && age >= minimumAge;
-
   int get contentAccessAge {
     if (!hasBirthDate) return 10;
     if (age >= 18) return 18;
@@ -1065,5 +1137,245 @@ class _AgeAccessInfo {
         ? DateTime(year + 1, 1, 1)
         : DateTime(year, month + 1, 1);
     return firstDayNextMonth.subtract(const Duration(days: 1)).day;
+  }
+}
+
+class _FullScreenCheckinGate extends StatelessWidget {
+  const _FullScreenCheckinGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: Colors.black.withValues(alpha: 0.86),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Stack(
+                  children: [
+                    const DailyCheckinSheet(),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _CheckinCompletionWatcher.instance,
+                        builder: (context, completed, _) {
+                          if (!completed) return const SizedBox.shrink();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop(true);
+                            }
+                          });
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CheckinCompletionWatcher {
+  _CheckinCompletionWatcher._();
+  static final ValueNotifier<bool> instance = ValueNotifier<bool>(false);
+}
+
+class _LocalScoreRulesSheet extends StatelessWidget {
+  const _LocalScoreRulesSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F0F1A),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Row(
+                children: [
+                  Icon(Icons.menu_book_rounded, color: Colors.white, size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Livro de regras do Areas',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Aqui está a lógica do app como ela funciona agora: perfil vivo, perguntas adaptativas, fontes cruzadas e decaimento quando os dados envelhecem.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const _RuleCard(
+                icon: Icons.stacked_line_chart_rounded,
+                title: '1. Primeiro vem a nota, depois o nome visual',
+                text:
+                    'Cada subárea tenta chegar em uma nota de 0 a 100. Só depois essa nota vira um estado visual.\n\n'
+                    '• 80 a 100 = Ótimo\n'
+                    '• 60 a 79 = Bom\n'
+                    '• 40 a 59 = Médio\n'
+                    '• 20 a 39 = Ruim\n'
+                    '• 0 a 19 = Crítico\n'
+                    '• Sem dado útil = cinza',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                icon: Icons.auto_awesome_rounded,
+                title: '2. O usuário tem um perfil vivo',
+                text:
+                    'O app monta um perfil atual com base no onboarding + histórico recente do check-in.\n\n'
+                    'Esse perfil vivo muda conforme o uso e ajuda a escolher quais perguntas do dia têm mais sentido.',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                icon: Icons.quiz_rounded,
+                title: '3. O check-in diário agora é adaptativo',
+                text:
+                    'O sistema escolhe 5 perguntas por dia, não um bloco fixo.\n\n'
+                    'A seleção considera perfil atual, áreas prioritárias, histórico recente, rotação para evitar repetição e perguntas que conseguem cruzar mais de uma subárea.',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                icon: Icons.account_tree_rounded,
+                title: '4. Uma resposta pode mexer em várias subáreas',
+                text:
+                    'As perguntas não são mais 100% isoladas.\n\n'
+                    'Uma resposta pode melhorar uma subárea e também afetar outra com peso menor.',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                icon: Icons.verified_rounded,
+                title: '5. Dados automáticos valem mais que autorrelato',
+                text:
+                    'O app tenta sempre priorizar:\n\n'
+                    '• automático do relógio / Health Connect\n'
+                    '• automático do aparelho\n'
+                    '• integração confiável do próprio app\n'
+                    '• manual assistido\n'
+                    '• manual puro',
+              ),
+              const SizedBox(height: 10),
+              const _RuleCard(
+                icon: Icons.timelapse_rounded,
+                title: '6. O decaimento começa depois de 14 dias',
+                text:
+                    'Se uma subárea ficar 14 dias sem atualização, o decaimento começa.\n\n'
+                    '• até 14 dias = score preservado\n'
+                    '• depois disso = cai 5% do valor por dia\n'
+                    '• se o valor morrer até zero = volta para cinza',
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Fechar'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RuleCard extends StatelessWidget {
+  const _RuleCard({
+    required this.icon,
+    required this.title,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Icon(icon, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  text,
+                  style: const TextStyle(color: Colors.white70, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

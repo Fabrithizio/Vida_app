@@ -4,20 +4,12 @@
 // O que faz:
 // - Salva avaliações das áreas por usuário no Hive
 // - Calcula itens dinamicamente com base em SharedPreferences
-// - Conecta a área "Finanças & Material" ao módulo real de Finanças
-// - Usa respostas do check-in diário para alimentar áreas do painel
-// - Liga Saúde ao módulo Corpo & Saúde e ao Health Connect quando houver dado
-// - Liga Mente & Emoções a sinais indiretos do app + perguntas diárias
-//
-// Observações desta revisão:
-// - preserva a estrutura existente do módulo
-// - corrige os retornos nullable de trendLabel e overallStatus
-// - adiciona a leitura híbrida de Mente & Emoções sem apagar o resto
+// - Liga Saúde ao módulo Corpo & Saúde e ao Health Connect
+// - Usa o novo sistema de perguntas adaptativas para alimentar o Areas
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
@@ -115,140 +107,101 @@ class AreasStore {
   final AreasPurposeEngine _purpose;
   final AreasFinanceEngine _financeEngine;
 
-  Future<void> ensureBootstrappedFromOnboarding() {
-    return _bootstrap.ensureBootstrappedFromOnboarding();
-  }
+  Future<void> ensureBootstrappedFromOnboarding() =>
+      _bootstrap.ensureBootstrappedFromOnboarding();
 
   Future<AreaAssessment?> getComputedAssessment(
     String areaId,
     String itemId,
   ) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return getAssessment(areaId, itemId);
+    if (user == null) return getAssessment(areaId, itemId);
+    if (areaId == 'body_health' && itemId == 'energy') {
+      final a = await _bodyHealth.computedEnergy(
+        onAreaUpdated: markAreaUpdated,
+      );
+      if (a != null) return a;
     }
-
     if (areaId == 'body_health' && itemId == 'movement') {
-      final movementAssessment = await _bodyHealth.computedMovement(
+      final a = await _bodyHealth.computedMovement(
         onAreaUpdated: markAreaUpdated,
       );
-      if (movementAssessment != null) {
-        return movementAssessment;
-      }
+      if (a != null) return a;
     }
-
     if (areaId == 'body_health' && itemId == 'sleep') {
-      final sleepAssessment = await _bodyHealth.computedSleep(
-        onAreaUpdated: markAreaUpdated,
-      );
-      if (sleepAssessment != null) {
-        return sleepAssessment;
-      }
+      final a = await _bodyHealth.computedSleep(onAreaUpdated: markAreaUpdated);
+      if (a != null) return a;
     }
-
     if (areaId == 'body_health' && itemId == 'nutrition') {
-      final nutritionAssessment = await _bodyHealth.computedNutrition(
+      final a = await _bodyHealth.computedNutrition(
         onAreaUpdated: markAreaUpdated,
       );
-      if (nutritionAssessment != null) {
-        return nutritionAssessment;
-      }
+      if (a != null) return a;
     }
-
     if (areaId == 'body_health' && itemId == 'hydration') {
-      final hydrationAssessment = await _bodyHealth.computedHydration(
+      final a = await _bodyHealth.computedHydration(
         onAreaUpdated: markAreaUpdated,
       );
-      if (hydrationAssessment != null) {
-        return hydrationAssessment;
-      }
+      if (a != null) return a;
     }
-
     if (areaId == 'body_health' && itemId == 'imc') {
-      final imcAssessment = await _bodyHealth.computedImc(
-        onAreaUpdated: markAreaUpdated,
-      );
-      if (imcAssessment != null) {
-        return imcAssessment;
-      }
+      final a = await _bodyHealth.computedImc(onAreaUpdated: markAreaUpdated);
+      if (a != null) return a;
     }
-
     if (areaId == 'mind_emotion') {
-      final mindAssessment = await _mindEmotion.computedItem(
+      final a = await _mindEmotion.computedItem(
         itemId,
         getComputedAssessment: getComputedAssessment,
         onAreaUpdated: markAreaUpdated,
       );
-      if (mindAssessment != null) {
-        return mindAssessment;
-      }
+      if (a != null) return a;
     }
-
     final dailyAssessment = await _dailyQuestions.computedDailyQuestionItem(
       areaId,
       itemId,
       onAreaUpdated: markAreaUpdated,
     );
-    if (dailyAssessment != null) {
-      return dailyAssessment;
-    }
-
-    if (areaId == 'body_health' && itemId == 'checkups') {
+    if (dailyAssessment != null) return dailyAssessment;
+    if (areaId == 'body_health' && itemId == 'checkups')
       return _bodyHealth.computedCheckups(
         user.uid,
         getAssessment: getAssessment,
       );
-    }
-
-    if (areaId == 'digital_tech' && itemId == 'screen_time') {
+    if (areaId == 'digital_tech' && itemId == 'screen_time')
       return _deviceUsage.computedScreenTime(user.uid);
-    }
-
-    if (areaId == 'digital_tech' && itemId == 'social_media') {
+    if (areaId == 'digital_tech' && itemId == 'social_media')
       return _deviceUsage.computedSocialMedia(user.uid);
-    }
-
-    if (areaId == 'digital_tech' && itemId == 'night_use') {
+    if (areaId == 'digital_tech' && itemId == 'night_use')
       return _deviceUsage.computedNightUse(user.uid);
-    }
-
-    if (areaId == 'body_health' && itemId == 'women_cycle') {
+    if (areaId == 'body_health' && itemId == 'women_cycle')
       return _computedWomenCycle(user.uid);
-    }
-
-    if (areaId == 'purpose_values') {
+    if (areaId == 'purpose_values')
       return _purpose.computedPurposeValuesItem(
         itemId,
         getAssessment: getAssessment,
         onAreaUpdated: markAreaUpdated,
       );
-    }
-
-    if (areaId == 'environment_home') {
+    if (areaId == 'environment_home')
       return _environment.computedEnvironmentItem(
         'environment_home',
         itemId,
         getAssessment: getAssessment,
         onAreaUpdated: markAreaUpdated,
       );
-    }
-
     if (areaId == 'finance_material') {
-      final assessment = await _financeEngine.computedFinanceItem(
+      final a = await _financeEngine.computedFinanceItem(
         user.uid,
         itemId,
         onAreaUpdated: markAreaUpdated,
       );
-      return assessment ?? getAssessment('finance_material', itemId);
+      return a ?? getAssessment('finance_material', itemId);
     }
-
     return getAssessment(areaId, itemId);
   }
 
   Future<void> updateLastCheckupDate(DateTime date) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     final prefs = await SharedPreferences.getInstance();
     final iso = _bodyHealth.toIsoDate(date);
     await prefs.setString('${user.uid}:last_checkup', iso);
@@ -256,7 +209,6 @@ class AreasStore {
       _storage.areaUpdatedPrefKey(user.uid, 'body_health'),
       DateTime.now().toIso8601String(),
     );
-
     final computed = await _bodyHealth.computedCheckups(
       user.uid,
       getAssessment: getAssessment,
@@ -278,10 +230,8 @@ class AreasStore {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     final prefs = await SharedPreferences.getInstance();
     final uid = user.uid;
-
     Future<void> setNum(String key, double? value) async {
       if (value == null) return;
       await prefs.setDouble(key, value);
@@ -304,14 +254,11 @@ class AreasStore {
   Future<DateTime?> getAreaLastUpdate(String areaId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
-
     final prefs = await SharedPreferences.getInstance();
     final raw =
         (prefs.getString(_storage.areaUpdatedPrefKey(user.uid, areaId)) ?? '')
             .trim();
-
     if (raw.isEmpty) return null;
-
     try {
       return DateTime.parse(raw);
     } catch (_) {
@@ -322,7 +269,6 @@ class AreasStore {
   Future<void> markAreaUpdated(String areaId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _storage.areaUpdatedPrefKey(user.uid, areaId),
@@ -348,7 +294,6 @@ class AreasStore {
     String? details,
   }) async {
     final box = await _storage.open();
-
     final value = AreaAssessment(
       status: status,
       score: score ?? _aggregation.scoreFromStatus(status),
@@ -358,7 +303,6 @@ class AreasStore {
       recommendedAction: recommendedAction,
       details: details,
     ).toMap();
-
     await box.put(_storage.itemKey(areaId, itemId), value);
     await markAreaUpdated(areaId);
   }
@@ -368,27 +312,19 @@ class AreasStore {
     await box.delete(_storage.itemKey(areaId, itemId));
   }
 
-  Future<String?> trendLabel(String areaId, String itemId) {
-    return _aggregation.trendLabel(areaId, itemId);
-  }
-
-  Future<AreaStatus?> overallStatus(String areaId, List<String> itemIds) {
-    return _aggregation.overallStatus(
-      areaId,
-      itemIds,
-      getComputedAssessment: getComputedAssessment,
-    );
-  }
-
-  Future<int?> score(String areaId, List<String> itemIds) {
-    return _aggregation.score(
-      areaId,
-      itemIds,
-      getComputedAssessment: getComputedAssessment,
-    );
-  }
-
-  Future<AreaAssessment?> _computedWomenCycle(String uid) async {
-    return getAssessment('body_health', 'women_cycle');
-  }
+  Future<String?> trendLabel(String areaId, String itemId) =>
+      _aggregation.trendLabel(areaId, itemId);
+  Future<AreaStatus?> overallStatus(String areaId, List<String> itemIds) =>
+      _aggregation.overallStatus(
+        areaId,
+        itemIds,
+        getComputedAssessment: getComputedAssessment,
+      );
+  Future<int?> score(String areaId, List<String> itemIds) => _aggregation.score(
+    areaId,
+    itemIds,
+    getComputedAssessment: getComputedAssessment,
+  );
+  Future<AreaAssessment?> _computedWomenCycle(String uid) async =>
+      getAssessment('body_health', 'women_cycle');
 }
