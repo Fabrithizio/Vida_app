@@ -8,12 +8,11 @@
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
 // - Adiciona o ícone do livro com explicação clara do sistema de score
 // - Liga o sino à central real de alertas com badge numérico estilo WhatsApp
-// - Mostra o perfil vivo atual do usuário no topo no lugar de "Painel da vida"
 //
-// Correção desta revisão:
-// - remove dependência direta de DailyCheckinOverlay e ScoreRulesSheet externos
-// - evita conflitos de import/tipo
-// - mantém o gate diário e o livro de regras funcionando com widgets locais
+// Ajuste desta revisão:
+// - remove o nome/perfil vivo do topo
+// - mantém toda a lógica interna do perfil viva para uso futuro
+// - limpa a top bar para ficar visualmente melhor
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -369,19 +368,18 @@ class _AreasTabState extends State<AreasTab> {
       if (!mounted) return;
       if (canUse) return;
 
-      final unlocked = await Navigator.of(context).push<bool>(
-        PageRouteBuilder<bool>(
-          opaque: false,
-          barrierDismissible: false,
-          pageBuilder: (_, __, ___) => const _FullScreenCheckinGate(),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
+      await showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isDismissible: false,
+        enableDrag: false,
+        isScrollControlled: true,
+        builder: (_) => const DailyCheckinSheet(),
       );
 
       if (!mounted) return;
-      if (unlocked == true) {
+      final canUseAfter = await _dailyCheckinService.canUseAreas(today);
+      if (canUseAfter) {
         await _refreshDynamicProfile();
         setState(() {});
       }
@@ -441,7 +439,6 @@ class _AreasTabState extends State<AreasTab> {
           _resolvedBirthDate,
           DateTime.now(),
         );
-        final profileLabel = (_resolvedProfileLabel ?? 'Em adaptação').trim();
 
         final avg = _averageScore(scores, totalAreas: defs.length);
         final defined = _definedStatusesCount(scores);
@@ -494,7 +491,6 @@ class _AreasTabState extends State<AreasTab> {
                       definedStatuses: defined,
                       totalAreas: defs.length,
                       classification: classification,
-                      profileLabel: profileLabel,
                       ageInfo: ageInfo,
                       alertsService: widget.alertsService,
                       onOpenAlertRoute: widget.onOpenAlertRoute,
@@ -563,7 +559,6 @@ class _TopHudCompact extends StatelessWidget {
     required this.definedStatuses,
     required this.totalAreas,
     required this.classification,
-    required this.profileLabel,
     required this.ageInfo,
     required this.alertsService,
     required this.onOpenAlertRoute,
@@ -578,7 +573,6 @@ class _TopHudCompact extends StatelessWidget {
   final int definedStatuses;
   final int totalAreas;
   final String classification;
-  final String profileLabel;
   final _AgeAccessInfo ageInfo;
   final LifeAlertsService alertsService;
   final ValueChanged<String>? onOpenAlertRoute;
@@ -596,33 +590,11 @@ class _TopHudCompact extends StatelessWidget {
     return const Color(0xFFB91C1C);
   }
 
-  Color _profileAccent() {
-    final normalized = profileLabel.toLowerCase();
-    if (normalized.contains('pressão') ||
-        normalized.contains('sobrecarregado')) {
-      return const Color(0xFFEF4444);
-    }
-    if (normalized.contains('evolução') || normalized.contains('progresso')) {
-      return const Color(0xFF8B5CF6);
-    }
-    if (normalized.contains('conex')) {
-      return const Color(0xFFEC4899);
-    }
-    if (normalized.contains('eixo') || normalized.contains('ritmo')) {
-      return const Color(0xFF22C55E);
-    }
-    if (normalized.contains('reorganizando')) {
-      return const Color(0xFF38BDF8);
-    }
-    return const Color(0xFF94A3B8);
-  }
-
   @override
   Widget build(BuildContext context) {
     final scoreColor = _scoreColor();
     final accessColor = ageInfo.accessBadgeColor;
     final accessTextColor = ageInfo.accessBadgeTextColor;
-    final profileAccent = _profileAccent();
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -710,56 +682,26 @@ class _TopHudCompact extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scoreColor.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: scoreColor.withValues(alpha: 0.30),
-                            ),
-                          ),
-                          child: Text(
-                            classification,
-                            style: TextStyle(
-                              color: scoreColor,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scoreColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: scoreColor.withValues(alpha: 0.30),
                         ),
-                        const SizedBox(width: 7),
-                        Flexible(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: profileAccent.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: profileAccent.withValues(alpha: 0.28),
-                              ),
-                            ),
-                            child: Text(
-                              profileLabel,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: profileAccent,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
+                      ),
+                      child: Text(
+                        classification,
+                        style: TextStyle(
+                          color: scoreColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
                         ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
@@ -1140,56 +1082,6 @@ class _AgeAccessInfo {
   }
 }
 
-class _FullScreenCheckinGate extends StatelessWidget {
-  const _FullScreenCheckinGate();
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: Colors.black.withValues(alpha: 0.86),
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Stack(
-                  children: [
-                    const DailyCheckinSheet(),
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: ValueListenableBuilder<bool>(
-                        valueListenable: _CheckinCompletionWatcher.instance,
-                        builder: (context, completed, _) {
-                          if (!completed) return const SizedBox.shrink();
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (Navigator.of(context).canPop()) {
-                              Navigator.of(context).pop(true);
-                            }
-                          });
-                          return const SizedBox.shrink();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CheckinCompletionWatcher {
-  _CheckinCompletionWatcher._();
-  static final ValueNotifier<bool> instance = ValueNotifier<bool>(false);
-}
-
 class _LocalScoreRulesSheet extends StatelessWidget {
   const _LocalScoreRulesSheet();
 
@@ -1237,7 +1129,7 @@ class _LocalScoreRulesSheet extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Aqui está a lógica do app como ela funciona agora: perfil vivo, perguntas adaptativas, fontes cruzadas e decaimento quando os dados envelhecem.',
+                'Resumo rápido da lógica atual: perguntas adaptativas, dados cruzados, persistência real e decaimento quando os dados ficam velhos demais.',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.72),
                   height: 1.35,
@@ -1246,9 +1138,9 @@ class _LocalScoreRulesSheet extends StatelessWidget {
               const SizedBox(height: 14),
               const _RuleCard(
                 icon: Icons.stacked_line_chart_rounded,
-                title: '1. Primeiro vem a nota, depois o nome visual',
+                title: 'Nota e cor',
                 text:
-                    'Cada subárea tenta chegar em uma nota de 0 a 100. Só depois essa nota vira um estado visual.\n\n'
+                    'Cada subárea tenta chegar em uma nota de 0 a 100. Depois ela vira um estado visual.\n\n'
                     '• 80 a 100 = Ótimo\n'
                     '• 60 a 79 = Bom\n'
                     '• 40 a 59 = Médio\n'
@@ -1258,49 +1150,27 @@ class _LocalScoreRulesSheet extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                icon: Icons.auto_awesome_rounded,
-                title: '2. O usuário tem um perfil vivo',
-                text:
-                    'O app monta um perfil atual com base no onboarding + histórico recente do check-in.\n\n'
-                    'Esse perfil vivo muda conforme o uso e ajuda a escolher quais perguntas do dia têm mais sentido.',
-              ),
-              const SizedBox(height: 10),
-              const _RuleCard(
                 icon: Icons.quiz_rounded,
-                title: '3. O check-in diário agora é adaptativo',
+                title: 'Check-in adaptativo',
                 text:
-                    'O sistema escolhe 5 perguntas por dia, não um bloco fixo.\n\n'
-                    'A seleção considera perfil atual, áreas prioritárias, histórico recente, rotação para evitar repetição e perguntas que conseguem cruzar mais de uma subárea.',
+                    'O sistema escolhe 5 perguntas por dia.\n\n'
+                    'Ele usa perfil, prioridade, histórico recente e rotação para evitar repetição.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
                 icon: Icons.account_tree_rounded,
-                title: '4. Uma resposta pode mexer em várias subáreas',
+                title: 'Impacto cruzado',
                 text:
-                    'As perguntas não são mais 100% isoladas.\n\n'
-                    'Uma resposta pode melhorar uma subárea e também afetar outra com peso menor.',
+                    'Uma resposta pode bater em mais de uma subárea ao mesmo tempo com pesos diferentes.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
-                icon: Icons.verified_rounded,
-                title: '5. Dados automáticos valem mais que autorrelato',
+                icon: Icons.update_rounded,
+                title: 'Persistência e decaimento',
                 text:
-                    'O app tenta sempre priorizar:\n\n'
-                    '• automático do relógio / Health Connect\n'
-                    '• automático do aparelho\n'
-                    '• integração confiável do próprio app\n'
-                    '• manual assistido\n'
-                    '• manual puro',
-              ),
-              const SizedBox(height: 10),
-              const _RuleCard(
-                icon: Icons.timelapse_rounded,
-                title: '6. O decaimento começa depois de 14 dias',
-                text:
-                    'Se uma subárea ficar 14 dias sem atualização, o decaimento começa.\n\n'
-                    '• até 14 dias = score preservado\n'
-                    '• depois disso = cai 5% do valor por dia\n'
-                    '• se o valor morrer até zero = volta para cinza',
+                    'Se a subárea já teve dado, o score fica salvo.\n\n'
+                    'Depois de 14 dias sem atualização, ele começa a cair 5% do valor por dia.\n\n'
+                    'Se morrer até zero, volta para cinza.',
               ),
               const SizedBox(height: 14),
               SizedBox(
