@@ -2,12 +2,15 @@
 // FILE: lib/features/areas/presentation/pages/area_detail_page.dart
 //
 // O que faz:
-// - Mostra os detalhes de uma área sem mudar o layout principal
-// - Integra AreaDetailExplainerPanel para explicar o score no sistema novo
+// - Mostra os detalhes de uma área do Areas
+// - Exibe as subáreas com visual mais agradável
+// - Abre o modal de detalhe de cada subárea
 //
 // Ajustes desta versão:
-// - devolve mais cor e destaque visual às subáreas
-// - restaura a ação de atualizar a data de check-up direto no detalhe
+// - remove os círculos repetidos das subáreas
+// - adiciona ícones próprios por subárea
+// - melhora o topo do modal de detalhe sem poluir
+// - mantém o botão de atualizar check-up
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,9 +21,9 @@ import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
 import 'package:vida_app/features/areas/application/bootstrap/areas_bootstrap_service.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
+import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/pages/area_detail_explainer_panel.dart';
 import 'package:vida_app/features/areas/presentation/widgets/area_status_dot.dart';
-import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 
 class AreaDetailPage extends StatefulWidget {
   const AreaDetailPage({
@@ -164,6 +167,42 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     return _store.score(def.id, items.map((e) => e.id).toList());
   }
 
+  IconData _itemIcon(String itemId) {
+    switch (itemId) {
+      case 'energy':
+        return Icons.bolt_rounded;
+      case 'sleep':
+        return Icons.nightlight_round_rounded;
+      case 'movement':
+        return Icons.directions_run_rounded;
+      case 'nutrition':
+        return Icons.restaurant_rounded;
+      case 'hydration':
+        return Icons.water_drop_rounded;
+      case 'checkups':
+        return Icons.medical_services_rounded;
+      case 'imc':
+      case 'bmi':
+        return Icons.monitor_weight_rounded;
+      case 'digital_night_use':
+        return Icons.bedtime_rounded;
+      case 'focus':
+        return Icons.center_focus_strong_rounded;
+      case 'constancy':
+        return Icons.track_changes_rounded;
+      case 'planning':
+        return Icons.event_note_rounded;
+      case 'progress':
+        return Icons.trending_up_rounded;
+      case 'social_connection':
+        return Icons.people_alt_rounded;
+      case 'affective_bond':
+        return Icons.favorite_rounded;
+      default:
+        return Icons.auto_awesome_rounded;
+    }
+  }
+
   Future<void> _openItemDetails(
     AreaDef area,
     AreaItemDef item,
@@ -177,6 +216,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     final status = a?.status ?? AreaStatus.noData;
     final scoreColor = _statusColor(status);
     final sourceColor = _sourceColor(a?.source ?? AreaDataSource.unknown);
+    final itemIcon = _itemIcon(item.id);
 
     await showModalBottomSheet(
       context: context,
@@ -187,7 +227,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
           decoration: BoxDecoration(
             color: const Color(0xFF0F0F1A),
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.white12),
           ),
           child: SafeArea(
@@ -195,38 +235,59 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       Container(
-                        width: 42,
-                        height: 42,
+                        width: 48,
+                        height: 48,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: scoreColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              scoreColor.withValues(alpha: 0.26),
+                              scoreColor.withValues(alpha: 0.10),
+                            ],
+                          ),
                           border: Border.all(
                             color: scoreColor.withValues(alpha: 0.35),
                           ),
                         ),
-                        child: Center(
-                          child: AreaStatusDot(status: status, size: 18),
-                        ),
+                        child: Icon(itemIcon, color: scoreColor, size: 23),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          item.title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 20,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              item.description,
+                              style: const TextStyle(
+                                color: Colors.white60,
+                                fontSize: 12.5,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 12),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
+                          horizontal: 12,
+                          vertical: 8,
                         ),
                         decoration: BoxDecoration(
                           color: scoreColor.withValues(alpha: 0.16),
@@ -240,13 +301,13 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                           style: TextStyle(
                             color: scoreColor,
                             fontWeight: FontWeight.w800,
-                            fontSize: 11,
+                            fontSize: 12,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -278,33 +339,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                         icon: Icons.schedule_rounded,
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          scoreColor.withValues(alpha: 0.14),
-                          Colors.white.withValues(alpha: 0.03),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: scoreColor.withValues(alpha: 0.22),
-                      ),
-                    ),
-                    child: Text(
-                      item.description,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        height: 1.35,
-                      ),
-                    ),
                   ),
                   const SizedBox(height: 14),
                   if (a != null)
@@ -351,6 +385,12 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                     height: 46,
                     child: OutlinedButton(
                       onPressed: () => Navigator.of(sheetContext).pop(),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
                       child: const Text('Fechar'),
                     ),
                   ),
@@ -571,6 +611,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                         );
                         final reason = (a?.reason ?? '').trim();
                         final scoreClass = _scoreClass(a?.score);
+                        final itemIcon = _itemIcon(item.id);
 
                         return InkWell(
                           borderRadius: BorderRadius.circular(22),
@@ -603,21 +644,23 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Container(
-                                  width: 42,
-                                  height: 42,
+                                  width: 46,
+                                  height: 46,
                                   decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: color.withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(15),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        color.withValues(alpha: 0.22),
+                                        color.withValues(alpha: 0.08),
+                                      ],
+                                    ),
                                     border: Border.all(
-                                      color: color.withValues(alpha: 0.35),
+                                      color: color.withValues(alpha: 0.30),
                                     ),
                                   ),
-                                  child: Center(
-                                    child: AreaStatusDot(
-                                      status: status,
-                                      size: 15,
-                                    ),
-                                  ),
+                                  child: Icon(itemIcon, color: color, size: 22),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -643,7 +686,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                                             style: TextStyle(
                                               color: color,
                                               fontWeight: FontWeight.w900,
-                                              fontSize: 14,
+                                              fontSize: 18,
                                             ),
                                           ),
                                         ],
