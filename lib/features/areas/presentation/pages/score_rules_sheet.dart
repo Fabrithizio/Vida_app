@@ -1,5 +1,5 @@
 // ============================================================================
-// FILE: lib/features/home/presentation/tabs/score_rules_sheet.dart
+// FILE: lib\features\areas\presentation\pages\score_rules_sheet.dart
 //
 // O que faz:
 // - Mostra o “livro de regras” do Areas em formato de bottom sheet
