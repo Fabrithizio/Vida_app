@@ -2,14 +2,16 @@
 // FILE: lib/features/areas/application/scoring/areas_finance_engine.dart
 //
 // O que faz:
-// - Calcula a área Finanças & Material usando Finanças real + fallback do check-in
+// - Calcula a área Finanças & Material com base em transações, orçamento e reservas
+// - Usa dados reais como base principal da leitura financeira
+// - Agora recebe reforço leve quando o usuário usa apps financeiros úteis
 //
-// Ajustes desta versão:
-// - remove comparações nulas desnecessárias
-// - adiciona chaves onde faltavam
-// - mantém a mesma lógica de score
+// Regra nova:
+// - apps financeiros entram como sinal complementar positivo
+// - não substituem movimentação real nem orçamento
 // ============================================================================
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
@@ -32,6 +34,13 @@ class AreasFinanceEngine {
   final AreasDailyQuestionsEngine _dailyQuestions;
   final AreasConfidenceEngine _confidence;
 
+  Future<int> _financeAppBonus(int maxBonus) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
+    final score = prefs.getInt('$uid:app_usage_finance_score') ?? 0;
+    return ((score / 100.0) * maxBonus).round().clamp(0, maxBonus);
+  }
+
   Future<AreaAssessment?> computedFinanceItem(
     String uid,
     String itemId, {
@@ -45,28 +54,61 @@ class AreasFinanceEngine {
         onAreaUpdated: onAreaUpdated,
       );
       if (fallback != null) {
-        return fallback;
+        return _applyBonus(
+          fallback,
+          await _financeAppBonus(8),
+          'Apps financeiros úteis podem reforçar levemente esta leitura.',
+        );
       }
     }
 
-    switch (itemId) {
-      case 'income':
-        return _assessIncome(snapshot);
-      case 'spending':
-        return _assessSpending(snapshot);
-      case 'monthly_flow':
-        return _assessMonthlyFlow(snapshot);
-      case 'budget':
-        return _assessBudget(snapshot);
-      case 'debts':
-        return _assessDebts(snapshot);
-      case 'savings':
-        return _assessSavings(snapshot);
-      case 'goals_fin':
-        return _assessFinanceGoals(snapshot);
-      default:
-        return null;
-    }
+    final result = switch (itemId) {
+      'income' => _assessIncome(snapshot),
+      'spending' => _assessSpending(snapshot),
+      'monthly_flow' => _assessMonthlyFlow(snapshot),
+      'budget' => _assessBudget(snapshot),
+      'debts' => _assessDebts(snapshot),
+      'savings' => _assessSavings(snapshot),
+      'goals_fin' => _assessFinanceGoals(snapshot),
+      _ => null,
+    };
+
+    if (result == null) return null;
+
+    final maxBonus = switch (itemId) {
+      'income' => 2,
+      'spending' => 7,
+      'monthly_flow' => 5,
+      'budget' => 8,
+      'debts' => 4,
+      'savings' => 5,
+      'goals_fin' => 9,
+      _ => 0,
+    };
+
+    return _applyBonus(
+      result,
+      await _financeAppBonus(maxBonus),
+      'Apps financeiros úteis podem reforçar levemente esta leitura.',
+    );
+  }
+
+  AreaAssessment _applyBonus(
+    AreaAssessment assessment,
+    int bonus,
+    String detailsAppend,
+  ) {
+    if (bonus <= 0) return assessment;
+    final score = ((assessment.score ?? 0) + bonus).clamp(0, 100);
+    return AreaAssessment(
+      status: _statusFromNumericScore(score),
+      score: score,
+      reason: assessment.reason,
+      source: assessment.source,
+      lastUpdatedAt: assessment.lastUpdatedAt,
+      recommendedAction: assessment.recommendedAction,
+      details: '${assessment.details ?? ''} $detailsAppend',
+    );
   }
 
   Future<AreaAssessment?> _spendingAssessmentFromDailyCheckin({

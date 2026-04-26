@@ -2,15 +2,17 @@
 // FILE: lib/features/areas/application/scoring/areas_mind_emotion_engine.dart
 //
 // O que faz:
-// - Calcula a área "Mente & Emoções" usando perguntas diárias + sinais indiretos
-// - Evita fingir automação emocional perfeita
-// - Reaproveita dados já existentes de Saúde, Digital, Rotina, Finanças e Social
+// - Calcula a área Mente & Emoções usando check-in e sinais indiretos do app
+// - Mistura humor, estresse, foco e carga mental com contexto real
+// - Agora recebe reforço leve de apps úteis como meditação, foco, fitness e finanças
 //
-// Revisão desta versão:
-// - integra AreasConfidenceEngine depois da mistura dos sinais
-// - reduz força quando a base está fraca, velha ou incompleta
+// Regra nova:
+// - apps úteis só ajudam quando existirem
+// - não criam score sozinhos e não punem ausência de uso
 // ============================================================================
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
@@ -61,6 +63,13 @@ class AreasMindEmotionEngine {
     }
   }
 
+  Future<int> _bonusFromKey(String keySuffix, int maxBonus) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
+    final score = prefs.getInt('$uid:$keySuffix') ?? 0;
+    return ((score / 100.0) * maxBonus).round().clamp(0, maxBonus);
+  }
+
   Future<AreaAssessment?> _computedMood({
     required ComputedAssessmentGetter getComputedAssessment,
     required Future<void> Function(String areaId) onAreaUpdated,
@@ -78,7 +87,7 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    return _buildCompositeAssessment(
+    final assessment = await _buildCompositeAssessment(
       direct: direct,
       weighted: [
         (await _safe(getComputedAssessment, 'body_health', 'sleep'), 0.18),
@@ -104,6 +113,15 @@ class AreasMindEmotionEngine {
           'Mente & Emoções usa pergunta direta, mas também olha sinais indiretos como sono, rotina e conexão social.',
       onAreaUpdated: onAreaUpdated,
     );
+
+    return _applyBonus(
+      assessment,
+      bonus:
+          await _bonusFromKey('app_usage_meditation_score', 8) +
+          await _bonusFromKey('app_usage_fitness_score', 4),
+      detailsAppend:
+          'Apps de meditação/fitness podem reforçar levemente esta leitura.',
+    );
   }
 
   Future<AreaAssessment?> _computedStress({
@@ -126,7 +144,7 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    return _buildCompositeAssessment(
+    final assessment = await _buildCompositeAssessment(
       direct: direct,
       weighted: [
         (
@@ -154,6 +172,15 @@ class AreasMindEmotionEngine {
           'Esta subárea cruza resposta direta com pressão financeira, sono, rotina e uso digital noturno.',
       onAreaUpdated: onAreaUpdated,
     );
+
+    return _applyBonus(
+      assessment,
+      bonus:
+          await _bonusFromKey('app_usage_meditation_score', 7) +
+          await _bonusFromKey('app_usage_finance_score', 4),
+      detailsAppend:
+          'Apps de meditação/finanças podem ajudar levemente no controle percebido.',
+    );
   }
 
   Future<AreaAssessment?> _computedFocus({
@@ -173,7 +200,7 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    return _buildCompositeAssessment(
+    final assessment = await _buildCompositeAssessment(
       direct: direct,
       weighted: [
         (await _safe(getComputedAssessment, 'body_health', 'sleep'), 0.14),
@@ -200,6 +227,15 @@ class AreasMindEmotionEngine {
           'Esta subárea combina pergunta direta de foco com sono, rotina, consistência e sinais digitais.',
       onAreaUpdated: onAreaUpdated,
     );
+
+    return _applyBonus(
+      assessment,
+      bonus:
+          await _bonusFromKey('app_usage_focus_score', 10) +
+          await _bonusFromKey('app_usage_study_score', 6),
+      detailsAppend:
+          'Apps úteis de foco/estudo podem reforçar levemente esta subárea.',
+    );
   }
 
   Future<AreaAssessment?> _computedMentalLoad({
@@ -220,7 +256,7 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    return _buildCompositeAssessment(
+    final assessment = await _buildCompositeAssessment(
       direct: direct,
       weighted: [
         (await _safe(getComputedAssessment, 'body_health', 'sleep'), 0.12),
@@ -249,6 +285,33 @@ class AreasMindEmotionEngine {
           'Sobrecarga mental usa pergunta diária e sinais indiretos como sono, rotina, pressão financeira, social e uso noturno.',
       onAreaUpdated: onAreaUpdated,
       fallbackSource: AreaDataSource.estimated,
+    );
+
+    return _applyBonus(
+      assessment,
+      bonus:
+          await _bonusFromKey('app_usage_meditation_score', 8) +
+          await _bonusFromKey('app_usage_focus_score', 4),
+      detailsAppend:
+          'Apps de meditação/foco podem aliviar levemente a leitura desta subárea.',
+    );
+  }
+
+  Future<AreaAssessment?> _applyBonus(
+    AreaAssessment? assessment, {
+    required int bonus,
+    required String detailsAppend,
+  }) async {
+    if (assessment == null || bonus <= 0) return assessment;
+    final score = ((assessment.score ?? 0) + bonus).clamp(0, 100);
+    return AreaAssessment(
+      status: _statusFromScore(score),
+      score: score,
+      reason: assessment.reason,
+      source: assessment.source,
+      lastUpdatedAt: assessment.lastUpdatedAt,
+      recommendedAction: assessment.recommendedAction,
+      details: '${assessment.details ?? ''}\n\n$detailsAppend',
     );
   }
 

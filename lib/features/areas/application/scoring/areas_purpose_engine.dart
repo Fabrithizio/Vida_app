@@ -1,3 +1,18 @@
+// ============================================================================
+// FILE: lib/features/areas/application/scoring/areas_purpose_engine.dart
+//
+// O que faz:
+// - Calcula a área Propósito & Direção usando rotina, constância e recuperação
+// - Cruza respostas diárias com sinais do ambiente e da execução recente
+// - Agora recebe reforço leve de apps úteis de estudo, foco e meditação
+//
+// Regra nova:
+// - apps úteis entram só como bônus complementar
+// - não substituem os sinais principais da área
+// ============================================================================
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
@@ -40,6 +55,13 @@ class AreasPurposeEngine {
       default:
         return getAssessment('purpose_values', itemId);
     }
+  }
+
+  Future<int> _bonusFromKey(String keySuffix, int maxBonus) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
+    final score = prefs.getInt('$uid:$keySuffix') ?? 0;
+    return ((score / 100.0) * maxBonus).round().clamp(0, maxBonus);
   }
 
   Future<AreaAssessment?> _computedPurposeBaseline({
@@ -91,7 +113,13 @@ class AreasPurposeEngine {
       return getAssessment('purpose_values', 'direction');
     }
 
-    final score = (weightedSum / totalWeight).round().clamp(0, 100);
+    var score = (weightedSum / totalWeight).round().clamp(0, 100);
+    score =
+        (score +
+                await _bonusFromKey('app_usage_focus_score', 6) +
+                await _bonusFromKey('app_usage_study_score', 5))
+            .clamp(0, 100);
+
     final status = _statusFromNumericScore(score);
     final trend = history.isEmpty
         ? 'stable'
@@ -138,7 +166,7 @@ class AreasPurposeEngine {
       lastUpdatedAt: latestDate ?? now,
       recommendedAction: action,
       details:
-          'Calculado pela base da rotina recente (organização, execução do importante e energia) junto com os sinais automáticos de organização e limpeza do ambiente. $trendSentence',
+          'Calculado pela base da rotina recente (organização, execução do importante e energia) junto com os sinais automáticos de organização e limpeza do ambiente. Bônus leve pode entrar por apps úteis de foco/estudo. $trendSentence',
     );
   }
 
@@ -188,7 +216,11 @@ class AreasPurposeEngine {
       score -= ((lastGap - 2) * 4).clamp(0, 20);
     }
 
-    final finalScore = score.clamp(0, 100);
+    final finalScore =
+        (score +
+                await _bonusFromKey('app_usage_study_score', 8) +
+                await _bonusFromKey('app_usage_focus_score', 7))
+            .clamp(0, 100);
     final status = _statusFromNumericScore(finalScore);
     final trend = _dailyQuestions.trendFromScaledHistory(history);
     final trendSentence = switch (trend) {
@@ -218,7 +250,7 @@ class AreasPurposeEngine {
       lastUpdatedAt: history.first.date,
       recommendedAction: action,
       details:
-          'Calculado pela qualidade recente desses sinais e, principalmente, pela frequência com que eles aparecem ao longo dos últimos ${DailyCheckinService.historyDays} dias. $trendSentence',
+          'Calculado pela qualidade recente desses sinais e, principalmente, pela frequência com que eles aparecem ao longo dos últimos ${DailyCheckinService.historyDays} dias. Apps úteis de estudo/foco podem reforçar levemente esta leitura. $trendSentence',
     );
   }
 
@@ -268,9 +300,11 @@ class AreasPurposeEngine {
       totalWeight += 0.25;
     }
 
-    final score = totalWeight == 0
+    var score = totalWeight == 0
         ? 0
         : (weightedSum / totalWeight).round().clamp(0, 100);
+    score = (score + await _bonusFromKey('app_usage_meditation_score', 9))
+        .clamp(0, 100);
     final status = _statusFromNumericScore(score);
     final trend = history.isEmpty
         ? 'stable'
@@ -317,7 +351,7 @@ class AreasPurposeEngine {
       lastUpdatedAt: latestDate ?? now,
       recommendedAction: action,
       details:
-          'Calculado pelos sinais recentes de recuperação mental, sono, humor e estresse. ${sleepAssessment?.score != null ? 'O sono também entra como reforço nessa leitura. ' : ''}$trendSentence',
+          'Calculado pelos sinais recentes de recuperação mental, sono, humor e estresse. ${sleepAssessment?.score != null ? 'O sono também entra como reforço nessa leitura. ' : ''}Apps de meditação podem reforçar levemente essa subárea. $trendSentence',
     );
   }
 

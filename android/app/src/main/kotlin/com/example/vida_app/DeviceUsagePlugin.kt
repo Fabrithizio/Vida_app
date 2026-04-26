@@ -37,6 +37,11 @@ object DeviceUsagePlugin {
               val endHour = (args?.get("endHour") as? Int) ?: 4
               result.success(getTodayNightUseMinutes(context, startHour, endHour))
             }
+            "getTodayUsageByPackages" -> {
+              val args = call.arguments as? Map<*, *>
+              val pkgs = (args?.get("packages") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+              result.success(getTodayUsageByPackages(context, pkgs))
+            }
             else -> result.notImplemented()
           }
         } catch (t: Throwable) {
@@ -82,20 +87,28 @@ object DeviceUsagePlugin {
     return Pair(start, end)
   }
 
+  private fun queryUsageStats(
+    context: Context,
+    startMillis: Long,
+    endMillis: Long
+  ): List<UsageStats>? {
+    if (!hasUsageAccess(context)) return null
+
+    val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    return usm.queryUsageStats(
+      UsageStatsManager.INTERVAL_DAILY,
+      startMillis,
+      endMillis
+    )
+  }
+
   private fun queryMinutes(
     context: Context,
     startMillis: Long,
     endMillis: Long,
     allowPackages: Set<String>? = null
   ): Int? {
-    if (!hasUsageAccess(context)) return null
-
-    val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-    val stats: List<UsageStats> = usm.queryUsageStats(
-      UsageStatsManager.INTERVAL_DAILY,
-      startMillis,
-      endMillis
-    ) ?: return null
+    val stats = queryUsageStats(context, startMillis, endMillis) ?: return null
 
     var totalMs = 0L
     for (s in stats) {
@@ -105,6 +118,35 @@ object DeviceUsagePlugin {
     }
     val minutes = (totalMs / 60000L).toInt()
     return if (minutes < 0) 0 else minutes
+  }
+
+  private fun getTodayUsageByPackages(
+    context: Context,
+    packages: List<String>
+  ): List<Map<String, Any>> {
+    if (packages.isEmpty()) return emptyList()
+
+    val (start, end) = getTodayRangeMillis()
+    val stats = queryUsageStats(context, start, end) ?: return emptyList()
+    val allow = packages.toSet()
+
+    val result = mutableListOf<Map<String, Any>>()
+    for (s in stats) {
+      val pkg = s.packageName ?: continue
+      if (!allow.contains(pkg)) continue
+
+      val minutes = (s.totalTimeInForeground / 60000L).toInt()
+      if (minutes <= 0) continue
+
+      result.add(
+        mapOf(
+          "packageName" to pkg,
+          "minutes" to minutes
+        )
+      )
+    }
+
+    return result
   }
 
   private fun getTodayScreenTimeMinutes(context: Context): Int? {
@@ -118,7 +160,6 @@ object DeviceUsagePlugin {
     return queryMinutes(context, start, end, allow)
   }
 
-  // Night window may cross midnight (e.g. 19 -> 4)
   private fun getTodayNightUseMinutes(context: Context, startHour: Int, endHour: Int): Int? {
     if (!hasUsageAccess(context)) return null
 
@@ -136,16 +177,12 @@ object DeviceUsagePlugin {
       return c
     }
 
-    // Window parts:
-    // Part A: today startHour -> 23:59:59
-    // Part B: today 00:00:00 -> endHour (only if endHour < startHour)
     val startA = at(startHour, 0, 0).timeInMillis
     val endA = at(23, 59, 59).timeInMillis
 
     val partA = queryMinutes(context, startA, endA, null) ?: 0
 
     if (endHour >= startHour) {
-      // same-day window (rare)
       val endSameDay = at(endHour, 0, 0).timeInMillis
       val sameDay = queryMinutes(context, startA, endSameDay, null) ?: 0
       return sameDay

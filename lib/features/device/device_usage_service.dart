@@ -5,6 +5,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class DeviceAppUsageEntry {
+  const DeviceAppUsageEntry({required this.packageName, required this.minutes});
+
+  final String packageName;
+  final int minutes;
+}
+
 class DeviceUsageService {
   static const MethodChannel _channel = MethodChannel('vida_app/device_usage');
 
@@ -19,6 +26,60 @@ class DeviceUsageService {
     'com.facebook.orca', // Messenger
     'com.twitter.android', // X (Twitter)
     'org.telegram.messenger', // Telegram
+  ];
+
+  // Positive / signal apps by category
+  static const List<String> studyPackages = [
+    'com.duolingo',
+    'org.khanacademy.android',
+    'com.coursera.android',
+    'org.edx.mobile',
+    'com.udemy.android',
+    'com.google.android.apps.classroom',
+    'com.todoist',
+    'com.notion.id',
+    'notion.id',
+  ];
+
+  static const List<String> financePackages = [
+    'com.nu.production',
+    'br.com.intermedium',
+    'com.itau',
+    'com.santander.app',
+    'br.com.bb.android',
+    'com.picpay',
+    'com.mercadopago.wallet',
+    'com.paypal.android.p2pmobile',
+    'br.com.guiabolso',
+    'br.com.mobills.mobills',
+  ];
+
+  static const List<String> focusPackages = [
+    'com.forestapp',
+    'cc.forestapp',
+    'com.ticktick.task',
+    'com.anydo',
+    'com.todoist',
+    'com.google.android.keep',
+    'notion.id',
+    'com.notion.id',
+    'com.microsoft.todos',
+  ];
+
+  static const List<String> meditationPackages = [
+    'com.getsomeheadspace.android',
+    'com.calm.android',
+    'org.woheller69.meditationassistant',
+    'com.insighttimer',
+  ];
+
+  static const List<String> fitnessPackages = [
+    'com.google.android.apps.fitness',
+    'com.strava',
+    'com.fitbit.FitbitMobile',
+    'com.myfitnesspal.android',
+    'com.samsung.android.app.health',
+    'com.nike.plusgps',
   ];
 
   // Night window: 19:00 -> 04:00
@@ -70,6 +131,37 @@ class DeviceUsageService {
     return minutes;
   }
 
+  Future<List<DeviceAppUsageEntry>> getTodayUsageByPackages(
+    List<String> packages,
+  ) async {
+    if (!Platform.isAndroid || packages.isEmpty) return const [];
+    final raw = await _channel.invokeMethod<List<dynamic>>(
+      'getTodayUsageByPackages',
+      <String, dynamic>{'packages': packages},
+    );
+
+    if (raw == null) return const [];
+
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final map = Map<String, dynamic>.from(item);
+          return DeviceAppUsageEntry(
+            packageName: (map['packageName'] ?? '').toString(),
+            minutes: (map['minutes'] as num?)?.toInt() ?? 0,
+          );
+        })
+        .where(
+          (entry) => entry.packageName.trim().isNotEmpty && entry.minutes > 0,
+        )
+        .toList();
+  }
+
+  Future<int> getTodayCategoryMinutes(List<String> packages) async {
+    final entries = await getTodayUsageByPackages(packages);
+    return entries.fold<int>(0, (sum, entry) => sum + entry.minutes);
+  }
+
   /// "<2h", "2-4h", "4-6h", ">=6h"
   String bucketizeScreenTime(int minutes) {
     final h = minutes / 60.0;
@@ -97,12 +189,23 @@ class DeviceUsageService {
     return '>=2h';
   }
 
-  /// Saves:
-  /// - "$uid:screen_time"  => "<2h" / "2-4h" / "4-6h" / ">=6h"
-  /// - "$uid:social_media" => "<1h" / "1-2h" / "2-4h" / ">=4h"
-  /// - "$uid:night_use"    => "<0.5h" / "0.5-1h" / "1-2h" / ">=2h"
-  ///
-  /// Returns true if at least one value was updated.
+  double _capRatio(int minutes, int usefulCapMinutes) {
+    if (usefulCapMinutes <= 0) return 0;
+    return (minutes / usefulCapMinutes).clamp(0.0, 1.0);
+  }
+
+  /// 0..100, com teto útil baixo/moderado para evitar distorção.
+  int scoreStudyApps(int minutes) => (_capRatio(minutes, 25) * 100).round();
+
+  int scoreFinanceApps(int minutes) => (_capRatio(minutes, 12) * 100).round();
+
+  int scoreFocusApps(int minutes) => (_capRatio(minutes, 18) * 100).round();
+
+  int scoreMeditationApps(int minutes) =>
+      (_capRatio(minutes, 15) * 100).round();
+
+  int scoreFitnessApps(int minutes) => (_capRatio(minutes, 20) * 100).round();
+
   Future<bool> refreshAndPersistDigitalBuckets() async {
     if (!Platform.isAndroid) return false;
 
@@ -135,7 +238,41 @@ class DeviceUsageService {
       updated = true;
     }
 
-    return updated;
+    final studyMin = await getTodayCategoryMinutes(studyPackages);
+    await prefs.setInt('$uid:app_usage_study_minutes', studyMin);
+    await prefs.setInt('$uid:app_usage_study_score', scoreStudyApps(studyMin));
+
+    final financeMin = await getTodayCategoryMinutes(financePackages);
+    await prefs.setInt('$uid:app_usage_finance_minutes', financeMin);
+    await prefs.setInt(
+      '$uid:app_usage_finance_score',
+      scoreFinanceApps(financeMin),
+    );
+
+    final focusMin = await getTodayCategoryMinutes(focusPackages);
+    await prefs.setInt('$uid:app_usage_focus_minutes', focusMin);
+    await prefs.setInt('$uid:app_usage_focus_score', scoreFocusApps(focusMin));
+
+    final meditationMin = await getTodayCategoryMinutes(meditationPackages);
+    await prefs.setInt('$uid:app_usage_meditation_minutes', meditationMin);
+    await prefs.setInt(
+      '$uid:app_usage_meditation_score',
+      scoreMeditationApps(meditationMin),
+    );
+
+    final fitnessMin = await getTodayCategoryMinutes(fitnessPackages);
+    await prefs.setInt('$uid:app_usage_fitness_minutes', fitnessMin);
+    await prefs.setInt(
+      '$uid:app_usage_fitness_score',
+      scoreFitnessApps(fitnessMin),
+    );
+
+    await prefs.setString(
+      '$uid:app_usage_categories_updated_at',
+      DateTime.now().toIso8601String(),
+    );
+
+    return true;
   }
 
   Future<String?> readSaved(String keySuffix) async {
@@ -143,5 +280,11 @@ class DeviceUsageService {
     final uid = _uidOrAnon();
     final raw = (prefs.getString('$uid:$keySuffix') ?? '').trim();
     return raw.isEmpty ? null : raw;
+  }
+
+  Future<int?> readSavedInt(String keySuffix) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = _uidOrAnon();
+    return prefs.getInt('$uid:$keySuffix');
   }
 }

@@ -7,8 +7,8 @@
 // - Deixa o sistema pronto para o app agir como organismo vivo
 //
 // Ajustes desta versão:
-// - remove non-null assertion desnecessária no repositório financeiro
-// - mantém a lógica do perfil viva e estável
+// - lê sinais de apps úteis por categoria
+// - usa esses sinais com peso leve/moderado no perfil vivo
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -60,6 +60,7 @@ class LiveUserProfileEngine {
 
     final prefs = await SharedPreferences.getInstance();
     String read(String key) => (prefs.getString('$uid:$key') ?? '').trim();
+    int readInt(String key) => prefs.getInt('$uid:$key') ?? 0;
 
     final tags = <String>{};
     final primaryAreas = <String>{};
@@ -142,6 +143,39 @@ class LiveUserProfileEngine {
       }
     } catch (_) {}
 
+    final studyMinutes = readInt('app_usage_study_minutes');
+    final financeMinutes = readInt('app_usage_finance_minutes');
+    final focusMinutes = readInt('app_usage_focus_minutes');
+    final meditationMinutes = readInt('app_usage_meditation_minutes');
+    final fitnessMinutes = readInt('app_usage_fitness_minutes');
+
+    if (studyMinutes >= 8) {
+      tags.add('study_apps_active');
+      primaryAreas.add('learning_intellect');
+      primaryAreas.add('purpose_values');
+    }
+
+    if (financeMinutes >= 4) {
+      tags.add('finance_apps_active');
+      primaryAreas.add('finance_material');
+    }
+
+    if (focusMinutes >= 6) {
+      tags.add('focus_apps_active');
+      primaryAreas.add('work_vocation');
+      primaryAreas.add('learning_intellect');
+    }
+
+    if (meditationMinutes >= 5) {
+      tags.add('mind_care_active');
+      primaryAreas.add('mind_emotion');
+    }
+
+    if (fitnessMinutes >= 8) {
+      tags.add('fitness_apps_active');
+      primaryAreas.add('body_health');
+    }
+
     final financeRepository = _financeRepository;
     if (financeRepository != null) {
       try {
@@ -179,11 +213,13 @@ class LiveUserProfileEngine {
       );
     }
 
-    if (tags.contains('growth_focus') && tags.contains('worker')) {
+    if ((tags.contains('growth_focus') && tags.contains('worker')) ||
+        tags.contains('study_apps_active') ||
+        tags.contains('focus_apps_active')) {
       return LiveUserProfileSnapshot(
         id: 'perfil_execucao_crescimento',
         label: 'Em crescimento',
-        reason: 'Seu uso atual mostra foco em progresso e execução.',
+        reason: 'Seu uso atual mostra foco em progresso, estudo ou execução.',
         tags: tags,
         primaryAreaIds: primaryAreas,
       );

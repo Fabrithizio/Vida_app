@@ -1,3 +1,17 @@
+// ============================================================================
+// FILE: lib/features/areas/application/scoring/areas_device_usage_engine.dart
+//
+// O que faz:
+// - Calcula a área digital usando tempo de tela, redes sociais e uso noturno
+// - Agora considera também apps úteis como sinal complementar positivo
+// - Não cria subáreas novas e não pune quem não usa esses apps
+//
+// Regra nova:
+// - apps úteis só adicionam bônus leve
+// - ausência desses apps não reduz score
+// - apps úteis ajudam principalmente a interpretar melhor o tempo de tela
+// ============================================================================
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vida_app/data/models/area_assessment.dart';
@@ -21,7 +35,24 @@ class AreasDeviceUsageEngine {
       );
     }
 
-    final score = _screenTimeScore(hours);
+    final baseScore = _screenTimeScore(hours);
+
+    final studyScore = prefs.getInt('$uid:app_usage_study_score') ?? 0;
+    final financeScore = prefs.getInt('$uid:app_usage_finance_score') ?? 0;
+    final focusScore = prefs.getInt('$uid:app_usage_focus_score') ?? 0;
+    final meditationScore =
+        prefs.getInt('$uid:app_usage_meditation_score') ?? 0;
+    final fitnessScore = prefs.getInt('$uid:app_usage_fitness_score') ?? 0;
+
+    final usefulBonus = _usefulScreenBonus(
+      studyScore: studyScore,
+      financeScore: financeScore,
+      focusScore: focusScore,
+      meditationScore: meditationScore,
+      fitnessScore: fitnessScore,
+    );
+
+    final score = (baseScore + usefulBonus).clamp(5, 100);
     final status = _statusFromNumericScore(score);
 
     final action = switch (status) {
@@ -33,15 +64,26 @@ class AreasDeviceUsageEngine {
       AreaStatus.noData => 'Atualize seus dados.',
     };
 
+    final usefulSignals = _usefulSignalsLabel(
+      studyScore: studyScore,
+      financeScore: financeScore,
+      focusScore: focusScore,
+      meditationScore: meditationScore,
+      fitnessScore: fitnessScore,
+    );
+
     return AreaAssessment(
       status: status,
       score: score,
-      reason: 'Tempo de tela hoje: $raw.',
+      reason: usefulBonus > 0
+          ? 'Tempo de tela hoje: $raw. Parte do uso parece ter vindo de apps úteis.'
+          : 'Tempo de tela hoje: $raw.',
       source: AreaDataSource.automatic,
       lastUpdatedAt: DateTime.now(),
       recommendedAction: action,
-      details:
-          'Calculado automaticamente a partir do uso total de tela no dia.',
+      details: usefulBonus > 0
+          ? 'Calculado automaticamente a partir do uso total de tela no dia, com bônus leve por uso de apps úteis ($usefulSignals).'
+          : 'Calculado automaticamente a partir do uso total de tela no dia.',
     );
   }
 
@@ -81,7 +123,7 @@ class AreasDeviceUsageEngine {
       lastUpdatedAt: DateTime.now(),
       recommendedAction: action,
       details:
-          'Calculado automaticamente a partir do uso em apps sociais (Facebook, YouTube, WhatsApp, Instagram, TikTok, Kwai, Messenger, X, Telegram).',
+          'Calculado automaticamente a partir do uso em apps sociais monitorados pelo app.',
     );
   }
 
@@ -101,7 +143,17 @@ class AreasDeviceUsageEngine {
       );
     }
 
-    final score = _nightUseScore(hours);
+    final baseScore = _nightUseScore(hours);
+
+    final meditationScore =
+        prefs.getInt('$uid:app_usage_meditation_score') ?? 0;
+    final focusScore = prefs.getInt('$uid:app_usage_focus_score') ?? 0;
+
+    final nightBonus = hours <= 1.5
+        ? (((meditationScore * 0.08) + (focusScore * 0.04)).round()).clamp(0, 8)
+        : 0;
+
+    final score = (baseScore + nightBonus).clamp(5, 100);
     final status = _statusFromNumericScore(score);
 
     final action = switch (status) {
@@ -116,12 +168,15 @@ class AreasDeviceUsageEngine {
     return AreaAssessment(
       status: status,
       score: score,
-      reason: 'Uso noturno (19:00–04:00): $raw.',
+      reason: nightBonus > 0
+          ? 'Uso noturno (19:00–04:00): $raw. Houve sinal leve de uso útil.'
+          : 'Uso noturno (19:00–04:00): $raw.',
       source: AreaDataSource.automatic,
       lastUpdatedAt: DateTime.now(),
       recommendedAction: action,
-      details:
-          'Calculado automaticamente somando uso de tela no período 19:00–04:00.',
+      details: nightBonus > 0
+          ? 'Calculado automaticamente somando uso de tela no período 19:00–04:00, com bônus leve por apps úteis de foco/meditação.'
+          : 'Calculado automaticamente somando uso de tela no período 19:00–04:00.',
     );
   }
 
@@ -178,6 +233,39 @@ class AreasDeviceUsageEngine {
   int _nightUseScore(double hours) {
     final raw = 100 - ((hours - 0.5) * 25.0);
     return raw.round().clamp(5, 100);
+  }
+
+  int _usefulScreenBonus({
+    required int studyScore,
+    required int financeScore,
+    required int focusScore,
+    required int meditationScore,
+    required int fitnessScore,
+  }) {
+    final raw =
+        (studyScore * 0.10) +
+        (financeScore * 0.06) +
+        (focusScore * 0.12) +
+        (meditationScore * 0.08) +
+        (fitnessScore * 0.06);
+
+    return raw.round().clamp(0, 14);
+  }
+
+  String _usefulSignalsLabel({
+    required int studyScore,
+    required int financeScore,
+    required int focusScore,
+    required int meditationScore,
+    required int fitnessScore,
+  }) {
+    final labels = <String>[];
+    if (studyScore > 0) labels.add('estudo');
+    if (financeScore > 0) labels.add('finanças');
+    if (focusScore > 0) labels.add('foco');
+    if (meditationScore > 0) labels.add('meditação');
+    if (fitnessScore > 0) labels.add('fitness');
+    return labels.isEmpty ? 'nenhum' : labels.join(', ');
   }
 
   AreaStatus _statusFromNumericScore(int score) {

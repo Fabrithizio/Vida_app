@@ -2,14 +2,13 @@
 // FILE: lib/features/areas/application/scoring/areas_body_health_engine.dart
 //
 // O que faz:
-// - Calcula itens da área Corpo & Saúde usando Corpo & Saúde + Health Connect
-// - Mantém check-ups, sono, movimento, hidratação, alimentação e IMC
-// - Calcula energia por sinais reais, sem depender do check-in diário
+// - Calcula a área Corpo & Saúde com base em Health Connect e Body Care
+// - Mantém sono, movimento, energia, alimentação, hidratação, IMC e check-ups
+// - Agora recebe reforço leve de apps úteis como fitness e meditação
 //
-// Ajustes desta versão:
-// - remove field não usada
-// - corrige interpolação desnecessária
-// - mantém a mesma lógica de score
+// Regra nova:
+// - apps úteis só dão bônus leve em sono, movimento e energia
+// - ausência de uso não reduz score
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -35,6 +34,31 @@ class AreasBodyHealthEngine {
   final BodyCareService _bodyCare;
   final SmartHealthSyncService _smartHealth;
   final AreasConfidenceEngine _confidence;
+
+  Future<int> _bonusFromKey(String keySuffix, int maxBonus) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
+    final score = prefs.getInt('$uid:$keySuffix') ?? 0;
+    return ((score / 100.0) * maxBonus).round().clamp(0, maxBonus);
+  }
+
+  AreaAssessment _applyBonus(
+    AreaAssessment assessment,
+    int bonus,
+    String detailsAppend,
+  ) {
+    if (bonus <= 0) return assessment;
+    final score = ((assessment.score ?? 0) + bonus).clamp(0, 100);
+    return AreaAssessment(
+      status: _statusFromScore(score),
+      score: score,
+      reason: assessment.reason,
+      source: assessment.source,
+      lastUpdatedAt: assessment.lastUpdatedAt,
+      recommendedAction: assessment.recommendedAction,
+      details: '${assessment.details ?? ''} $detailsAppend',
+    );
+  }
 
   Future<AreaAssessment?> computedCheckups(
     String uid, {
@@ -98,8 +122,7 @@ class AreasBodyHealthEngine {
       lastUpdatedAt: date,
       recommendedAction: action,
       details:
-          'Regra atual do app para check-ups: até 8 meses = ótimo; até 1 ano = bom; até 1,2 anos = médio; até 2 anos = ruim; 2 anos ou mais = crítico. '
-          'Score final ajustado pela confiança da fonte e pela recência do registro.',
+          'Regra atual do app para check-ups: até 8 meses = ótimo; até 1 ano = bom; até 1,2 anos = médio; até 2 anos = ruim; 2 anos ou mais = crítico. Score final ajustado pela confiança da fonte e pela recência do registro.',
     );
   }
 
@@ -120,18 +143,22 @@ class AreasBodyHealthEngine {
           consistency01: 1.0,
           completeness01: 1.0,
         );
-        return AreaAssessment(
-          status: _statusFromScore(finalScore),
-          score: finalScore,
-          reason:
-              'Seu sono automático mais recente foi ${sleepHours.toStringAsFixed(1)}h.',
-          source: AreaDataSource.automatic,
-          lastUpdatedAt: snapshot.lastSyncAt,
-          recommendedAction: finalScore >= 80
-              ? 'Seu descanso está em boa faixa. Mantenha a constância.'
-              : 'Vale proteger mais o horário e a duração do sono.',
-          details:
-              'Quando existe Health Connect, o sono automático vale mais que autorrelato.',
+        return _applyBonus(
+          AreaAssessment(
+            status: _statusFromScore(finalScore),
+            score: finalScore,
+            reason:
+                'Seu sono automático mais recente foi ${sleepHours.toStringAsFixed(1)}h.',
+            source: AreaDataSource.automatic,
+            lastUpdatedAt: snapshot.lastSyncAt,
+            recommendedAction: finalScore >= 80
+                ? 'Seu descanso está em boa faixa. Mantenha a constância.'
+                : 'Vale proteger mais o horário e a duração do sono.',
+            details:
+                'Quando existe Health Connect, o sono automático vale mais que autorrelato.',
+          ),
+          await _bonusFromKey('app_usage_meditation_score', 6),
+          'Apps de meditação podem reforçar levemente esta leitura.',
         );
       }
     }
@@ -147,16 +174,20 @@ class AreasBodyHealthEngine {
         consistency01: 1.0,
         completeness01: 1.0,
       );
-      return AreaAssessment(
-        status: _statusFromScore(finalScore),
-        score: finalScore,
-        reason: 'Seu sono veio do módulo Corpo & Saúde.',
-        source: AreaDataSource.mixed,
-        lastUpdatedAt: entry.updatedAt,
-        recommendedAction: finalScore >= 80
-            ? 'Seu sono recente está bem cuidado.'
-            : 'Vale ajustar melhor a rotina de descanso.',
-        details: 'Sem relógio, o app usa a nota registrada no Corpo & Saúde.',
+      return _applyBonus(
+        AreaAssessment(
+          status: _statusFromScore(finalScore),
+          score: finalScore,
+          reason: 'Seu sono veio do módulo Corpo & Saúde.',
+          source: AreaDataSource.mixed,
+          lastUpdatedAt: entry.updatedAt,
+          recommendedAction: finalScore >= 80
+              ? 'Seu sono recente está bem cuidado.'
+              : 'Vale ajustar melhor a rotina de descanso.',
+          details: 'Sem relógio, o app usa a nota registrada no Corpo & Saúde.',
+        ),
+        await _bonusFromKey('app_usage_meditation_score', 6),
+        'Apps de meditação podem reforçar levemente esta leitura.',
       );
     }
     return null;
@@ -217,19 +248,23 @@ class AreasBodyHealthEngine {
       completeness01: steps == null ? 0.85 : 1.0,
     );
 
-    return AreaAssessment(
-      status: _statusFromScore(finalScore),
-      score: finalScore,
-      reason: steps != null && steps > 0
-          ? 'Seu movimento juntou treino/atividade com ${steps.toStringAsFixed(0)} passos no dia.'
-          : 'Seu movimento veio do treino e da atividade registrada.',
-      source: source,
-      lastUpdatedAt: lastUpdatedAt,
-      recommendedAction: finalScore >= 80
-          ? 'Seu ritmo de movimento está bom. Continue mantendo.'
-          : 'Vale buscar mais constância no movimento útil da semana.',
-      details:
-          'Movimento usa treino do fitness ou atividade automática. Quando existem passos do relógio, eles podem melhorar a nota em até 80% da distância que faltava até 100, sem punir quem não tem relógio.',
+    return _applyBonus(
+      AreaAssessment(
+        status: _statusFromScore(finalScore),
+        score: finalScore,
+        reason: steps != null && steps > 0
+            ? 'Seu movimento juntou treino/atividade com ${steps.toStringAsFixed(0)} passos no dia.'
+            : 'Seu movimento veio do treino e da atividade registrada.',
+        source: source,
+        lastUpdatedAt: lastUpdatedAt,
+        recommendedAction: finalScore >= 80
+            ? 'Seu ritmo de movimento está bom. Continue mantendo.'
+            : 'Vale buscar mais constância no movimento útil da semana.',
+        details:
+            'Movimento usa treino do fitness ou atividade automática. Quando existem passos do relógio, eles podem melhorar a nota em até 80% da distância que faltava até 100, sem punir quem não tem relógio.',
+      ),
+      await _bonusFromKey('app_usage_fitness_score', 10),
+      'Apps de fitness podem reforçar levemente esta leitura.',
     );
   }
 
@@ -325,18 +360,23 @@ class AreasBodyHealthEngine {
       ),
     );
 
-    return AreaAssessment(
-      status: _statusFromScore(finalScore),
-      score: finalScore,
-      reason:
-          'Sua energia está sendo lida por sinais reais de sono, movimento e passos quando existirem.',
-      source: source,
-      lastUpdatedAt: lastUpdatedAt,
-      recommendedAction: finalScore >= 80
-          ? 'Seu corpo está respondendo bem ao seu ritmo recente.'
-          : 'Vale proteger mais o descanso e o movimento útil da rotina.',
-      details:
-          'Energia não depende mais do check-in diário. O app cruza sono, treino/atividade e passos do relógio quando existirem.',
+    return _applyBonus(
+      AreaAssessment(
+        status: _statusFromScore(finalScore),
+        score: finalScore,
+        reason:
+            'Sua energia está sendo lida por sinais reais de sono, movimento e passos quando existirem.',
+        source: source,
+        lastUpdatedAt: lastUpdatedAt,
+        recommendedAction: finalScore >= 80
+            ? 'Seu corpo está respondendo bem ao seu ritmo recente.'
+            : 'Vale proteger mais o descanso e o movimento útil da rotina.',
+        details:
+            'Energia não depende mais do check-in diário. O app cruza sono, treino/atividade e passos do relógio quando existirem.',
+      ),
+      await _bonusFromKey('app_usage_fitness_score', 7) +
+          await _bonusFromKey('app_usage_meditation_score', 4),
+      'Apps de fitness/meditação podem reforçar levemente esta leitura.',
     );
   }
 
