@@ -6,6 +6,11 @@
 // - Calcula itens dinamicamente com base em SharedPreferences
 // - Liga Saúde ao módulo Corpo & Saúde e ao Health Connect
 // - Usa o novo sistema de perguntas adaptativas para alimentar o Areas
+//
+// Correção desta versão:
+// - evita criar múltiplas instâncias soltas do DailyCheckinService
+// - centraliza melhor a injeção do serviço de check-in
+// - mantém a fachada do módulo, mas deixa o núcleo mais previsível
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -32,6 +37,7 @@ class AreasStore {
     FinanceRepository? financeRepository,
     AreasStorageRepository? storage,
     AreasBootstrapService? bootstrap,
+    DailyCheckinService? dailyCheckinService,
     AreasDailyQuestionsEngine? dailyQuestions,
     AreasAggregationEngine? aggregation,
     AreasBodyHealthEngine? bodyHealth,
@@ -44,11 +50,8 @@ class AreasStore {
          financeRepository: financeRepository ?? HiveFinanceRepository(),
          storage: storage ?? AreasStorageRepository(),
          bootstrap: bootstrap,
-         dailyQuestions:
-             dailyQuestions ??
-             AreasDailyQuestionsEngine(
-               dailyCheckinService: DailyCheckinService(),
-             ),
+         dailyCheckinService: dailyCheckinService ?? DailyCheckinService(),
+         dailyQuestions: dailyQuestions,
          aggregation: aggregation,
          bodyHealth: bodyHealth,
          mindEmotion: mindEmotion,
@@ -62,7 +65,8 @@ class AreasStore {
     required FinanceRepository financeRepository,
     required AreasStorageRepository storage,
     AreasBootstrapService? bootstrap,
-    required AreasDailyQuestionsEngine dailyQuestions,
+    required DailyCheckinService dailyCheckinService,
+    AreasDailyQuestionsEngine? dailyQuestions,
     AreasAggregationEngine? aggregation,
     AreasBodyHealthEngine? bodyHealth,
     AreasMindEmotionEngine? mindEmotion,
@@ -72,32 +76,63 @@ class AreasStore {
     AreasFinanceEngine? financeEngine,
   }) : _storage = storage,
        _bootstrap = bootstrap ?? AreasBootstrapService(storage: storage),
-       _dailyQuestions = dailyQuestions,
+       _dailyCheckinService = dailyCheckinService,
+       _dailyQuestions =
+           dailyQuestions ??
+           AreasDailyQuestionsEngine(dailyCheckinService: dailyCheckinService),
        _aggregation =
            aggregation ??
-           AreasAggregationEngine(dailyQuestions: dailyQuestions),
+           AreasAggregationEngine(
+             dailyQuestions:
+                 dailyQuestions ??
+                 AreasDailyQuestionsEngine(
+                   dailyCheckinService: dailyCheckinService,
+                 ),
+           ),
        _bodyHealth =
-           bodyHealth ?? AreasBodyHealthEngine(dailyQuestions: dailyQuestions),
+           bodyHealth ??
+           AreasBodyHealthEngine(
+             dailyQuestions:
+                 dailyQuestions ??
+                 AreasDailyQuestionsEngine(
+                   dailyCheckinService: dailyCheckinService,
+                 ),
+           ),
        _mindEmotion =
            mindEmotion ??
-           AreasMindEmotionEngine(dailyQuestions: dailyQuestions),
+           AreasMindEmotionEngine(
+             dailyQuestions:
+                 dailyQuestions ??
+                 AreasDailyQuestionsEngine(
+                   dailyCheckinService: dailyCheckinService,
+                 ),
+           ),
        _deviceUsage = deviceUsage,
        _environment = environment,
        _purpose =
            purpose ??
            AreasPurposeEngine(
-             dailyQuestions: dailyQuestions,
+             dailyQuestions:
+                 dailyQuestions ??
+                 AreasDailyQuestionsEngine(
+                   dailyCheckinService: dailyCheckinService,
+                 ),
              environment: environment,
            ),
        _financeEngine =
            financeEngine ??
            AreasFinanceEngine(
              financeRepository: financeRepository,
-             dailyQuestions: dailyQuestions,
+             dailyQuestions:
+                 dailyQuestions ??
+                 AreasDailyQuestionsEngine(
+                   dailyCheckinService: dailyCheckinService,
+                 ),
            );
 
   final AreasStorageRepository _storage;
   final AreasBootstrapService _bootstrap;
+  final DailyCheckinService _dailyCheckinService;
   final AreasDailyQuestionsEngine _dailyQuestions;
   final AreasAggregationEngine _aggregation;
   final AreasBodyHealthEngine _bodyHealth;
@@ -110,44 +145,53 @@ class AreasStore {
   Future<void> ensureBootstrappedFromOnboarding() =>
       _bootstrap.ensureBootstrappedFromOnboarding();
 
+  DailyCheckinService get dailyCheckinService => _dailyCheckinService;
+
   Future<AreaAssessment?> getComputedAssessment(
     String areaId,
     String itemId,
   ) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return getAssessment(areaId, itemId);
+
     if (areaId == 'body_health' && itemId == 'energy') {
       final a = await _bodyHealth.computedEnergy(
         onAreaUpdated: markAreaUpdated,
       );
       if (a != null) return a;
     }
+
     if (areaId == 'body_health' && itemId == 'movement') {
       final a = await _bodyHealth.computedMovement(
         onAreaUpdated: markAreaUpdated,
       );
       if (a != null) return a;
     }
+
     if (areaId == 'body_health' && itemId == 'sleep') {
       final a = await _bodyHealth.computedSleep(onAreaUpdated: markAreaUpdated);
       if (a != null) return a;
     }
+
     if (areaId == 'body_health' && itemId == 'nutrition') {
       final a = await _bodyHealth.computedNutrition(
         onAreaUpdated: markAreaUpdated,
       );
       if (a != null) return a;
     }
+
     if (areaId == 'body_health' && itemId == 'hydration') {
       final a = await _bodyHealth.computedHydration(
         onAreaUpdated: markAreaUpdated,
       );
       if (a != null) return a;
     }
+
     if (areaId == 'body_health' && itemId == 'imc') {
       final a = await _bodyHealth.computedImc(onAreaUpdated: markAreaUpdated);
       if (a != null) return a;
     }
+
     if (areaId == 'mind_emotion') {
       final a = await _mindEmotion.computedItem(
         itemId,
@@ -156,38 +200,54 @@ class AreasStore {
       );
       if (a != null) return a;
     }
+
     final dailyAssessment = await _dailyQuestions.computedDailyQuestionItem(
       areaId,
       itemId,
       onAreaUpdated: markAreaUpdated,
     );
     if (dailyAssessment != null) return dailyAssessment;
-    if (areaId == 'body_health' && itemId == 'checkups')
+
+    if (areaId == 'body_health' && itemId == 'checkups') {
       return _bodyHealth.computedCheckups(
         user.uid,
         getAssessment: getAssessment,
       );
-    if (areaId == 'digital_tech' && itemId == 'screen_time')
+    }
+
+    if (areaId == 'digital_tech' && itemId == 'screen_time') {
       return _deviceUsage.computedScreenTime(user.uid);
-    if (areaId == 'digital_tech' && itemId == 'social_media')
+    }
+
+    if (areaId == 'digital_tech' && itemId == 'social_media') {
       return _deviceUsage.computedSocialMedia(user.uid);
-    if (areaId == 'digital_tech' && itemId == 'night_use')
+    }
+
+    if (areaId == 'digital_tech' && itemId == 'night_use') {
       return _deviceUsage.computedNightUse(user.uid);
-    if (areaId == 'body_health' && itemId == 'women_cycle')
+    }
+
+    if (areaId == 'body_health' && itemId == 'women_cycle') {
       return _computedWomenCycle(user.uid);
-    if (areaId == 'purpose_values')
+    }
+
+    if (areaId == 'purpose_values') {
       return _purpose.computedPurposeValuesItem(
         itemId,
         getAssessment: getAssessment,
         onAreaUpdated: markAreaUpdated,
       );
-    if (areaId == 'environment_home')
+    }
+
+    if (areaId == 'environment_home') {
       return _environment.computedEnvironmentItem(
         'environment_home',
         itemId,
         getAssessment: getAssessment,
         onAreaUpdated: markAreaUpdated,
       );
+    }
+
     if (areaId == 'finance_material') {
       final a = await _financeEngine.computedFinanceItem(
         user.uid,
@@ -196,23 +256,28 @@ class AreasStore {
       );
       return a ?? getAssessment('finance_material', itemId);
     }
+
     return getAssessment(areaId, itemId);
   }
 
   Future<void> updateLastCheckupDate(DateTime date) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final prefs = await SharedPreferences.getInstance();
     final iso = _bodyHealth.toIsoDate(date);
+
     await prefs.setString('${user.uid}:last_checkup', iso);
     await prefs.setString(
       _storage.areaUpdatedPrefKey(user.uid, 'body_health'),
       DateTime.now().toIso8601String(),
     );
+
     final computed = await _bodyHealth.computedCheckups(
       user.uid,
       getAssessment: getAssessment,
     );
+
     if (computed != null) {
       final box = await _storage.open();
       await box.put(
@@ -230,8 +295,10 @@ class AreasStore {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final prefs = await SharedPreferences.getInstance();
     final uid = user.uid;
+
     Future<void> setNum(String key, double? value) async {
       if (value == null) return;
       await prefs.setDouble(key, value);
@@ -254,11 +321,14 @@ class AreasStore {
   Future<DateTime?> getAreaLastUpdate(String areaId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
+
     final prefs = await SharedPreferences.getInstance();
     final raw =
         (prefs.getString(_storage.areaUpdatedPrefKey(user.uid, areaId)) ?? '')
             .trim();
+
     if (raw.isEmpty) return null;
+
     try {
       return DateTime.parse(raw);
     } catch (_) {
@@ -269,6 +339,7 @@ class AreasStore {
   Future<void> markAreaUpdated(String areaId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _storage.areaUpdatedPrefKey(user.uid, areaId),
@@ -303,6 +374,7 @@ class AreasStore {
       recommendedAction: recommendedAction,
       details: details,
     ).toMap();
+
     await box.put(_storage.itemKey(areaId, itemId), value);
     await markAreaUpdated(areaId);
   }
@@ -314,17 +386,20 @@ class AreasStore {
 
   Future<String?> trendLabel(String areaId, String itemId) =>
       _aggregation.trendLabel(areaId, itemId);
+
   Future<AreaStatus?> overallStatus(String areaId, List<String> itemIds) =>
       _aggregation.overallStatus(
         areaId,
         itemIds,
         getComputedAssessment: getComputedAssessment,
       );
+
   Future<int?> score(String areaId, List<String> itemIds) => _aggregation.score(
     areaId,
     itemIds,
     getComputedAssessment: getComputedAssessment,
   );
-  Future<AreaAssessment?> _computedWomenCycle(String uid) async =>
+
+  Future<AreaAssessment?> _computedWomenCycle(String uid) =>
       getAssessment('body_health', 'women_cycle');
 }
