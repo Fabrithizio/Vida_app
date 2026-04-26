@@ -594,8 +594,9 @@ class BodyCareService {
     final raw = prefs.getString(_profileStorageKey());
     if (raw == null || raw.trim().isEmpty) return const BodyCareProfile();
     final decoded = jsonDecode(raw);
-    if (decoded is Map<String, dynamic>)
+    if (decoded is Map<String, dynamic>) {
       return BodyCareProfile.fromJson(decoded);
+    }
     if (decoded is Map) {
       return BodyCareProfile.fromJson(Map<String, dynamic>.from(decoded));
     }

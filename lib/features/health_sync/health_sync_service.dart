@@ -9,15 +9,8 @@
 // - funcionar como fonte real para preencher o módulo fitness / Areas
 // - evitar lógica complexa e dependência de marca específica
 //
-// Dados principais:
-// - sono recente
-// - passos de hoje
-// - minutos ativos de hoje
-// - calorias ativas de hoje
-//
-// Dados secundários:
-// - exercício dos últimos 7 dias
-// - treinos dos últimos 7 dias
+// Ajuste desta versão:
+// - adiciona chaves nos ifs simples que estavam gerando warning
 // ============================================================================
 
 import 'dart:io';
@@ -205,13 +198,18 @@ class SmartHealthSyncService {
       }
 
       final parts = <String>[];
-      if (sleepHours != null)
+      if (sleepHours != null) {
         parts.add('${sleepHours.toStringAsFixed(1)}h sono');
-      if (stepsToday != null) parts.add('$stepsToday passos');
-      if (activeMinutesToday != null)
+      }
+      if (stepsToday != null) {
+        parts.add('$stepsToday passos');
+      }
+      if (activeMinutesToday != null) {
         parts.add('$activeMinutesToday min ativos');
-      if (activeCaloriesToday != null)
+      }
+      if (activeCaloriesToday != null) {
         parts.add('$activeCaloriesToday kcal ativas');
+      }
       if (parts.isEmpty) {
         parts.add('conexão pronta, mas ainda sem dados visíveis');
       }

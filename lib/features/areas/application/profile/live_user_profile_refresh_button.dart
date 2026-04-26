@@ -4,6 +4,9 @@
 // O que faz:
 // - Botão simples para forçar recálculo do perfil vivo
 // - Útil para debug, QA e futuras telas administrativas
+//
+// Ajuste desta versão:
+// - corrige uso de BuildContext após async gap
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -27,15 +30,18 @@ class _LiveUserProfileRefreshButtonState
       onPressed: _busy
           ? null
           : () async {
+              final messenger = ScaffoldMessenger.of(context);
               setState(() => _busy = true);
               try {
                 await LiveUserProfileBridge().forceRefresh();
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('Perfil vivo atualizado.')),
                 );
               } finally {
-                if (mounted) setState(() => _busy = false);
+                if (mounted) {
+                  setState(() => _busy = false);
+                }
               }
             },
       icon: _busy

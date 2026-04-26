@@ -12,6 +12,7 @@
 // - usa AreasStore.consolidated()
 // - reaproveita o DailyCheckinService do próprio store
 // - remove dependências locais duplicadas de regra/check-in
+// - remove uso desnecessário de múltiplos underscores em callbacks
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -208,7 +209,7 @@ class _AreasTabState extends State<AreasTab> {
           child: Image.asset(
             'assets/images/life_dashboard_bg.png',
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
+            errorBuilder: (context, error, stackTrace) =>
                 Container(color: const Color(0xFF0B1020)),
           ),
         ),
@@ -261,7 +262,7 @@ class _AreasTabState extends State<AreasTab> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => const DailyCheckinSheet(),
+      builder: (context) => const DailyCheckinSheet(),
     );
     if (!mounted) return;
     await _controller.refreshProfileAfterImportantChange();
@@ -284,7 +285,7 @@ class _AreasTabState extends State<AreasTab> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => const ScoreRulesSheet(),
+      builder: (context) => const ScoreRulesSheet(),
     );
   }
 
@@ -302,7 +303,7 @@ class _AreasTabState extends State<AreasTab> {
     }
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
+        builder: (context) =>
             LifeJourneyPage(userName: userName, sex: sex, birthDate: birthDate),
       ),
     );
@@ -312,7 +313,7 @@ class _AreasTabState extends State<AreasTab> {
     final def = AreasCatalog.byId(areaId);
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
+        builder: (context) =>
             area_detail.AreaDetailPage(areaId: areaId, title: def.title),
       ),
     );
@@ -334,7 +335,7 @@ class _AreasTabState extends State<AreasTab> {
         isDismissible: false,
         enableDrag: false,
         isScrollControlled: true,
-        builder: (_) => const DailyCheckinSheet(),
+        builder: (context) => const DailyCheckinSheet(),
       );
       if (!mounted) return;
       final canUseAfter = await _store.dailyCheckinService.canUseAreas(today);
@@ -358,7 +359,7 @@ class _AreasTabState extends State<AreasTab> {
     await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => UsageAccessOverlay(
+      builder: (context) => UsageAccessOverlay(
         onGranted: () async {
           try {
             await _deviceUsage.refreshAndPersistDigitalBuckets();
@@ -416,7 +417,7 @@ class _AreasTabState extends State<AreasTab> {
                   child: Image.asset(
                     'assets/images/life_dashboard_bg.png',
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (context, error, stackTrace) =>
                         Container(color: const Color(0xFF0B1020)),
                   ),
                 ),
