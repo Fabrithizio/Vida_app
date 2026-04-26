@@ -6,12 +6,12 @@
 // - Exibe score geral, idade e barra anual
 // - Abre detalhes de cada área
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
-// - Usa ScoreRulesSheet real em vez de duplicar a bottom sheet local
+// - Usa ScoreRulesSheet real em vez de bottom sheet local duplicada
 //
-// Limpeza desta versão:
-// - reaproveita o DailyCheckinService do AreasStore
-// - remove o livro de regras local duplicado
-// - usa o ScoreRulesSheet central
+// Limpeza final desta versão:
+// - usa AreasStore.consolidated()
+// - reaproveita o DailyCheckinService do próprio store
+// - remove dependências locais duplicadas de regra/check-in
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -49,7 +49,7 @@ class AreasTab extends StatefulWidget {
 }
 
 class _AreasTabState extends State<AreasTab> {
-  final AreasStore _store = AreasStore();
+  final AreasStore _store = AreasStore.consolidated();
   final SessionStorage _session = SessionStorage();
   final DeviceUsageService _deviceUsage = DeviceUsageService();
   final AreasTabController _controller = AreasTabController();
@@ -494,7 +494,6 @@ class _AreasTabState extends State<AreasTab> {
   }
 }
 
-// restante igual ao atual
 class _TopHudCompact extends StatelessWidget {
   const _TopHudCompact({
     required this.userName,
@@ -822,6 +821,7 @@ class _TopHudCompact extends StatelessWidget {
 class _MiniActionShell extends StatelessWidget {
   const _MiniActionShell({required this.child});
   final Widget child;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -841,6 +841,7 @@ class _MiniActionButton extends StatelessWidget {
   const _MiniActionButton({required this.icon, required this.onTap});
   final IconData icon;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -866,9 +867,11 @@ class _AreaCard extends StatelessWidget {
     required this.score,
     required this.onTap,
   });
+
   final IconData icon;
   final int? score;
   final VoidCallback onTap;
+
   Color _color() {
     final s = score;
     if (s == null) return const Color(0xFF94A3B8);
@@ -909,11 +912,14 @@ class _AgeAccessInfo {
     required this.progressToNextBirthday,
     required this.daysUntilBirthday,
   });
+
   final bool hasBirthDate;
   final int age;
   final double progressToNextBirthday;
   final int daysUntilBirthday;
+
   String get ageLabel => hasBirthDate ? '$age' : '--';
+
   String get progressLabel {
     if (!hasBirthDate) return 'Sem data de nascimento';
     if (daysUntilBirthday == 0) return 'Aniversário hoje';
@@ -931,6 +937,7 @@ class _AgeAccessInfo {
   }
 
   String get accessLabel => '$contentAccessAge+';
+
   Color get accessBadgeColor {
     switch (contentAccessAge) {
       case 18:

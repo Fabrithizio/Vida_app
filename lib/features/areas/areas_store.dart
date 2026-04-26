@@ -5,12 +5,13 @@
 // - Salva avaliações das áreas por usuário no Hive
 // - Calcula itens dinamicamente com base em SharedPreferences
 // - Liga Saúde ao módulo Corpo & Saúde e ao Health Connect
-// - Usa o novo sistema de perguntas adaptativas para alimentar o Areas
+// - Usa o sistema de perguntas adaptativas para alimentar o Areas
 //
-// Correção desta versão:
-// - evita criar múltiplas instâncias soltas do DailyCheckinService
-// - centraliza melhor a injeção do serviço de check-in
-// - mantém a fachada do módulo, mas deixa o núcleo mais previsível
+// Consolidação desta versão:
+// - cria UMA instância compartilhada de AreasDailyQuestionsEngine
+// - injeta essa mesma instância em aggregation/body/mind/purpose/finance
+// - evita duplicação silenciosa de engine no construtor
+// - mantém a fachada do módulo estável e mais previsível
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -80,6 +81,8 @@ class AreasStore {
        _dailyQuestions =
            dailyQuestions ??
            AreasDailyQuestionsEngine(dailyCheckinService: dailyCheckinService),
+       _deviceUsage = deviceUsage,
+       _environment = environment,
        _aggregation =
            aggregation ??
            AreasAggregationEngine(
@@ -107,8 +110,6 @@ class AreasStore {
                    dailyCheckinService: dailyCheckinService,
                  ),
            ),
-       _deviceUsage = deviceUsage,
-       _environment = environment,
        _purpose =
            purpose ??
            AreasPurposeEngine(
@@ -129,6 +130,49 @@ class AreasStore {
                    dailyCheckinService: dailyCheckinService,
                  ),
            );
+
+  factory AreasStore.consolidated({
+    FinanceRepository? financeRepository,
+    AreasStorageRepository? storage,
+    AreasBootstrapService? bootstrap,
+    DailyCheckinService? dailyCheckinService,
+    AreasDeviceUsageEngine? deviceUsage,
+    AreasEnvironmentEngine? environment,
+  }) {
+    final resolvedFinanceRepository =
+        financeRepository ?? HiveFinanceRepository();
+    final resolvedStorage = storage ?? AreasStorageRepository();
+    final resolvedDailyCheckin = dailyCheckinService ?? DailyCheckinService();
+    final resolvedEnvironment = environment ?? AreasEnvironmentEngine();
+    final resolvedDailyQuestions = AreasDailyQuestionsEngine(
+      dailyCheckinService: resolvedDailyCheckin,
+    );
+
+    return AreasStore._internal(
+      financeRepository: resolvedFinanceRepository,
+      storage: resolvedStorage,
+      bootstrap: bootstrap,
+      dailyCheckinService: resolvedDailyCheckin,
+      dailyQuestions: resolvedDailyQuestions,
+      aggregation: AreasAggregationEngine(
+        dailyQuestions: resolvedDailyQuestions,
+      ),
+      bodyHealth: AreasBodyHealthEngine(dailyQuestions: resolvedDailyQuestions),
+      mindEmotion: AreasMindEmotionEngine(
+        dailyQuestions: resolvedDailyQuestions,
+      ),
+      deviceUsage: deviceUsage ?? AreasDeviceUsageEngine(),
+      environment: resolvedEnvironment,
+      purpose: AreasPurposeEngine(
+        dailyQuestions: resolvedDailyQuestions,
+        environment: resolvedEnvironment,
+      ),
+      financeEngine: AreasFinanceEngine(
+        financeRepository: resolvedFinanceRepository,
+        dailyQuestions: resolvedDailyQuestions,
+      ),
+    );
+  }
 
   final AreasStorageRepository _storage;
   final AreasBootstrapService _bootstrap;
