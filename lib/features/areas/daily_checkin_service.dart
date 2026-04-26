@@ -3,24 +3,22 @@
 //
 // O que faz:
 // - Define o pool adaptativo de perguntas do check-in diário
-// - Lê o perfil-base vindo do onboarding
-// - Cria um perfil vivo com nome, tags e prioridades
-// - Escolhe 5 perguntas por dia com base no perfil + histórico recente
+// - Escolhe 5 perguntas por dia com base no perfil vivo oficial
 // - Permite que uma resposta afete várias áreas/subáreas com pesos diferentes
 // - Salva respostas graduais por usuário no Hive
 //
-// Nesta revisão:
-// - remove perguntas diretas de Saúde, Finanças, Ambiente e Digital como fonte
-//   principal do check-in
-// - foca o check-in em Mente, Trabalho, Projetos, Relações e Hábitos
-// - prepara o sistema para perfis dinâmicos e mudança de perfil ao longo do uso
+// Correção desta versão:
+// - remove a duplicação de perfil que existia dentro do próprio check-in
+// - passa a usar LiveUserProfileBridge como fonte oficial de tags e prioridades
+// - mantém o hook que força refresh do perfil ao concluir o check-in
 // ============================================================================
 
 import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vida_app/features/areas/application/profile/live_user_profile_bridge.dart';
+import 'package:vida_app/features/areas/daily_checkin_profile_hooks.dart';
 
 enum DailyQuestionScaleType { quality5, amount5, agreement5 }
 
@@ -119,28 +117,21 @@ class DailyCheckinSummary {
   }
 }
 
-class DailyProfileSnapshot {
-  const DailyProfileSnapshot({
-    required this.id,
-    required this.label,
-    required this.reason,
-    required this.tags,
-    required this.primaryAreaIds,
-  });
-
-  final String id;
-  final String label;
-  final String reason;
-  final Set<String> tags;
-  final Set<String> primaryAreaIds;
-}
-
 class DailyCheckinService {
+  DailyCheckinService({
+    LiveUserProfileBridge? profileBridge,
+    DailyCheckinProfileHooks? profileHooks,
+  }) : _profileBridge = profileBridge ?? LiveUserProfileBridge(),
+       _profileHooks = profileHooks ?? DailyCheckinProfileHooks();
+
   static const String _boxPrefix = 'daily_checkin_box_';
   static const int questionsPerDay = 5;
   static const int historyDays = 21;
   static const int minAnswerValue = 0;
   static const int maxAnswerValue = 4;
+
+  final LiveUserProfileBridge _profileBridge;
+  final DailyCheckinProfileHooks _profileHooks;
 
   static const List<DailyQuestion> _pool = [
     DailyQuestion(
@@ -735,10 +726,6 @@ class DailyCheckinService {
     return '${_dayKey(d)}::questions';
   }
 
-  String _profileCacheKey(DateTime d) {
-    return '${_dayKey(d)}::profile_label';
-  }
-
   List<DailyQuestion> get allQuestions => List.unmodifiable(_pool);
 
   DailyQuestion? questionById(String id) => _questionById(id);
@@ -768,253 +755,215 @@ class DailyCheckinService {
     return question.impactWeightFor(areaId, itemId);
   }
 
-  Future<DailyProfileSnapshot> currentProfileSnapshot({
-    required DateTime now,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    final answers = <String, String>{};
+  Future<String> currentProfileLabel({required DateTime now}) async {
+    return _profileBridge.currentLabel();
+  }
 
-    if (uid != null) {
-      for (final key in const [
-        'living_with',
-        'children_count',
-        'family_relationship',
-        'home_routine_load',
-        'study_work',
-        'occupation_type',
-        'work_schedule_format',
-        'work_demand_type',
-        'work_field',
-        'stress_level',
-        'emotional_state',
-        'rest_capacity',
-        'mental_load',
-        'financial_situation',
-        'income_stability',
-        'financial_main_difficulty',
-        'dependents_financial',
-        'social_life',
-        'emotional_support',
-        'loneliness',
-        'personal_organization',
-        'home_organization',
-        'consistency',
-        'routine_predictability',
-        'routine_main_weight',
-        'focus',
-        'goal',
-        'app_help',
-        'start_preference',
-      ]) {
-        final value = (prefs.getString('$uid:$key') ?? '').trim();
-        if (value.isNotEmpty) {
-          answers[key] = value;
+  Future<List<DailyQuestion>> questionsForToday({required DateTime now}) async {
+    final box = await _open();
+    final cacheKey = _questionsCacheKey(now);
+    final cached = box.get(cacheKey);
+    if (cached is List) {
+      final ids = cached.whereType<String>().toList();
+      final restored = ids
+          .map(_questionById)
+          .whereType<DailyQuestion>()
+          .toList();
+      if (restored.length == questionsPerDay) return restored;
+    }
+    final selected = await _buildAdaptiveQuestions(now);
+    await box.put(cacheKey, selected.map((q) => q.id).toList());
+    return selected;
+  }
+
+  Future<List<DailyQuestion>> _buildAdaptiveQuestions(DateTime now) async {
+    final box = await _open();
+    final profile = await _resolveOfficialProfile();
+    final seed = now.year * 10000 + now.month * 100 + now.day;
+    final random = Random(seed);
+
+    final dueCandidates = <_WeightedQuestion>[];
+    final fallbackCandidates = <_WeightedQuestion>[];
+
+    for (final question in _pool) {
+      final score = await _priorityScore(
+        box: box,
+        now: now,
+        question: question,
+        profile: profile,
+      );
+      final weighted = _WeightedQuestion(
+        question: question,
+        score: score + random.nextDouble() * 0.18,
+      );
+      if (await _isQuestionDue(box: box, now: now, question: question)) {
+        dueCandidates.add(weighted);
+      } else {
+        fallbackCandidates.add(weighted);
+      }
+    }
+
+    dueCandidates.sort((a, b) => b.score.compareTo(a.score));
+    fallbackCandidates.sort((a, b) => b.score.compareTo(a.score));
+
+    final selected = <DailyQuestion>[];
+    final usedAreas = <String>{};
+
+    void pickPriorityAreaQuestions(List<_WeightedQuestion> source) {
+      for (final targetArea in profile.primaryAreaIds) {
+        if (selected.length >= questionsPerDay) return;
+        for (final item in source) {
+          final q = item.question;
+          if (selected.any((s) => s.id == q.id)) continue;
+          final affectsPriority = q.impacts.any((i) => i.areaId == targetArea);
+          if (!affectsPriority) continue;
+          selected.add(q);
+          usedAreas.add(q.areaId);
+          break;
         }
       }
     }
 
-    final tags = <String>{};
-    final primaryAreaIds = <String>{};
-    String id = 'perfil_em_adaptacao';
-    String label = 'Em adaptação';
-    String reason = 'Seu perfil ainda está se ajustando à sua rotina atual.';
-
-    final studyWork = answers['study_work'] ?? '';
-    final occupation = answers['occupation_type'] ?? '';
-    final livingWith = answers['living_with'] ?? '';
-    final children = answers['children_count'] ?? '';
-    final homeLoad = answers['home_routine_load'] ?? '';
-    final focus = answers['focus'] ?? '';
-    final goal = answers['goal'] ?? '';
-    final help = answers['app_help'] ?? '';
-    final financial = answers['financial_situation'] ?? '';
-    final support = answers['emotional_support'] ?? '';
-    final loneliness = answers['loneliness'] ?? '';
-    final routinePredictability = answers['routine_predictability'] ?? '';
-    final consistency = answers['consistency'] ?? '';
-    final stress = answers['stress_level'] ?? '';
-
-    if (studyWork.contains('Estudos') || occupation.contains('Estudante'))
-      tags.add('student');
-    if (studyWork.contains('Trabalho') ||
-        occupation.contains('Empregado') ||
-        occupation.contains('Autônomo') ||
-        occupation.contains('freelancer') ||
-        occupation.contains('Empreendo'))
-      tags.add('worker');
-    if (studyWork.contains('Casa e família') ||
-        occupation.contains('casa') ||
-        occupation.contains('família'))
-      tags.add('caregiver');
-    if (occupation.contains('transição') ||
-        studyWork.contains('reorganizar') ||
-        studyWork.contains('sem rotina'))
-      tags.add('transition');
-    if (livingWith.contains('sozinho')) tags.add('solo');
-    if (livingWith.contains('filhos') || children.startsWith('Sim')) {
-      tags.add('with_children');
-      tags.add('with_family');
-    }
-    if (livingWith.contains('parceiro')) tags.add('with_partner');
-    if (livingWith.contains('familiares') || livingWith.contains('pais'))
-      tags.add('with_family');
-    if (homeLoad == 'Muito puxada' || homeLoad == 'Instável')
-      tags.add('house_heavy');
-    if (support == 'Quase não' || support == 'Não') tags.add('support_low');
-    if (loneliness.contains('Sozinho')) tags.add('social_fragile');
-    if (financial == 'Instável' || financial == 'Muito difícil')
-      tags.add('financial_pressure');
-    if (routinePredictability.contains('caótica') ||
-        routinePredictability.contains('Muito caótica'))
-      tags.add('chaotic');
-    if (consistency.contains('Quase não') || consistency.contains('Não'))
-      tags.add('low_constancy');
-    if (stress == 'Alto' || stress == 'Muito alto') tags.add('stress_high');
-    if (help.contains('Disciplina') ||
-        help.contains('Controle da rotina') ||
-        goal.contains('constância'))
-      tags.add('routine_focus');
-    if (focus.contains('Projetos') ||
-        goal.contains('metas e projetos') ||
-        help.contains('Progresso')) {
-      tags.add('project_focus');
-      tags.add('growth_focus');
-      primaryAreaIds.add('learning_intellect');
-    }
-    if (focus.contains('Trabalho')) primaryAreaIds.add('work_vocation');
-    if (focus.contains('Relações')) primaryAreaIds.add('relations_community');
-    if (focus.contains('Mente')) primaryAreaIds.add('mind_emotion');
-    if (focus.contains('Hábitos')) primaryAreaIds.add('purpose_values');
-
-    final box = await _open();
-    final recentSignals = await _recentSignalTags(box: box, now: now);
-    tags.addAll(recentSignals);
-
-    if (tags.contains('caregiver') && tags.contains('stress_high')) {
-      id = 'pilar_sobrecarregado';
-      label = 'Pilar sobrecarregado';
-      reason =
-          'Você está segurando muita coisa ao mesmo tempo e o dia cobra caro.';
-      primaryAreaIds.addAll({
-        'mind_emotion',
-        'purpose_values',
-        'relations_community',
-      });
-    } else if (tags.contains('worker') && tags.contains('stress_high')) {
-      id = 'trabalhador_em_pressao';
-      label = 'Trabalhador em pressão';
-      reason =
-          'Seu ritmo atual está forte e a pressão tem pesado na sua cabeça.';
-      primaryAreaIds.addAll({'work_vocation', 'mind_emotion'});
-    } else if (tags.contains('student') && tags.contains('growth_focus')) {
-      id = 'estudante_em_evolucao';
-      label = 'Estudante em evolução';
-      reason = 'Seu perfil puxa crescimento, foco e construção de progresso.';
-      primaryAreaIds.addAll({'learning_intellect', 'work_vocation'});
-    } else if (tags.contains('transition')) {
-      id = 'reorganizando_a_vida';
-      label = 'Reorganizando a vida';
-      reason = 'Seu momento pede reconstrução de base, clareza e constância.';
-      primaryAreaIds.addAll({
-        'purpose_values',
-        'work_vocation',
-        'mind_emotion',
-      });
-    } else if (tags.contains('chaotic') || tags.contains('low_constancy')) {
-      id = 'retomando_o_eixo';
-      label = 'Retomando o eixo';
-      reason = 'Seu perfil atual precisa recuperar base, repetição e ritmo.';
-      primaryAreaIds.addAll({'purpose_values', 'work_vocation'});
-    } else if (tags.contains('project_focus')) {
-      id = 'executor_em_progresso';
-      label = 'Executor em progresso';
-      reason = 'Seu momento puxa avanço real, execução e continuidade.';
-      primaryAreaIds.addAll({'learning_intellect', 'purpose_values'});
-    } else if (tags.contains('social_fragile') ||
-        tags.contains('support_low')) {
-      id = 'reconstruindo_conexoes';
-      label = 'Reconstruindo conexões';
-      reason = 'Seu perfil atual pede mais apoio, vínculo e presença real.';
-      primaryAreaIds.addAll({'relations_community', 'mind_emotion'});
-    } else {
-      id = 'ritmo_em_construcao';
-      label = 'Ritmo em construção';
-      reason =
-          'Seu perfil atual está montando base e ajustando o próprio ritmo.';
-      primaryAreaIds.addAll({'purpose_values', 'work_vocation'});
+    void pickUniqueAreas(List<_WeightedQuestion> source) {
+      for (final item in source) {
+        if (selected.length >= questionsPerDay) return;
+        final q = item.question;
+        if (selected.any((s) => s.id == q.id)) continue;
+        if (usedAreas.contains(q.areaId)) continue;
+        selected.add(q);
+        usedAreas.add(q.areaId);
+      }
     }
 
-    if (primaryAreaIds.isEmpty)
-      primaryAreaIds.addAll({'mind_emotion', 'purpose_values'});
+    void fillRemaining(List<_WeightedQuestion> source) {
+      for (final item in source) {
+        if (selected.length >= questionsPerDay) return;
+        final q = item.question;
+        if (selected.any((s) => s.id == q.id)) continue;
+        selected.add(q);
+      }
+    }
 
-    return DailyProfileSnapshot(
-      id: id,
-      label: label,
-      reason: reason,
+    pickPriorityAreaQuestions(dueCandidates);
+    pickUniqueAreas(dueCandidates);
+
+    if (selected.length < questionsPerDay) {
+      pickPriorityAreaQuestions(fallbackCandidates);
+    }
+    if (selected.length < questionsPerDay) {
+      pickUniqueAreas(fallbackCandidates);
+    }
+    if (selected.length < questionsPerDay) fillRemaining(dueCandidates);
+    if (selected.length < questionsPerDay) fillRemaining(fallbackCandidates);
+
+    return selected.take(questionsPerDay).toList(growable: false);
+  }
+
+  Future<_ResolvedDailyProfile> _resolveOfficialProfile() async {
+    final tags = await _profileBridge.currentTags();
+    final areas = await _profileBridge.currentPrimaryAreas();
+    return _ResolvedDailyProfile(
       tags: tags,
-      primaryAreaIds: primaryAreaIds,
+      primaryAreaIds: areas.isEmpty
+          ? <String>{'mind_emotion', 'purpose_values'}
+          : areas,
     );
   }
 
-  Future<Set<String>> _recentSignalTags({
+  Future<bool> _isQuestionDue({
     required Box<dynamic> box,
     required DateTime now,
+    required DailyQuestion question,
   }) async {
-    final tags = <String>{};
-    final answers = <double>[];
-    final focusPulls = <double>[];
-    for (var i = 0; i < 7; i++) {
-      final day = now.subtract(Duration(days: i));
-      final pressure = box.get(_answerKey(day, 'mental_pressure'));
-      final distraction = box.get(_answerKey(day, 'distraction_pull'));
-      final essentials = box.get(_answerKey(day, 'essentials_done'));
-      final support = box.get(_answerKey(day, 'felt_supported'));
-      if (pressure is int)
-        answers.add(
-          normalizedProgress01(
-            questionId: 'mental_pressure',
-            rawValue: pressure,
-          ),
-        );
-      if (distraction is int)
-        focusPulls.add(
-          normalizedProgress01(
-            questionId: 'distraction_pull',
-            rawValue: distraction,
-          ),
-        );
-      if (essentials is int)
-        answers.add(
-          normalizedProgress01(
-            questionId: 'essentials_done',
-            rawValue: essentials,
-          ),
-        );
-      if (support is int &&
-          normalizedProgress01(
-                questionId: 'felt_supported',
-                rawValue: support,
-              ) <
-              0.35)
-        tags.add('support_low');
-    }
-    if (answers.isNotEmpty) {
-      final avg = answers.reduce((a, b) => a + b) / answers.length;
-      if (avg < 0.35) tags.add('low_constancy');
-    }
-    if (focusPulls.isNotEmpty) {
-      final avg = focusPulls.reduce((a, b) => a + b) / focusPulls.length;
-      if (avg < 0.40) tags.add('digital_risk');
-    }
-    return tags;
+    final lastAskedAgo = _lastAskedDaysAgo(
+      box: box,
+      now: now,
+      questionId: question.id,
+    );
+    if (lastAskedAgo == null) return true;
+    return lastAskedAgo > _cooldownDays(question.cadence);
   }
 
-  Future<String> currentProfileLabel({required DateTime now}) async {
-    final profile = await currentProfileSnapshot(now: now);
-    final box = await _open();
-    await box.put(_profileCacheKey(now), profile.label);
-    return profile.label;
+  int _cooldownDays(DailyQuestionCadence cadence) {
+    switch (cadence) {
+      case DailyQuestionCadence.daily:
+        return 0;
+      case DailyQuestionCadence.every3Days:
+        return 2;
+      case DailyQuestionCadence.weekly:
+        return 6;
+      case DailyQuestionCadence.biweekly:
+        return 13;
+    }
+  }
+
+  int? _lastAskedDaysAgo({
+    required Box<dynamic> box,
+    required DateTime now,
+    required String questionId,
+  }) {
+    for (var i = 1; i <= 60; i++) {
+      final day = now.subtract(Duration(days: i));
+      final raw = box.get(_questionsCacheKey(day));
+      if (raw is! List) continue;
+      final ids = raw.whereType<String>();
+      if (ids.contains(questionId)) return i;
+    }
+    return null;
+  }
+
+  Future<double> _priorityScore({
+    required Box<dynamic> box,
+    required DateTime now,
+    required DailyQuestion question,
+    required _ResolvedDailyProfile profile,
+  }) async {
+    double score = 1.0 + question.priorityBoost;
+
+    for (final blocked in question.blockedTags) {
+      if (profile.tags.contains(blocked)) score -= 2.0;
+    }
+
+    var tagMatches = 0;
+    for (final tag in question.audienceTags) {
+      if (profile.tags.contains(tag)) tagMatches++;
+    }
+    score += min(tagMatches, 3) * 0.85;
+
+    if (question.impacts.any(
+      (impact) => profile.primaryAreaIds.contains(impact.areaId),
+    )) {
+      score += 1.15;
+    }
+
+    for (var i = 1; i <= historyDays; i++) {
+      final day = now.subtract(Duration(days: i));
+      final raw = box.get(_answerKey(day, question.id));
+      if (raw is! int) {
+        score += 0.18;
+        continue;
+      }
+      final normalized = normalizedProgress01(
+        questionId: question.id,
+        rawValue: raw,
+      );
+      final weight = (historyDays - i + 1) / historyDays;
+      score += (1.0 - normalized) * 2.1 * weight;
+      if (normalized < 0.45) score += 0.42 * weight;
+      score -= 0.08;
+    }
+
+    final daysAgoAsked = _lastAskedDaysAgo(
+      box: box,
+      now: now,
+      questionId: question.id,
+    );
+    if (daysAgoAsked != null) {
+      final cooldown = _cooldownDays(question.cadence);
+      if (daysAgoAsked <= cooldown) score -= 2.2;
+    }
+
+    return score;
   }
 
   List<DailyAnswerOption> optionsFor(DailyQuestion question) {
@@ -1087,184 +1036,6 @@ class DailyCheckinService {
     return normalized;
   }
 
-  Future<List<DailyQuestion>> questionsForToday({required DateTime now}) async {
-    final box = await _open();
-    final cacheKey = _questionsCacheKey(now);
-    final cached = box.get(cacheKey);
-    if (cached is List) {
-      final ids = cached.whereType<String>().toList();
-      final restored = ids
-          .map(_questionById)
-          .whereType<DailyQuestion>()
-          .toList();
-      if (restored.length == questionsPerDay) return restored;
-    }
-    final selected = await _buildAdaptiveQuestions(now);
-    await box.put(cacheKey, selected.map((q) => q.id).toList());
-    return selected;
-  }
-
-  Future<List<DailyQuestion>> _buildAdaptiveQuestions(DateTime now) async {
-    final box = await _open();
-    final profile = await currentProfileSnapshot(now: now);
-    final seed = now.year * 10000 + now.month * 100 + now.day;
-    final random = Random(seed);
-    final dueCandidates = <_WeightedQuestion>[];
-    final fallbackCandidates = <_WeightedQuestion>[];
-    for (final question in _pool) {
-      final score = await _priorityScore(
-        box: box,
-        now: now,
-        question: question,
-        profile: profile,
-      );
-      final weighted = _WeightedQuestion(
-        question: question,
-        score: score + random.nextDouble() * 0.18,
-      );
-      if (await _isQuestionDue(box: box, now: now, question: question))
-        dueCandidates.add(weighted);
-      else
-        fallbackCandidates.add(weighted);
-    }
-    dueCandidates.sort((a, b) => b.score.compareTo(a.score));
-    fallbackCandidates.sort((a, b) => b.score.compareTo(a.score));
-    final selected = <DailyQuestion>[];
-    final usedAreas = <String>{};
-    void pickPriorityAreaQuestions(List<_WeightedQuestion> source) {
-      for (final targetArea in profile.primaryAreaIds) {
-        if (selected.length >= questionsPerDay) return;
-        for (final item in source) {
-          final q = item.question;
-          if (selected.any((s) => s.id == q.id)) continue;
-          final affectsPriority = q.impacts.any((i) => i.areaId == targetArea);
-          if (!affectsPriority) continue;
-          selected.add(q);
-          usedAreas.add(q.areaId);
-          break;
-        }
-      }
-    }
-
-    void pickUniqueAreas(List<_WeightedQuestion> source) {
-      for (final item in source) {
-        if (selected.length >= questionsPerDay) return;
-        final q = item.question;
-        if (selected.any((s) => s.id == q.id)) continue;
-        if (usedAreas.contains(q.areaId)) continue;
-        selected.add(q);
-        usedAreas.add(q.areaId);
-      }
-    }
-
-    void fillRemaining(List<_WeightedQuestion> source) {
-      for (final item in source) {
-        if (selected.length >= questionsPerDay) return;
-        final q = item.question;
-        if (selected.any((s) => s.id == q.id)) continue;
-        selected.add(q);
-      }
-    }
-
-    pickPriorityAreaQuestions(dueCandidates);
-    pickUniqueAreas(dueCandidates);
-    if (selected.length < questionsPerDay)
-      pickPriorityAreaQuestions(fallbackCandidates);
-    if (selected.length < questionsPerDay) pickUniqueAreas(fallbackCandidates);
-    if (selected.length < questionsPerDay) fillRemaining(dueCandidates);
-    if (selected.length < questionsPerDay) fillRemaining(fallbackCandidates);
-    return selected.take(questionsPerDay).toList(growable: false);
-  }
-
-  Future<bool> _isQuestionDue({
-    required Box<dynamic> box,
-    required DateTime now,
-    required DailyQuestion question,
-  }) async {
-    final lastAskedAgo = _lastAskedDaysAgo(
-      box: box,
-      now: now,
-      questionId: question.id,
-    );
-    if (lastAskedAgo == null) return true;
-    return lastAskedAgo > _cooldownDays(question.cadence);
-  }
-
-  int _cooldownDays(DailyQuestionCadence cadence) {
-    switch (cadence) {
-      case DailyQuestionCadence.daily:
-        return 0;
-      case DailyQuestionCadence.every3Days:
-        return 2;
-      case DailyQuestionCadence.weekly:
-        return 6;
-      case DailyQuestionCadence.biweekly:
-        return 13;
-    }
-  }
-
-  int? _lastAskedDaysAgo({
-    required Box<dynamic> box,
-    required DateTime now,
-    required String questionId,
-  }) {
-    for (var i = 1; i <= 60; i++) {
-      final day = now.subtract(Duration(days: i));
-      final raw = box.get(_questionsCacheKey(day));
-      if (raw is! List) continue;
-      final ids = raw.whereType<String>();
-      if (ids.contains(questionId)) return i;
-    }
-    return null;
-  }
-
-  Future<double> _priorityScore({
-    required Box<dynamic> box,
-    required DateTime now,
-    required DailyQuestion question,
-    required DailyProfileSnapshot profile,
-  }) async {
-    double score = 1.0 + question.priorityBoost;
-    for (final blocked in question.blockedTags) {
-      if (profile.tags.contains(blocked)) score -= 2.0;
-    }
-    var tagMatches = 0;
-    for (final tag in question.audienceTags) {
-      if (profile.tags.contains(tag)) tagMatches++;
-    }
-    score += min(tagMatches, 3) * 0.85;
-    if (question.impacts.any(
-      (impact) => profile.primaryAreaIds.contains(impact.areaId),
-    ))
-      score += 1.15;
-    for (var i = 1; i <= historyDays; i++) {
-      final day = now.subtract(Duration(days: i));
-      final raw = box.get(_answerKey(day, question.id));
-      if (raw is! int) {
-        score += 0.18;
-        continue;
-      }
-      final normalized = normalizedProgress01(
-        questionId: question.id,
-        rawValue: raw,
-      );
-      final weight = (historyDays - i + 1) / historyDays;
-      score += (1.0 - normalized) * 2.1 * weight;
-      if (normalized < 0.45) score += 0.42 * weight;
-      score -= 0.08;
-    }
-    final daysAgoAsked = _lastAskedDaysAgo(
-      box: box,
-      now: now,
-      questionId: question.id,
-    );
-    if (daysAgoAsked != null) {
-      final cooldown = _cooldownDays(question.cadence);
-      if (daysAgoAsked <= cooldown) score -= 2.2;
-    }
-    return score;
-  }
-
   DailyQuestion? _questionById(String id) {
     for (final q in _pool) {
       if (q.id == id) return q;
@@ -1311,6 +1082,7 @@ class DailyCheckinService {
       if (raw is! int) return false;
     }
     await box.put(_completedKey(day), true);
+    await _profileHooks.onCheckinCompleted();
     return true;
   }
 
@@ -1349,8 +1121,19 @@ class DailyCheckinService {
   }
 }
 
+class _ResolvedDailyProfile {
+  const _ResolvedDailyProfile({
+    required this.tags,
+    required this.primaryAreaIds,
+  });
+
+  final Set<String> tags;
+  final Set<String> primaryAreaIds;
+}
+
 class _WeightedQuestion {
   const _WeightedQuestion({required this.question, required this.score});
+
   final DailyQuestion question;
   final double score;
 }
