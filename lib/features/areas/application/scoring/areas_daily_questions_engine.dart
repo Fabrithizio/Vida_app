@@ -7,22 +7,27 @@
 // - Permite impacto cruzado de uma pergunta em várias subáreas
 // - Aplica persistência com decaimento quando o usuário some
 //
-// Nesta revisão:
-// - corrige strings multilinha quebradas
-// - mantém decaimento após 14 dias sem atualização, caindo 5% ao dia
-// - quando o score decai até 0, a subárea volta para cinza
+// Revisão desta versão:
+// - integra AreasConfidenceEngine
+// - usa consistência do histórico e completude da janela
+// - mantém o decaimento aprovado após 14 dias sem atualização
 // ============================================================================
 
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
+import 'package:vida_app/features/areas/application/scoring/areas_confidence_engine.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 
 class AreasDailyQuestionsEngine {
-  AreasDailyQuestionsEngine({DailyCheckinService? dailyCheckinService})
-    : _dailyCheckinService = dailyCheckinService ?? DailyCheckinService();
+  AreasDailyQuestionsEngine({
+    DailyCheckinService? dailyCheckinService,
+    AreasConfidenceEngine? confidenceEngine,
+  }) : _dailyCheckinService = dailyCheckinService ?? DailyCheckinService(),
+       _confidence = confidenceEngine ?? const AreasConfidenceEngine();
 
   final DailyCheckinService _dailyCheckinService;
+  final AreasConfidenceEngine _confidence;
 
   static const int staleStartsAfterDays = 14;
   static const double dailyDecayRate = 0.05;
@@ -56,13 +61,33 @@ class AreasDailyQuestionsEngine {
       return null;
     }
 
-    final status = _statusFromNumericScore(decayedScore);
+    final lastAnsweredAt = history.first.date;
+    final daysSinceLast = DateTime.now().difference(lastAnsweredAt).inDays;
+    final consistency01 = _confidence.consistencyFromHistory(
+      history.map((e) => e.value.round()).toList(),
+    );
+    final completeness01 = _confidence.completenessFromCounts(
+      filledCount: history.length,
+      expectedCount: DailyCheckinService.historyDays,
+    );
+    final source = _isEstimatedTarget(areaId, itemId)
+        ? AreaDataSource.estimated
+        : AreaDataSource.dailyQuestions;
+    final confidenceAdjusted = _confidence.effectiveScore(
+      rawScore: decayedScore,
+      source: source,
+      daysSinceUpdate: daysSinceLast,
+      consistency01: consistency01,
+      completeness01: completeness01,
+    );
+
+    if (confidenceAdjusted <= 0) return null;
+
+    final status = _statusFromNumericScore(confidenceAdjusted);
     final trend = trendFromScaledHistory(history);
     final latestValue = history.first.value;
     final averageValue =
         history.map((e) => e.value).reduce((a, b) => a + b) / history.length;
-    final lastAnsweredAt = history.first.date;
-    final daysSinceLast = DateTime.now().difference(lastAnsweredAt).inDays;
 
     if (onAreaUpdated != null) {
       await onAreaUpdated(areaId);
@@ -86,11 +111,9 @@ class AreasDailyQuestionsEngine {
 
     return AreaAssessment(
       status: status,
-      score: decayedScore,
+      score: confidenceAdjusted,
       reason: positive ? copy.positiveReason : copy.negativeReason,
-      source: _isEstimatedTarget(areaId, itemId)
-          ? AreaDataSource.estimated
-          : AreaDataSource.dailyQuestions,
+      source: source,
       lastUpdatedAt: lastAnsweredAt,
       recommendedAction: positive ? copy.positiveAction : copy.negativeAction,
       details:
@@ -98,7 +121,10 @@ class AreasDailyQuestionsEngine {
           'Histórico usado: ${history.length} registros nos últimos '
           '${DailyCheckinService.historyDays} dias. Média recente: '
           '${averageValue.toStringAsFixed(0)}/100. Score bruto: '
-          '$rawScore/100. Score atual: $decayedScore/100. '
+          '$rawScore/100. Score após decaimento: $decayedScore/100. '
+          'Score final com confiança: $confidenceAdjusted/100. '
+          'Consistência: ${(consistency01 * 100).toStringAsFixed(0)}%. '
+          'Completude: ${(completeness01 * 100).toStringAsFixed(0)}%. '
           '$trendSentence $staleSentence $decaySentence',
     );
   }
@@ -160,10 +186,30 @@ class AreasDailyQuestionsEngine {
       return null;
     }
 
-    final status = _statusFromNumericScore(decayedScore);
-    final trend = trendFromScaledHistory(history);
     final lastAnsweredAt = history.first.date;
     final daysSinceLast = day.difference(lastAnsweredAt).inDays;
+    final source = estimated
+        ? AreaDataSource.estimated
+        : AreaDataSource.dailyQuestions;
+    final consistency01 = _confidence.consistencyFromHistory(
+      history.map((e) => e.value.round()).toList(),
+    );
+    final completeness01 = _confidence.completenessFromCounts(
+      filledCount: history.length,
+      expectedCount: DailyCheckinService.historyDays,
+    );
+    final finalScore = _confidence.effectiveScore(
+      rawScore: decayedScore,
+      source: source,
+      daysSinceUpdate: daysSinceLast,
+      consistency01: consistency01,
+      completeness01: completeness01,
+    );
+
+    if (finalScore <= 0) return null;
+
+    final status = _statusFromNumericScore(finalScore);
+    final trend = trendFromScaledHistory(history);
     final total = history.length;
     final latestValue = history.first.value;
     final averageValue =
@@ -194,11 +240,9 @@ class AreasDailyQuestionsEngine {
 
     return AreaAssessment(
       status: status,
-      score: decayedScore,
+      score: finalScore,
       reason: reason,
-      source: estimated
-          ? AreaDataSource.estimated
-          : AreaDataSource.dailyQuestions,
+      source: source,
       lastUpdatedAt: lastAnsweredAt,
       recommendedAction: action,
       details:
@@ -206,7 +250,10 @@ class AreasDailyQuestionsEngine {
           'Histórico usado: $total registros nos últimos '
           '${DailyCheckinService.historyDays} dias. Média recente: '
           '${averageValue.toStringAsFixed(0)}/100. Score bruto: '
-          '$rawScore/100. Score atual: $decayedScore/100. '
+          '$rawScore/100. Score após decaimento: $decayedScore/100. '
+          'Score final com confiança: $finalScore/100. '
+          'Consistência: ${(consistency01 * 100).toStringAsFixed(0)}%. '
+          'Completude: ${(completeness01 * 100).toStringAsFixed(0)}%. '
           '$trendSentence $staleSentence $decaySentence',
     );
   }
@@ -454,150 +501,6 @@ class AreasDailyQuestionsEngine {
       negativeAction: 'Vale reduzir peso desnecessário e criar mais respiros.',
       details:
           'Calculado pelas respostas recentes ligadas a pressão, casa, apoio e recuperação.',
-    ),
-    'work_vocation.routine': _DailyItemCopy(
-      label: 'rotina',
-      positiveReason: 'Sua rotina recente está mais organizada.',
-      negativeReason: 'Sua rotina recente está desorganizada.',
-      positiveAction: 'Continue repetindo o básico que está funcionando.',
-      negativeAction: 'Vale definir menos prioridades e organizar o essencial.',
-      details:
-          'Calculado pelas respostas recentes ligadas a rotina, clareza e manutenção do básico.',
-    ),
-    'work_vocation.consistency': _DailyItemCopy(
-      label: 'constância',
-      positiveReason: 'Sua constância recente está boa.',
-      negativeReason: 'Sua constância recente caiu.',
-      positiveAction: 'Continue aparecendo e fazendo o básico.',
-      negativeAction: 'Vale reduzir atritos e retomar o ritmo aos poucos.',
-      details:
-          'Calculado pelas respostas recentes ligadas a execução, eixo, limites e rotina.',
-    ),
-    'work_vocation.balance': _DailyItemCopy(
-      label: 'equilíbrio',
-      positiveReason:
-          'Seu equilíbrio recente entre pressão e energia está bom.',
-      negativeReason:
-          'Seu equilíbrio recente entre pressão e energia ficou frágil.',
-      positiveAction: 'Continue protegendo um ritmo sustentável.',
-      negativeAction: 'Vale aliviar pressão e recuperar base antes de piorar.',
-      details:
-          'Estimado pelos sinais recentes de carga mental, casa, dinheiro e rotina.',
-    ),
-    'learning_intellect.planning': _DailyItemCopy(
-      label: 'planejamento',
-      positiveReason: 'Seu planejamento recente parece mais claro.',
-      negativeReason: 'Seu planejamento recente parece frágil.',
-      positiveAction: 'Continue definindo próximos passos simples.',
-      negativeAction: 'Vale reduzir a névoa e escolher um próximo passo claro.',
-      details:
-          'Estimado pelos sinais recentes de clareza, prioridade e direção do dia.',
-    ),
-    'learning_intellect.execution': _DailyItemCopy(
-      label: 'execução',
-      positiveReason: 'Sua execução recente está em bom nível.',
-      negativeReason: 'Sua execução recente ficou abaixo do ideal.',
-      positiveAction: 'Continue saindo do plano e fazendo acontecer.',
-      negativeAction: 'Vale quebrar o importante em passos menores e agir.',
-      details:
-          'Estimado pelos sinais recentes de avanço real, constância e foco.',
-    ),
-    'learning_intellect.consistency': _DailyItemCopy(
-      label: 'constância de progresso',
-      positiveReason: 'Seu ritmo recente de progresso está mais constante.',
-      negativeReason: 'Seu ritmo recente de progresso ficou irregular.',
-      positiveAction: 'Continue acumulando pequenos avanços.',
-      negativeAction: 'Vale simplificar e repetir mais o que importa.',
-      details:
-          'Estimado pelos sinais recentes de repetição, continuidade e manutenção do eixo.',
-    ),
-    'learning_intellect.progress': _DailyItemCopy(
-      label: 'progresso',
-      positiveReason: 'Seu progresso recente parece real e visível.',
-      negativeReason: 'Seu progresso recente parece travado.',
-      positiveAction: 'Continue registrando e sentindo avanço concreto.',
-      negativeAction: 'Vale mirar em avanço pequeno, mas real.',
-      details:
-          'Estimado pelos sinais recentes de execução, percepção de avanço e continuidade.',
-    ),
-    'relations_community.family': _DailyItemCopy(
-      label: 'família',
-      positiveReason: 'Seu vínculo recente com a família parece mais presente.',
-      negativeReason: 'Seu vínculo recente com a família parece mais distante.',
-      positiveAction: 'Continue cuidando do contato e da presença.',
-      negativeAction: 'Vale retomar um contato simples e direto.',
-      details:
-          'Estimado pelos sinais recentes de convivência em casa, apoio e presença.',
-    ),
-    'relations_community.friends': _DailyItemCopy(
-      label: 'amizades',
-      positiveReason: 'Sua presença recente com amizades parece boa.',
-      negativeReason:
-          'Sua presença recente com amizades parece abaixo do ideal.',
-      positiveAction: 'Continue protegendo amizades que te fazem bem.',
-      negativeAction:
-          'Vale puxar conversa ou retomar contato com alguém importante.',
-      details:
-          'Estimado pelos sinais recentes de apoio, presença e conexão social.',
-    ),
-    'relations_community.partner': _DailyItemCopy(
-      label: 'vínculo afetivo',
-      positiveReason:
-          'Seu vínculo afetivo recente parece mais presente e estável.',
-      negativeReason:
-          'Seu vínculo afetivo recente parece mais distante ou frágil.',
-      positiveAction:
-          'Continue protegendo presença, diálogo e pequenos cuidados.',
-      negativeAction: 'Vale retomar presença e cuidado em gestos simples.',
-      details:
-          'Estimado pelos sinais recentes de apoio, proximidade e convivência.',
-    ),
-    'relations_community.social_contact': _DailyItemCopy(
-      label: 'contato social',
-      positiveReason: 'Sua conexão social recente está boa.',
-      negativeReason: 'Sua conexão social recente ficou abaixo do ideal.',
-      positiveAction: 'Continue cuidando dessas conexões.',
-      negativeAction: 'Vale retomar contato com alguém importante.',
-      details:
-          'Calculado pelas respostas recentes ligadas a presença, apoio e convivência.',
-    ),
-    'purpose_values.direction': _DailyItemCopy(
-      label: 'base da rotina',
-      positiveReason: 'Sua base recente do dia a dia está mais firme.',
-      negativeReason: 'Sua base recente do dia a dia está frágil.',
-      positiveAction: 'Continue protegendo o básico que sustenta seu dia.',
-      negativeAction: 'Vale simplificar o dia e retomar o essencial.',
-      details:
-          'Estimado pelos sinais recentes de manutenção do básico, clareza e rotina.',
-    ),
-    'purpose_values.goals_review': _DailyItemCopy(
-      label: 'constância',
-      positiveReason: 'Sua constância recente está boa.',
-      negativeReason: 'Sua constância recente caiu.',
-      positiveAction: 'Continue repetindo o que importa.',
-      negativeAction: 'Vale reduzir atrito e voltar a fazer o básico.',
-      details:
-          'Estimado pelos sinais recentes de avanço, execução e repetição do eixo.',
-    ),
-    'purpose_values.gratitude': _DailyItemCopy(
-      label: 'recuperação',
-      positiveReason:
-          'Sua recuperação recente depois de dias pesados está boa.',
-      negativeReason:
-          'Sua recuperação recente depois de dias pesados está fraca.',
-      positiveAction: 'Continue preservando pausas e retorno ao eixo.',
-      negativeAction: 'Vale respeitar mais sua recuperação e seu ritmo real.',
-      details:
-          'Estimado pelos sinais recentes de retorno ao eixo, humor e carga mental.',
-    ),
-    'purpose_values.self_control': _DailyItemCopy(
-      label: 'autocontrole',
-      positiveReason: 'Seu autocontrole recente parece mais firme.',
-      negativeReason: 'Seu autocontrole recente parece mais frágil.',
-      positiveAction: 'Continue protegendo limites e intenção.',
-      negativeAction: 'Vale reduzir gatilhos e proteger mais seus limites.',
-      details:
-          'Estimado pelos sinais recentes de distração, eixo e manutenção de limites.',
     ),
   };
 }

@@ -1,3 +1,15 @@
+// ============================================================================
+// FILE: lib/features/areas/application/scoring/areas_finance_engine.dart
+//
+// O que faz:
+// - Calcula a área Finanças & Material usando Finanças real + fallback do check-in
+//
+// Revisão desta versão:
+// - integra AreasConfidenceEngine
+// - usa confiança menor para dado manual isolado
+// - usa confiança maior para transação real e snapshot recente
+// ============================================================================
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vida_app/data/models/area_assessment.dart';
@@ -5,17 +17,21 @@ import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
 import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
 import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
+import 'package:vida_app/features/areas/application/scoring/areas_confidence_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_daily_questions_engine.dart';
 
 class AreasFinanceEngine {
   AreasFinanceEngine({
     required FinanceRepository financeRepository,
     required AreasDailyQuestionsEngine dailyQuestions,
+    AreasConfidenceEngine? confidenceEngine,
   }) : _financeRepository = financeRepository,
-       _dailyQuestions = dailyQuestions;
+       _dailyQuestions = dailyQuestions,
+       _confidence = confidenceEngine ?? const AreasConfidenceEngine();
 
   final FinanceRepository _financeRepository;
   final AreasDailyQuestionsEngine _dailyQuestions;
+  final AreasConfidenceEngine _confidence;
 
   Future<AreaAssessment?> computedFinanceItem(
     String uid,
@@ -60,12 +76,7 @@ class AreasFinanceEngine {
     return _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'finance_material',
       day: today,
-      questionIds: const [
-        'money_care',
-        'avoid_waste',
-        'track_expenses',
-        'money_pressure',
-      ],
+      questionIds: const ['money_pressure_mind'],
       positiveReason: 'Seu controle recente de gastos parece bom.',
       negativeReason: 'Seu cuidado recente com gastos parece fraco.',
       positiveAction: 'Continue registrando e mantendo esse controle.',
@@ -174,7 +185,7 @@ class AreasFinanceEngine {
       );
     }
 
-    late final int score;
+    late final int rawScore;
     late final String reason;
     late final String details;
 
@@ -182,7 +193,7 @@ class AreasFinanceEngine {
 
     if (expenses != null && expenses > 0) {
       final coverage = income / expenses;
-      score = _scoreFromStops(coverage, const [
+      rawScore = _scoreFromStops(coverage, const [
         _ScoreStop(0.0, 5),
         _ScoreStop(0.5, 20),
         _ScoreStop(0.8, 40),
@@ -197,7 +208,7 @@ class AreasFinanceEngine {
       details =
           'Calculado principalmente pela capacidade de a renda cobrir os gastos reais do mês.';
     } else {
-      score = _scoreFromStops(income, const [
+      rawScore = _scoreFromStops(income, const [
         _ScoreStop(0, 5),
         _ScoreStop(800, 20),
         _ScoreStop(1500, 35),
@@ -212,7 +223,14 @@ class AreasFinanceEngine {
           'Como ainda não há gastos suficientes para comparação, a nota usa apenas o valor de entrada do mês.';
     }
 
-    final status = _statusFromNumericScore(score);
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.automatic,
+      snapshot: s,
+      filledCount: s.transactionCount > 0 ? 1 : 0,
+      expectedCount: 1,
+    );
+    final status = _statusFromNumericScore(finalScore);
     final action = _financeActionFromStatus(
       status: status,
       excellent:
@@ -228,12 +246,12 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason: reason,
       source: AreaDataSource.automatic,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: details,
+      details: '$details Score final ajustado pela confiança da fonte.',
     );
   }
 
@@ -250,13 +268,14 @@ class AreasFinanceEngine {
       );
     }
 
-    late final int score;
+    late final int rawScore;
     late final String reason;
     late final String details;
+    late final AreaDataSource source;
 
     if (income != null && income > 0) {
       final ratio = expenses / income;
-      score = _scoreFromStops(ratio, const [
+      rawScore = _scoreFromStops(ratio, const [
         _ScoreStop(0.00, 100),
         _ScoreStop(0.30, 92),
         _ScoreStop(0.55, 82),
@@ -266,14 +285,14 @@ class AreasFinanceEngine {
         _ScoreStop(1.40, 18),
         _ScoreStop(2.00, 5),
       ]);
-
+      source = AreaDataSource.automatic;
       reason =
           'Gastos reais de ${_money(expenses)} para entradas reais de ${_money(income)} (${(ratio * 100).toStringAsFixed(0)}% da renda).';
       details =
           'Quanto menor o peso dos gastos sobre a renda real do mês, maior a nota.';
     } else if (budget != null && budget > 0) {
       final ratio = expenses / budget;
-      score = _scoreFromStops(ratio, const [
+      rawScore = _scoreFromStops(ratio, const [
         _ScoreStop(0.00, 100),
         _ScoreStop(0.50, 90),
         _ScoreStop(0.80, 76),
@@ -283,20 +302,33 @@ class AreasFinanceEngine {
         _ScoreStop(1.50, 10),
         _ScoreStop(2.00, 5),
       ]);
-
+      source = AreaDataSource.mixed;
       reason =
           'Gastos reais de ${_money(expenses)} comparados ao orçamento manual de ${_money(budget)}.';
       details =
           'Como faltam entradas reais, a nota usa o orçamento como referência principal.';
     } else {
-      score = 50;
+      rawScore = 50;
+      source = AreaDataSource.estimated;
       reason =
           'Há ${_money(expenses)} em gastos, mas ainda faltam entradas ou orçamento para medir o peso real.';
       details =
           'Sem uma referência confiável, esta subárea fica provisoriamente no meio da escala.';
     }
 
-    final status = _statusFromNumericScore(score);
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: source,
+      snapshot: s,
+      filledCount: [
+        if (expenses != null) 1,
+        if (income != null) 1,
+        if (budget != null) 1,
+      ].length,
+      expectedCount: 3,
+    );
+
+    final status = _statusFromNumericScore(finalScore);
     final action = _financeActionFromStatus(
       status: status,
       excellent: 'Ótimo controle de saídas. Continue assim.',
@@ -309,12 +341,12 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason: reason,
-      source: AreaDataSource.automatic,
+      source: source,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
-      details: details,
+      details: '$details Score final ajustado pela confiança da fonte.',
     );
   }
 
@@ -333,10 +365,10 @@ class AreasFinanceEngine {
     if (income == null || expenses == null || income <= 0) {
       return AreaAssessment(
         status: AreaStatus.medium,
-        score: 50,
+        score: 40,
         reason:
             'Ainda faltam dados completos de entradas e saídas para medir seu fluxo do mês.',
-        source: AreaDataSource.automatic,
+        source: AreaDataSource.estimated,
         lastUpdatedAt: s.updatedAt,
         recommendedAction:
             'Registre entradas e saídas para o fluxo ficar confiável.',
@@ -347,7 +379,7 @@ class AreasFinanceEngine {
     final net = income - expenses;
     final margin = net / income;
 
-    final score = _scoreFromStops(margin, const [
+    final rawScore = _scoreFromStops(margin, const [
       _ScoreStop(-1.00, 0),
       _ScoreStop(-0.50, 10),
       _ScoreStop(-0.20, 25),
@@ -358,7 +390,15 @@ class AreasFinanceEngine {
       _ScoreStop(0.60, 100),
     ]);
 
-    final status = _statusFromNumericScore(score);
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.automatic,
+      snapshot: s,
+      filledCount: 2,
+      expectedCount: 2,
+    );
+
+    final status = _statusFromNumericScore(finalScore);
     final signal = net >= 0 ? '+' : '-';
     final absoluteNet = net.abs();
 
@@ -373,7 +413,7 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason:
           'Fluxo do mês: $signal${_money(absoluteNet)} (${_money(income)} de entrada e ${_money(expenses)} de saída).',
       source: AreaDataSource.automatic,
@@ -390,7 +430,7 @@ class AreasFinanceEngine {
 
     if (budget == null) {
       return _noDataAssessment(
-        source: AreaDataSource.mixed,
+        source: AreaDataSource.manual,
         reason: 'Ainda não há orçamento mensal definido.',
         action: 'Defina um orçamento manual para comparar com seus gastos.',
       );
@@ -411,14 +451,14 @@ class AreasFinanceEngine {
 
     if (budget <= 0) {
       return _noDataAssessment(
-        source: AreaDataSource.mixed,
+        source: AreaDataSource.manual,
         reason: 'Orçamento inválido ou zerado.',
         action: 'Defina um orçamento mensal realista.',
       );
     }
 
     final ratio = expenses / budget;
-    final score = _scoreFromStops(ratio, const [
+    final rawScore = _scoreFromStops(ratio, const [
       _ScoreStop(0.00, 100),
       _ScoreStop(0.50, 92),
       _ScoreStop(0.80, 78),
@@ -429,7 +469,15 @@ class AreasFinanceEngine {
       _ScoreStop(2.00, 0),
     ]);
 
-    final status = _statusFromNumericScore(score);
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.mixed,
+      snapshot: s,
+      filledCount: 2,
+      expectedCount: 2,
+    );
+
+    final status = _statusFromNumericScore(finalScore);
     final action = _financeActionFromStatus(
       status: status,
       excellent: 'Seu orçamento está muito bem controlado.',
@@ -441,7 +489,7 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason:
           'Gastos reais de ${_money(expenses)} frente a orçamento manual de ${_money(budget)}.',
       source: AreaDataSource.mixed,
@@ -469,7 +517,7 @@ class AreasFinanceEngine {
     if (debts <= 0) {
       return AreaAssessment(
         status: AreaStatus.excellent,
-        score: 100,
+        score: 96,
         reason: 'Nenhuma dívida relevante registrada.',
         source: AreaDataSource.manual,
         lastUpdatedAt: s.updatedAt,
@@ -478,13 +526,14 @@ class AreasFinanceEngine {
       );
     }
 
-    late final int score;
+    late final int rawScore;
     late final String reason;
     late final String details;
+    late final AreaDataSource source;
 
     if (income != null && income > 0) {
       final ratio = debts / income;
-      score = _scoreFromStops(ratio, const [
+      rawScore = _scoreFromStops(ratio, const [
         _ScoreStop(0.00, 100),
         _ScoreStop(0.25, 88),
         _ScoreStop(0.50, 72),
@@ -493,14 +542,14 @@ class AreasFinanceEngine {
         _ScoreStop(2.00, 14),
         _ScoreStop(3.00, 5),
       ]);
-
+      source = AreaDataSource.mixed;
       reason =
           'Dívidas de ${_money(debts)}, cerca de ${(ratio * 100).toStringAsFixed(0)}% das entradas do mês.';
       details =
           'Quanto maior o peso das dívidas sobre a renda do mês, menor a nota.';
     } else if (budget != null && budget > 0) {
       final ratio = debts / budget;
-      score = _scoreFromStops(ratio, const [
+      rawScore = _scoreFromStops(ratio, const [
         _ScoreStop(0.00, 100),
         _ScoreStop(0.30, 82),
         _ScoreStop(0.60, 64),
@@ -508,14 +557,14 @@ class AreasFinanceEngine {
         _ScoreStop(1.50, 22),
         _ScoreStop(2.50, 8),
       ]);
-
+      source = AreaDataSource.mixed;
       reason =
           'Dívidas de ${_money(debts)} em comparação ao orçamento mensal de ${_money(budget)}.';
       details =
           'Como faltam entradas, o peso das dívidas foi comparado ao orçamento atual.';
     } else if (expenses != null && expenses > 0) {
       final ratio = debts / expenses;
-      score = _scoreFromStops(ratio, const [
+      rawScore = _scoreFromStops(ratio, const [
         _ScoreStop(0.00, 100),
         _ScoreStop(0.30, 80),
         _ScoreStop(0.60, 62),
@@ -523,13 +572,13 @@ class AreasFinanceEngine {
         _ScoreStop(1.50, 24),
         _ScoreStop(2.50, 8),
       ]);
-
+      source = AreaDataSource.mixed;
       reason =
           'Dívidas de ${_money(debts)} em comparação aos gastos atuais de ${_money(expenses)}.';
       details =
           'Como faltam entradas, o peso das dívidas foi comparado ao padrão de gastos do mês.';
     } else {
-      score = _scoreFromStops(debts, const [
+      rawScore = _scoreFromStops(debts, const [
         _ScoreStop(0, 100),
         _ScoreStop(500, 82),
         _ScoreStop(1500, 62),
@@ -537,13 +586,24 @@ class AreasFinanceEngine {
         _ScoreStop(6000, 20),
         _ScoreStop(10000, 5),
       ]);
-
+      source = AreaDataSource.manual;
       reason = 'Dívidas registradas em ${_money(debts)}.';
       details =
           'Sem referência mensal suficiente, a nota usa apenas o valor absoluto das dívidas.';
     }
 
-    final status = _statusFromNumericScore(score);
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: source,
+      snapshot: s,
+      filledCount: [
+        if (debts != null) 1,
+        if (income != null || budget != null || expenses != null) 1,
+      ].length,
+      expectedCount: 2,
+    );
+
+    final status = _statusFromNumericScore(finalScore);
     final action = _financeActionFromStatus(
       status: status,
       excellent: 'Peso das dívidas muito bem controlado.',
@@ -555,9 +615,9 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason: reason,
-      source: AreaDataSource.mixed,
+      source: source,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
       details: details,
@@ -590,13 +650,14 @@ class AreasFinanceEngine {
       );
     }
 
-    late final int score;
+    late final int rawScore;
     late final String reason;
     late final String details;
+    late final AreaDataSource source;
 
     if (expenses != null && expenses > 0) {
       final monthsCovered = reserve / expenses;
-      score = _scoreFromStops(monthsCovered, const [
+      rawScore = _scoreFromStops(monthsCovered, const [
         _ScoreStop(0.0, 5),
         _ScoreStop(0.5, 18),
         _ScoreStop(1.0, 35),
@@ -605,14 +666,14 @@ class AreasFinanceEngine {
         _ScoreStop(6.0, 90),
         _ScoreStop(12.0, 100),
       ]);
-
+      source = AreaDataSource.mixed;
       reason =
           'Reserva de ${_money(reserve)}, cobrindo cerca de ${monthsCovered.toStringAsFixed(1)} meses dos gastos atuais.';
       details =
           'A nota sobe conforme a reserva cobre mais meses do seu custo atual.';
     } else if (income != null && income > 0) {
       final monthsCovered = reserve / income;
-      score = _scoreFromStops(monthsCovered, const [
+      rawScore = _scoreFromStops(monthsCovered, const [
         _ScoreStop(0.0, 10),
         _ScoreStop(0.5, 25),
         _ScoreStop(1.0, 40),
@@ -621,13 +682,13 @@ class AreasFinanceEngine {
         _ScoreStop(6.0, 90),
         _ScoreStop(12.0, 100),
       ]);
-
+      source = AreaDataSource.mixed;
       reason =
           'Reserva de ${_money(reserve)}, equivalente a ${monthsCovered.toStringAsFixed(1)} meses de entrada atual.';
       details =
           'Como faltam gastos suficientes, a cobertura foi estimada sobre a renda do mês.';
     } else {
-      score = _scoreFromStops(reserve, const [
+      rawScore = _scoreFromStops(reserve, const [
         _ScoreStop(0, 5),
         _ScoreStop(500, 18),
         _ScoreStop(1500, 32),
@@ -636,13 +697,24 @@ class AreasFinanceEngine {
         _ScoreStop(12000, 82),
         _ScoreStop(25000, 100),
       ]);
-
+      source = AreaDataSource.manual;
       reason = 'Reserva de ${_money(reserve)} registrada.';
       details =
           'Sem referência mensal suficiente, a nota usa o crescimento absoluto da reserva.';
     }
 
-    final status = _statusFromNumericScore(score);
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: source,
+      snapshot: s,
+      filledCount: [
+        if (reserve != null) 1,
+        if (expenses != null || income != null) 1,
+      ].length,
+      expectedCount: 2,
+    );
+
+    final status = _statusFromNumericScore(finalScore);
     final action = _financeActionFromStatus(
       status: status,
       excellent: 'Excelente proteção financeira de curto prazo.',
@@ -654,9 +726,9 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason: reason,
-      source: AreaDataSource.mixed,
+      source: source,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
       details: details,
@@ -673,8 +745,15 @@ class AreasFinanceEngine {
       );
     }
 
-    final score = p.clamp(0, 100).round();
-    final status = _statusFromNumericScore(score);
+    final rawScore = p.clamp(0, 100).round();
+    final finalScore = _effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.manual,
+      snapshot: s,
+      filledCount: 1,
+      expectedCount: 1,
+    );
+    final status = _statusFromNumericScore(finalScore);
 
     final action = _financeActionFromStatus(
       status: status,
@@ -687,15 +766,51 @@ class AreasFinanceEngine {
 
     return AreaAssessment(
       status: status,
-      score: score,
+      score: finalScore,
       reason:
-          'Progresso financeiro registrado em ${score.toStringAsFixed(0)}%.',
+          'Progresso financeiro registrado em ${rawScore.toStringAsFixed(0)}%.',
       source: AreaDataSource.manual,
       lastUpdatedAt: s.updatedAt,
       recommendedAction: action,
       details:
           'Subárea baseada diretamente no avanço percentual informado para as metas financeiras.',
     );
+  }
+
+  int _effectiveScore({
+    required int rawScore,
+    required AreaDataSource source,
+    required FinanceSnapshot snapshot,
+    required int filledCount,
+    required int expectedCount,
+  }) {
+    return _confidence.effectiveScore(
+      rawScore: rawScore,
+      source: source,
+      daysSinceUpdate: _daysSince(snapshot.updatedAt),
+      consistency01: _consistencyFromSnapshot(snapshot),
+      completeness01: _confidence.completenessFromCounts(
+        filledCount: filledCount,
+        expectedCount: expectedCount,
+      ),
+    );
+  }
+
+  double _consistencyFromSnapshot(FinanceSnapshot snapshot) {
+    final scores = <int>[];
+    if (snapshot.income != null)
+      scores.add(snapshot.income!.clamp(0, 10000).round() % 100);
+    if (snapshot.expenses != null)
+      scores.add(snapshot.expenses!.clamp(0, 10000).round() % 100);
+    if (snapshot.budget != null)
+      scores.add(snapshot.budget!.clamp(0, 10000).round() % 100);
+    if (scores.length < 2) return 1.0;
+    return _confidence.consistencyFromHistory(scores);
+  }
+
+  int _daysSince(DateTime? date) {
+    if (date == null) return 30;
+    return DateTime.now().difference(date).inDays.clamp(0, 365);
   }
 
   AreaAssessment _noDataAssessment({

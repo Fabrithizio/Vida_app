@@ -6,26 +6,29 @@
 // - Evita fingir automação emocional perfeita
 // - Reaproveita dados já existentes de Saúde, Digital, Rotina, Finanças e Social
 //
-// Nesta versão:
-// - mood         -> humor diário + sono + conexão social + rotina
-// - stress       -> pressão diária + finanças + sono + uso noturno + rotina
-// - focus        -> foco diário + sono + rotina + tempo de tela + uso noturno
-// - mental_load  -> carga diária + pressão financeira + sono + rotina + social
+// Revisão desta versão:
+// - integra AreasConfidenceEngine depois da mistura dos sinais
+// - reduz força quando a base está fraca, velha ou incompleta
 // ============================================================================
 
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
+import 'package:vida_app/features/areas/application/scoring/areas_confidence_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_daily_questions_engine.dart';
 
 typedef ComputedAssessmentGetter =
     Future<AreaAssessment?> Function(String areaId, String itemId);
 
 class AreasMindEmotionEngine {
-  AreasMindEmotionEngine({required AreasDailyQuestionsEngine dailyQuestions})
-    : _dailyQuestions = dailyQuestions;
+  AreasMindEmotionEngine({
+    required AreasDailyQuestionsEngine dailyQuestions,
+    AreasConfidenceEngine? confidenceEngine,
+  }) : _dailyQuestions = dailyQuestions,
+       _confidence = confidenceEngine ?? const AreasConfidenceEngine();
 
   final AreasDailyQuestionsEngine _dailyQuestions;
+  final AreasConfidenceEngine _confidence;
 
   Future<AreaAssessment?> computedItem(
     String itemId, {
@@ -65,7 +68,7 @@ class AreasMindEmotionEngine {
     final direct = await _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'mind_emotion',
       day: DateTime.now(),
-      questionIds: const ['mood_ok', 'mental_recovery'],
+      questionIds: const ['mood_balance', 'recovery_after_hit'],
       positiveReason: 'Seu humor recente parece estável.',
       negativeReason: 'Seu humor recente mostrou oscilação.',
       positiveAction: 'Continue protegendo o que está te fazendo bem.',
@@ -75,8 +78,8 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    final score = _blendScores(
-      direct,
+    return _buildCompositeAssessment(
+      direct: direct,
       weighted: [
         (await _safe(getComputedAssessment, 'body_health', 'sleep'), 0.18),
         (
@@ -90,24 +93,16 @@ class AreasMindEmotionEngine {
         (await _safe(getComputedAssessment, 'work_vocation', 'routine'), 0.08),
       ],
       directWeight: 0.60,
-    );
-
-    if (score == null) return direct;
-    await onAreaUpdated('mind_emotion');
-
-    return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
-      reason: score >= 65
-          ? 'Seu humor ficou sustentado por respostas recentes e pelo contexto geral do app.'
-          : 'Seu humor caiu junto com sinais indiretos importantes do seu dia a dia.',
-      source: _resolveSource(direct, hasIndirect: true),
-      lastUpdatedAt: direct?.lastUpdatedAt ?? DateTime.now(),
-      recommendedAction: score >= 65
-          ? 'Continue protegendo sono, rotina e contato social.'
-          : 'Vale cuidar da base: sono, ritmo do dia e conexão com pessoas importantes.',
+      positiveReason:
+          'Seu humor ficou sustentado por respostas recentes e pelo contexto geral do app.',
+      negativeReason:
+          'Seu humor caiu junto com sinais indiretos importantes do seu dia a dia.',
+      positiveAction: 'Continue protegendo sono, rotina e contato social.',
+      negativeAction:
+          'Vale cuidar da base: sono, ritmo do dia e conexão com pessoas importantes.',
       details:
           'Mente & Emoções usa pergunta direta, mas também olha sinais indiretos como sono, rotina e conexão social.',
+      onAreaUpdated: onAreaUpdated,
     );
   }
 
@@ -118,7 +113,11 @@ class AreasMindEmotionEngine {
     final direct = await _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'mind_emotion',
       day: DateTime.now(),
-      questionIds: const ['stress_ok', 'mental_recovery'],
+      questionIds: const [
+        'mental_pressure',
+        'recovery_after_hit',
+        'money_pressure_mind',
+      ],
       positiveReason: 'Sua pressão recente parece mais controlada.',
       negativeReason: 'Sua pressão recente parece alta.',
       positiveAction: 'Continue protegendo pausas e a base da rotina.',
@@ -127,8 +126,8 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    final score = _blendScores(
-      direct,
+    return _buildCompositeAssessment(
+      direct: direct,
       weighted: [
         (
           await _safe(getComputedAssessment, 'finance_material', 'budget'),
@@ -143,24 +142,17 @@ class AreasMindEmotionEngine {
         (await _safe(getComputedAssessment, 'work_vocation', 'routine'), 0.10),
       ],
       directWeight: 0.55,
-    );
-
-    if (score == null) return direct;
-    await onAreaUpdated('mind_emotion');
-
-    return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
-      reason: score >= 65
-          ? 'Sua pressão mental ficou mais sob controle no recorte recente.'
-          : 'Seu estresse caiu junto com sinais de sono, finanças, rotina ou uso noturno.',
-      source: _resolveSource(direct, hasIndirect: true),
-      lastUpdatedAt: direct?.lastUpdatedAt ?? DateTime.now(),
-      recommendedAction: score >= 65
-          ? 'Mantenha a base do sono, da rotina e do controle de pressão.'
-          : 'Observe o que mais está apertando: dinheiro, noite bagunçada, rotina ou descanso.',
+      positiveReason:
+          'Sua pressão mental ficou mais sob controle no recorte recente.',
+      negativeReason:
+          'Seu estresse caiu junto com sono, finanças, rotina ou uso noturno.',
+      positiveAction:
+          'Mantenha a base do sono, da rotina e do controle de pressão.',
+      negativeAction:
+          'Observe o que mais está apertando: dinheiro, noite bagunçada, rotina ou descanso.',
       details:
           'Esta subárea cruza resposta direta com pressão financeira, sono, rotina e uso digital noturno.',
+      onAreaUpdated: onAreaUpdated,
     );
   }
 
@@ -171,7 +163,7 @@ class AreasMindEmotionEngine {
     final direct = await _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'mind_emotion',
       day: DateTime.now(),
-      questionIds: const ['focus', 'study_quality'],
+      questionIds: const ['mental_clarity', 'distraction_pull'],
       positiveReason: 'Seu foco recente parece bom.',
       negativeReason: 'Seu foco recente parece prejudicado.',
       positiveAction: 'Continue protegendo o básico que sustenta sua atenção.',
@@ -181,8 +173,8 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    final score = _blendScores(
-      direct,
+    return _buildCompositeAssessment(
+      direct: direct,
       weighted: [
         (await _safe(getComputedAssessment, 'body_health', 'sleep'), 0.14),
         (await _safe(getComputedAssessment, 'work_vocation', 'routine'), 0.14),
@@ -197,24 +189,16 @@ class AreasMindEmotionEngine {
         (await _safe(getComputedAssessment, 'digital_tech', 'night_use'), 0.10),
       ],
       directWeight: 0.55,
-    );
-
-    if (score == null) return direct;
-    await onAreaUpdated('mind_emotion');
-
-    return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
-      reason: score >= 65
-          ? 'Seu foco recente ficou sustentado por bons sinais de base.'
-          : 'Seu foco caiu junto com sono, rotina ou bagunça digital.',
-      source: _resolveSource(direct, hasIndirect: true),
-      lastUpdatedAt: direct?.lastUpdatedAt ?? DateTime.now(),
-      recommendedAction: score >= 65
-          ? 'Mantenha a base de sono, rotina e controle digital.'
-          : 'Foco costuma piorar quando noite, tela e rotina desorganizam juntos.',
+      positiveReason:
+          'Seu foco recente ficou sustentado por bons sinais de base.',
+      negativeReason:
+          'Seu foco caiu junto com sono, rotina ou bagunça digital.',
+      positiveAction: 'Mantenha a base de sono, rotina e controle digital.',
+      negativeAction:
+          'Foco costuma piorar quando noite, tela e rotina desorganizam juntos.',
       details:
           'Esta subárea combina pergunta direta de foco com sono, rotina, consistência e sinais digitais.',
+      onAreaUpdated: onAreaUpdated,
     );
   }
 
@@ -225,7 +209,7 @@ class AreasMindEmotionEngine {
     final direct = await _dailyQuestions.assessmentFromDailyQuestions(
       areaId: 'mind_emotion',
       day: DateTime.now(),
-      questionIds: const ['stress_ok', 'mental_recovery'],
+      questionIds: const ['mental_pressure', 'recovery_after_hit'],
       positiveReason: 'Sua carga mental recente parece administrável.',
       negativeReason: 'Sua carga mental recente parece pesada.',
       positiveAction: 'Continue protegendo recuperação e ritmo do dia.',
@@ -236,8 +220,8 @@ class AreasMindEmotionEngine {
       onAreaUpdated: onAreaUpdated,
     );
 
-    final score = _blendScores(
-      direct,
+    return _buildCompositeAssessment(
+      direct: direct,
       weighted: [
         (await _safe(getComputedAssessment, 'body_health', 'sleep'), 0.12),
         (await _safe(getComputedAssessment, 'work_vocation', 'routine'), 0.10),
@@ -256,28 +240,85 @@ class AreasMindEmotionEngine {
         (await _safe(getComputedAssessment, 'digital_tech', 'night_use'), 0.06),
       ],
       directWeight: 0.54,
+      positiveReason: 'Sua carga mental recente parece mais controlada.',
+      negativeReason: 'Sua cabeça parece mais pesada no recorte recente.',
+      positiveAction: 'Continue protegendo recuperação, sono e ritmo do dia.',
+      negativeAction:
+          'Vale aliviar pressão acumulada e observar os pontos que mais drenam sua mente.',
+      details:
+          'Sobrecarga mental usa pergunta diária e sinais indiretos como sono, rotina, pressão financeira, social e uso noturno.',
+      onAreaUpdated: onAreaUpdated,
+      fallbackSource: AreaDataSource.estimated,
+    );
+  }
+
+  Future<AreaAssessment?> _buildCompositeAssessment({
+    required AreaAssessment? direct,
+    required List<(AreaAssessment?, double)> weighted,
+    required double directWeight,
+    required String positiveReason,
+    required String negativeReason,
+    required String positiveAction,
+    required String negativeAction,
+    required String details,
+    required Future<void> Function(String areaId) onAreaUpdated,
+    AreaDataSource fallbackSource = AreaDataSource.mixed,
+  }) async {
+    final blended = _blendScores(
+      direct,
+      weighted: weighted,
+      directWeight: directWeight,
+    );
+    if (blended == null) return direct;
+
+    final now = DateTime.now();
+    final daysSinceUpdate = now
+        .difference(direct?.lastUpdatedAt ?? now)
+        .inDays
+        .clamp(0, 365);
+
+    final filledCount =
+        (direct?.score != null ? 1 : 0) +
+        weighted.where((e) => e.$1?.score != null).length;
+    final expectedCount = 1 + weighted.length;
+
+    final consistencyScores = <int>[
+      if (direct?.score != null) direct!.score!,
+      for (final pair in weighted)
+        if (pair.$1?.score != null) pair.$1!.score!,
+    ];
+
+    final source = _resolveSource(
+      direct,
+      hasIndirect: true,
+      fallback: fallbackSource,
     );
 
-    if (score == null) return direct;
+    final finalScore = _confidence.effectiveScore(
+      rawScore: blended,
+      source: source,
+      daysSinceUpdate: daysSinceUpdate,
+      consistency01: _confidence.consistencyFromHistory(consistencyScores),
+      completeness01: _confidence.completenessFromCounts(
+        filledCount: filledCount,
+        expectedCount: expectedCount,
+      ),
+    );
+
     await onAreaUpdated('mind_emotion');
 
     return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
-      reason: score >= 65
-          ? 'Sua carga mental recente parece mais controlada.'
-          : 'Sua cabeça parece mais pesada no recorte recente.',
-      source: _resolveSource(
-        direct,
-        hasIndirect: true,
-        fallback: AreaDataSource.estimated,
-      ),
-      lastUpdatedAt: direct?.lastUpdatedAt ?? DateTime.now(),
-      recommendedAction: score >= 65
-          ? 'Continue protegendo recuperação, sono e ritmo do dia.'
-          : 'Vale aliviar pressão acumulada e observar os pontos que mais drenam sua mente.',
+      status: _statusFromScore(finalScore),
+      score: finalScore,
+      reason: finalScore >= 65 ? positiveReason : negativeReason,
+      source: source,
+      lastUpdatedAt: direct?.lastUpdatedAt ?? now,
+      recommendedAction: finalScore >= 65 ? positiveAction : negativeAction,
       details:
-          'Sobrecarga mental usa pergunta diária e sinais indiretos como sono, rotina, pressão financeira, social e uso noturno.',
+          '$details\n\n'
+          'Base usada: $filledCount de $expectedCount sinais disponíveis. '
+          'Score combinado bruto: $blended/100. '
+          'Score final com confiança: $finalScore/100.',
     );
   }
 

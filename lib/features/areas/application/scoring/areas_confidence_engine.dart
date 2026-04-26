@@ -6,9 +6,11 @@
 // - Define peso por origem, recência, consistência e completude
 // - Evita que cada engine espalhe regras diferentes pelo projeto
 //
-// Fórmula-base:
-// score_efetivo = score_bruto × peso_fonte × peso_recencia ×
-//                 peso_consistencia × peso_completude
+// Revisão desta versão:
+// - pesos de fonte recalibrados para o app real
+// - resposta manual estruturada não é mais punida demais
+// - onboarding continua sendo base fraca
+// - check-in diário continua forte, mas abaixo de automático e misto
 // ============================================================================
 
 import 'dart:math' as math;
@@ -40,27 +42,28 @@ class AreasConfidenceEngine {
       case AreaDataSource.automatic:
         return 1.00;
       case AreaDataSource.mixed:
-        return 0.90;
+        return 0.94;
       case AreaDataSource.estimated:
-        return 0.85;
-      case AreaDataSource.onboarding:
-        return 0.72;
+        return 0.82;
       case AreaDataSource.dailyQuestions:
-        return 0.65;
+        return 0.78;
       case AreaDataSource.manual:
-        return 0.45;
+        return 0.74;
+      case AreaDataSource.onboarding:
+        return 0.58;
       case AreaDataSource.unknown:
-        return 0.55;
+        return 0.62;
     }
   }
 
   double recencyWeightFromDays(int daysSinceUpdate) {
     if (daysSinceUpdate <= 0) return 1.00;
     if (daysSinceUpdate <= 3) return 0.98;
-    if (daysSinceUpdate <= 7) return 0.94;
-    if (daysSinceUpdate <= 14) return 0.88;
-    if (daysSinceUpdate <= 21) return 0.76;
-    if (daysSinceUpdate <= 30) return 0.62;
+    if (daysSinceUpdate <= 7) return 0.95;
+    if (daysSinceUpdate <= 14) return 0.89;
+    if (daysSinceUpdate <= 21) return 0.80;
+    if (daysSinceUpdate <= 30) return 0.68;
+    if (daysSinceUpdate <= 45) return 0.56;
     return 0.45;
   }
 
@@ -147,7 +150,7 @@ class AreasConfidenceEngine {
 
     variance = variance / valid.length;
     final normalizedVolatility = (math.sqrt(variance) / 50).clamp(0.0, 1.0);
-    return (1 - normalizedVolatility).clamp(0.45, 1.0);
+    return (1 - normalizedVolatility).clamp(0.50, 1.0);
   }
 
   double completenessFromCounts({

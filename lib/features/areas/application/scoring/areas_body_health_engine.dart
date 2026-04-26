@@ -6,9 +6,10 @@
 // - Mantém check-ups, sono, movimento, hidratação, alimentação e IMC
 // - Calcula energia por sinais reais, sem depender do check-in diário
 //
-// Ajustes desta versão:
-// - alimentação e hidratação usam média móvel dos últimos 14 dias
-// - isso cria persistência real e evita virar cinza no dia seguinte
+// Revisão desta versão:
+// - integra AreasConfidenceEngine
+// - respeita fonte, recência e completude
+// - mantém média móvel de 14 dias em alimentação e hidratação
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
+import 'package:vida_app/features/areas/application/scoring/areas_confidence_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_daily_questions_engine.dart';
 import 'package:vida_app/features/body_care/body_care_service.dart';
 import 'package:vida_app/features/health_sync/health_sync_service.dart';
@@ -25,13 +27,16 @@ class AreasBodyHealthEngine {
     required AreasDailyQuestionsEngine dailyQuestions,
     BodyCareService? bodyCare,
     SmartHealthSyncService? smartHealth,
+    AreasConfidenceEngine? confidenceEngine,
   }) : _dailyQuestions = dailyQuestions,
        _bodyCare = bodyCare ?? BodyCareService(),
-       _smartHealth = smartHealth ?? SmartHealthSyncService();
+       _smartHealth = smartHealth ?? SmartHealthSyncService(),
+       _confidence = confidenceEngine ?? const AreasConfidenceEngine();
 
   final AreasDailyQuestionsEngine _dailyQuestions;
   final BodyCareService _bodyCare;
   final SmartHealthSyncService _smartHealth;
+  final AreasConfidenceEngine _confidence;
 
   Future<AreaAssessment?> computedCheckups(
     String uid, {
@@ -52,52 +57,55 @@ class AreasBodyHealthEngine {
     final days = now.difference(date).inDays;
     final monthsApprox = days / 30.4375;
 
-    late final int score;
-    late final AreaStatus status;
+    late final int rawScore;
     late final String action;
     late final String reason;
 
     if (monthsApprox <= 8.0) {
-      score = 92;
-      status = AreaStatus.excellent;
+      rawScore = 92;
       reason =
           'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Ótimo. Continue mantendo esse cuidado em dia.';
     } else if (monthsApprox <= 12.0) {
-      score = 72;
-      status = AreaStatus.good;
+      rawScore = 72;
       reason =
           'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Bom. Só fique atento para não deixar passar muito mais tempo.';
     } else if (monthsApprox <= 14.4) {
-      score = 50;
-      status = AreaStatus.medium;
+      rawScore = 50;
       reason =
           'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Já vale começar a se organizar para atualizar esse cuidado.';
     } else if (monthsApprox < 24.0) {
-      score = 30;
-      status = AreaStatus.poor;
+      rawScore = 30;
       reason =
           'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Seu check-up está atrasado. Vale priorizar isso.';
     } else {
-      score = 10;
-      status = AreaStatus.critical;
+      rawScore = 10;
       reason =
           'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Faz muito tempo sem check-up. Isso virou prioridade.';
     }
 
+    final finalScore = _confidence.effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.manual,
+      daysSinceUpdate: days,
+      consistency01: 1.0,
+      completeness01: 1.0,
+    );
+
     return AreaAssessment(
-      status: status,
-      score: score,
+      status: _statusFromScore(finalScore),
+      score: finalScore,
       reason: reason,
       source: AreaDataSource.manual,
       lastUpdatedAt: date,
       recommendedAction: action,
       details:
-          'Regra atual do app para check-ups: até 8 meses = ótimo; até 1 ano = bom; até 1,2 anos = médio; até 2 anos = ruim; 2 anos ou mais = crítico.',
+          'Regra atual do app para check-ups: até 8 meses = ótimo; até 1 ano = bom; até 1,2 anos = médio; até 2 anos = ruim; 2 anos ou mais = crítico. '
+          'Score final ajustado pela confiança da fonte e pela recência do registro.',
     );
   }
 
@@ -110,15 +118,22 @@ class AreasBodyHealthEngine {
       final sleepHours = snapshot.sleepHours;
       if (snapshot.isConnected && sleepHours != null && sleepHours > 0) {
         await onAreaUpdated('body_health');
-        final score = _scoreSleepHours(sleepHours.toDouble());
+        final rawScore = _scoreSleepHours(sleepHours.toDouble());
+        final finalScore = _confidence.effectiveScore(
+          rawScore: rawScore,
+          source: AreaDataSource.automatic,
+          daysSinceUpdate: _daysSince(snapshot.lastSyncAt),
+          consistency01: 1.0,
+          completeness01: 1.0,
+        );
         return AreaAssessment(
-          status: _statusFromScore(score),
-          score: score,
+          status: _statusFromScore(finalScore),
+          score: finalScore,
           reason:
               'Seu sono automático mais recente foi ${sleepHours.toStringAsFixed(1)}h.',
           source: AreaDataSource.automatic,
           lastUpdatedAt: snapshot.lastSyncAt,
-          recommendedAction: score >= 80
+          recommendedAction: finalScore >= 80
               ? 'Seu descanso está em boa faixa. Mantenha a constância.'
               : 'Vale proteger mais o horário e a duração do sono.',
           details:
@@ -130,14 +145,21 @@ class AreasBodyHealthEngine {
     final entry = await _bodyCare.loadDay(DateTime.now());
     if (entry.sleep != null) {
       await onAreaUpdated('body_health');
-      final score = _scoreFromBodyCareScale(entry.sleep!);
+      final rawScore = _scoreFromBodyCareScale(entry.sleep!);
+      final finalScore = _confidence.effectiveScore(
+        rawScore: rawScore,
+        source: AreaDataSource.mixed,
+        daysSinceUpdate: _daysSince(entry.updatedAt),
+        consistency01: 1.0,
+        completeness01: 1.0,
+      );
       return AreaAssessment(
-        status: _statusFromScore(score),
-        score: score,
+        status: _statusFromScore(finalScore),
+        score: finalScore,
         reason: 'Seu sono veio do módulo Corpo & Saúde.',
         source: AreaDataSource.mixed,
         lastUpdatedAt: entry.updatedAt,
-        recommendedAction: score >= 80
+        recommendedAction: finalScore >= 80
             ? 'Seu sono recente está bem cuidado.'
             : 'Vale ajustar melhor a rotina de descanso.',
         details: 'Sem relógio, o app usa a nota registrada no Corpo & Saúde.',
@@ -188,11 +210,19 @@ class AreasBodyHealthEngine {
     if (baseScore == null) return null;
 
     final stepBonusFactor = _stepBonusFactor(steps);
-    final finalScore = (baseScore + ((100 - baseScore) * stepBonusFactor))
+    final rawFinal = (baseScore + ((100 - baseScore) * stepBonusFactor))
         .round()
         .clamp(0, 100);
 
     await onAreaUpdated('body_health');
+    final finalScore = _confidence.effectiveScore(
+      rawScore: rawFinal,
+      source: source,
+      daysSinceUpdate: _daysSince(lastUpdatedAt),
+      consistency01: steps == null ? 0.90 : 1.0,
+      completeness01: steps == null ? 0.85 : 1.0,
+    );
+
     return AreaAssessment(
       status: _statusFromScore(finalScore),
       score: finalScore,
@@ -276,20 +306,39 @@ class AreasBodyHealthEngine {
 
     if (totalWeight <= 0) return null;
 
-    final score = (parts.reduce((a, b) => a + b) / totalWeight).round().clamp(
-      0,
-      100,
-    );
+    final rawScore = (parts.reduce((a, b) => a + b) / totalWeight)
+        .round()
+        .clamp(0, 100);
 
     await onAreaUpdated('body_health');
+    final filled = [
+      if (sleepScore != null) 1,
+      if (movementScore != null) 1,
+      if (stepsScore != null) 1,
+    ].length;
+    final finalScore = _confidence.effectiveScore(
+      rawScore: rawScore,
+      source: source,
+      daysSinceUpdate: _daysSince(lastUpdatedAt),
+      consistency01: _confidence.consistencyFromHistory([
+        if (sleepScore != null) sleepScore.round(),
+        if (movementScore != null) movementScore.round(),
+        if (stepsScore != null) stepsScore.round(),
+      ]),
+      completeness01: _confidence.completenessFromCounts(
+        filledCount: filled,
+        expectedCount: 3,
+      ),
+    );
+
     return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
+      status: _statusFromScore(finalScore),
+      score: finalScore,
       reason:
           'Sua energia está sendo lida por sinais reais de sono, movimento e passos quando existirem.',
       source: source,
       lastUpdatedAt: lastUpdatedAt,
-      recommendedAction: score >= 80
+      recommendedAction: finalScore >= 80
           ? 'Seu corpo está respondendo bem ao seu ritmo recente.'
           : 'Vale proteger mais o descanso e o movimento útil da rotina.',
       details:
@@ -318,17 +367,30 @@ class AreasBodyHealthEngine {
           return date.isAfter(latest) ? date : latest;
         });
 
-    final score = avg.round().clamp(0, 100);
+    final rawScore = avg.round().clamp(0, 100);
     await onAreaUpdated('body_health');
 
+    final finalScore = _confidence.effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.mixed,
+      daysSinceUpdate: _daysSince(lastUpdatedAt),
+      consistency01: _confidence.consistencyFromHistory(
+        values.map((e) => e.round()).toList(),
+      ),
+      completeness01: _confidence.completenessFromCounts(
+        filledCount: values.length,
+        expectedCount: 14,
+      ),
+    );
+
     return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
+      status: _statusFromScore(finalScore),
+      score: finalScore,
       reason:
           'Sua alimentação está usando a média móvel dos últimos ${values.length} registros dentro da janela de 14 dias.',
       source: AreaDataSource.mixed,
       lastUpdatedAt: lastUpdatedAt,
-      recommendedAction: score >= 80
+      recommendedAction: finalScore >= 80
           ? 'Boa base alimentar.'
           : 'Vale melhorar a constância da alimentação.',
       details:
@@ -357,17 +419,30 @@ class AreasBodyHealthEngine {
           return date.isAfter(latest) ? date : latest;
         });
 
-    final score = avg.round().clamp(0, 100);
+    final rawScore = avg.round().clamp(0, 100);
     await onAreaUpdated('body_health');
 
+    final finalScore = _confidence.effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.mixed,
+      daysSinceUpdate: _daysSince(lastUpdatedAt),
+      consistency01: _confidence.consistencyFromHistory(
+        values.map((e) => e.round()).toList(),
+      ),
+      completeness01: _confidence.completenessFromCounts(
+        filledCount: values.length,
+        expectedCount: 14,
+      ),
+    );
+
     return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
+      status: _statusFromScore(finalScore),
+      score: finalScore,
       reason:
           'Sua hidratação está usando a média móvel dos últimos ${values.length} registros dentro da janela de 14 dias.',
       source: AreaDataSource.mixed,
       lastUpdatedAt: lastUpdatedAt,
-      recommendedAction: score >= 80
+      recommendedAction: finalScore >= 80
           ? 'Seu cuidado com água está bom.'
           : 'Vale distribuir mais água ao longo do dia.',
       details:
@@ -383,15 +458,22 @@ class AreasBodyHealthEngine {
     if (bmi == null) return null;
 
     await onAreaUpdated('body_health');
-    final score = _scoreBmi(bmi.toDouble());
+    final rawScore = _scoreBmi(bmi.toDouble());
+    final finalScore = _confidence.effectiveScore(
+      rawScore: rawScore,
+      source: AreaDataSource.mixed,
+      daysSinceUpdate: 0,
+      consistency01: 1.0,
+      completeness01: 1.0,
+    );
     return AreaAssessment(
-      status: _statusFromScore(score),
-      score: score,
+      status: _statusFromScore(finalScore),
+      score: finalScore,
       reason:
           'Seu IMC atual no fitness é ${bmi.toStringAsFixed(1)} (${overview.bmiLabel}).',
       source: AreaDataSource.mixed,
       lastUpdatedAt: DateTime.now(),
-      recommendedAction: score >= 90
+      recommendedAction: finalScore >= 90
           ? 'Seu IMC está na faixa de referência do app.'
           : 'O app vai reduzindo pontos conforme o IMC se afasta da faixa recomendada.',
       details:
@@ -409,6 +491,11 @@ class AreasBodyHealthEngine {
     } catch (_) {
       return null;
     }
+  }
+
+  int _daysSince(DateTime? date) {
+    if (date == null) return 30;
+    return DateTime.now().difference(date).inDays.clamp(0, 365);
   }
 
   int _scoreFromBodyCareScale(int value) {
