@@ -6,10 +6,10 @@
 // - Mantém check-ups, sono, movimento, hidratação, alimentação e IMC
 // - Calcula energia por sinais reais, sem depender do check-in diário
 //
-// Revisão desta versão:
-// - integra AreasConfidenceEngine
-// - respeita fonte, recência e completude
-// - mantém média móvel de 14 dias em alimentação e hidratação
+// Ajustes desta versão:
+// - remove field não usada
+// - corrige interpolação desnecessária
+// - mantém a mesma lógica de score
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -28,12 +28,10 @@ class AreasBodyHealthEngine {
     BodyCareService? bodyCare,
     SmartHealthSyncService? smartHealth,
     AreasConfidenceEngine? confidenceEngine,
-  }) : _dailyQuestions = dailyQuestions,
-       _bodyCare = bodyCare ?? BodyCareService(),
+  }) : _bodyCare = bodyCare ?? BodyCareService(),
        _smartHealth = smartHealth ?? SmartHealthSyncService(),
        _confidence = confidenceEngine ?? const AreasConfidenceEngine();
 
-  final AreasDailyQuestionsEngine _dailyQuestions;
   final BodyCareService _bodyCare;
   final SmartHealthSyncService _smartHealth;
   final AreasConfidenceEngine _confidence;
@@ -44,11 +42,7 @@ class AreasBodyHealthEngine {
     getAssessment,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw =
-        ((prefs.getString('$uid:last_checkup') ??
-                prefs.getString('${uid}:last_checkup') ??
-                '')
-            .trim());
+    final raw = ((prefs.getString('$uid:last_checkup') ?? '').trim());
     if (raw.isEmpty) return getAssessment('body_health', 'checkups');
     final date = _parseIsoDate(raw);
     if (date == null) return getAssessment('body_health', 'checkups');

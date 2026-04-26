@@ -5,6 +5,10 @@
 // - Constrói um perfil vivo a partir do onboarding + sinais reais do app
 // - Evita deixar o perfil preso só no check-in diário
 // - Deixa o sistema pronto para o app agir como organismo vivo
+//
+// Ajustes desta versão:
+// - remove non-null assertion desnecessária no repositório financeiro
+// - mantém a lógica do perfil viva e estável
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -138,9 +142,10 @@ class LiveUserProfileEngine {
       }
     } catch (_) {}
 
-    if (_financeRepository != null) {
+    final financeRepository = _financeRepository;
+    if (financeRepository != null) {
       try {
-        final all = await _financeRepository!.loadAll();
+        final all = await financeRepository.loadAll();
         double income = 0;
         double outcome = 0;
         for (final tx in all) {

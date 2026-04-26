@@ -4,21 +4,20 @@
 // O que faz:
 // - Calcula a área Finanças & Material usando Finanças real + fallback do check-in
 //
-// Revisão desta versão:
-// - integra AreasConfidenceEngine
-// - usa confiança menor para dado manual isolado
-// - usa confiança maior para transação real e snapshot recente
+// Ajustes desta versão:
+// - remove comparações nulas desnecessárias
+// - adiciona chaves onde faltavam
+// - mantém a mesma lógica de score
 // ============================================================================
 
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:vida_app/data/models/area_assessment.dart';
 import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
-import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
-import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_confidence_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_daily_questions_engine.dart';
+import 'package:vida_app/features/finance/data/models/finance_transaction.dart';
+import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
 
 class AreasFinanceEngine {
   AreasFinanceEngine({
@@ -45,7 +44,9 @@ class AreasFinanceEngine {
       final fallback = await _spendingAssessmentFromDailyCheckin(
         onAreaUpdated: onAreaUpdated,
       );
-      if (fallback != null) return fallback;
+      if (fallback != null) {
+        return fallback;
+      }
     }
 
     switch (itemId) {
@@ -316,15 +317,17 @@ class AreasFinanceEngine {
           'Sem uma referência confiável, esta subárea fica provisoriamente no meio da escala.';
     }
 
+    final filledCount = [
+      1,
+      if (income != null) 1,
+      if (budget != null) 1,
+    ].length;
+
     final finalScore = _effectiveScore(
       rawScore: rawScore,
       source: source,
       snapshot: s,
-      filledCount: [
-        if (expenses != null) 1,
-        if (income != null) 1,
-        if (budget != null) 1,
-      ].length,
+      filledCount: filledCount,
       expectedCount: 3,
     );
 
@@ -592,14 +595,16 @@ class AreasFinanceEngine {
           'Sem referência mensal suficiente, a nota usa apenas o valor absoluto das dívidas.';
     }
 
+    final filledCount = [
+      1,
+      if (income != null || budget != null || expenses != null) 1,
+    ].length;
+
     final finalScore = _effectiveScore(
       rawScore: rawScore,
       source: source,
       snapshot: s,
-      filledCount: [
-        if (debts != null) 1,
-        if (income != null || budget != null || expenses != null) 1,
-      ].length,
+      filledCount: filledCount,
       expectedCount: 2,
     );
 
@@ -703,14 +708,13 @@ class AreasFinanceEngine {
           'Sem referência mensal suficiente, a nota usa o crescimento absoluto da reserva.';
     }
 
+    final filledCount = [1, if (expenses != null || income != null) 1].length;
+
     final finalScore = _effectiveScore(
       rawScore: rawScore,
       source: source,
       snapshot: s,
-      filledCount: [
-        if (reserve != null) 1,
-        if (expenses != null || income != null) 1,
-      ].length,
+      filledCount: filledCount,
       expectedCount: 2,
     );
 
@@ -798,13 +802,18 @@ class AreasFinanceEngine {
 
   double _consistencyFromSnapshot(FinanceSnapshot snapshot) {
     final scores = <int>[];
-    if (snapshot.income != null)
+    if (snapshot.income != null) {
       scores.add(snapshot.income!.clamp(0, 10000).round() % 100);
-    if (snapshot.expenses != null)
+    }
+    if (snapshot.expenses != null) {
       scores.add(snapshot.expenses!.clamp(0, 10000).round() % 100);
-    if (snapshot.budget != null)
+    }
+    if (snapshot.budget != null) {
       scores.add(snapshot.budget!.clamp(0, 10000).round() % 100);
-    if (scores.length < 2) return 1.0;
+    }
+    if (scores.length < 2) {
+      return 1.0;
+    }
     return _confidence.consistencyFromHistory(scores);
   }
 

@@ -7,10 +7,9 @@
 // - Abre o modal de detalhe de cada subárea
 //
 // Ajustes desta versão:
-// - remove os círculos repetidos das subáreas
-// - adiciona ícones próprios por subárea
-// - melhora o topo do modal de detalhe sem poluir
-// - mantém o botão de atualizar check-up
+// - corrige uso de BuildContext após async gap
+// - remove non-null assertions desnecessárias
+// - mantém o visual e a lógica da tela
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -42,7 +41,7 @@ class AreaDetailPage extends StatefulWidget {
 }
 
 class _AreaDetailPageState extends State<AreaDetailPage> {
-  final AreasStore _store = AreasStore();
+  final AreasStore _store = AreasStore.consolidated();
   final AreasBootstrapService _bootstrap = AreasBootstrapService();
   late Future<bool> _includeWomenCycleFuture;
   bool _didAutoOpenInitialItem = false;
@@ -223,6 +222,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
+        final navigator = Navigator.of(sheetContext);
         return Container(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
           decoration: BoxDecoration(
@@ -370,8 +370,8 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                           if (picked == null) return;
 
                           await _store.updateLastCheckupDate(picked);
-                          if (!mounted) return;
-                          Navigator.of(sheetContext).pop();
+                          if (!mounted || !sheetContext.mounted) return;
+                          navigator.pop();
                           setState(() {});
                         },
                         icon: const Icon(Icons.event_available_rounded),
@@ -384,7 +384,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                     width: double.infinity,
                     height: 46,
                     child: OutlinedButton(
-                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      onPressed: () => navigator.pop(),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: Colors.white24),
                         shape: RoundedRectangleBorder(
@@ -408,20 +408,26 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     if (_didAutoOpenInitialItem) return;
     final initialItemId = widget.initialItemId?.trim();
     if (initialItemId == null || initialItemId.isEmpty) return;
-    AreaItemDef? item;
+
+    AreaItemDef? foundItem;
     for (final candidate in items) {
       if (candidate.id == initialItemId) {
-        item = candidate;
+        foundItem = candidate;
         break;
       }
     }
-    if (item == null) return;
+    if (foundItem == null) return;
+
+    final AreaItemDef targetItem = foundItem;
     _didAutoOpenInitialItem = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final assessment = await _store.getComputedAssessment(def.id, item!.id);
+      final assessment = await _store.getComputedAssessment(
+        def.id,
+        targetItem.id,
+      );
       if (!mounted) return;
-      await _openItemDetails(def, item!, assessment);
+      await _openItemDetails(def, targetItem, assessment);
     });
   }
 
