@@ -1,12 +1,13 @@
 // ============================================================================
-// FILE: lib/features/home/presentation/tabs/areas/area_detail_page.dart
+// FILE: lib/features/areas/presentation/pages/area_detail_page.dart
 //
 // O que faz:
 // - Mostra os detalhes de uma área sem mudar o layout principal
-// - Lista as subáreas válidas para o perfil atual
-// - Exibe score, status, fonte, tendência e última atualização
-// - Abre um painel com explicação objetiva de como cada subárea está sendo lida
-// - Permite entrar já direto em uma subárea específica via initialItemId
+// - Integra AreaDetailExplainerPanel para explicar o score no sistema novo
+//
+// Ajustes desta versão:
+// - devolve mais cor e destaque visual às subáreas
+// - restaura a ação de atualizar a data de check-up direto no detalhe
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,6 +18,7 @@ import 'package:vida_app/data/models/area_data_source.dart';
 import 'package:vida_app/data/models/area_status.dart';
 import 'package:vida_app/features/areas/application/bootstrap/areas_bootstrap_service.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
+import 'package:vida_app/features/areas/presentation/pages/area_detail_explainer_panel.dart';
 import 'package:vida_app/features/areas/presentation/widgets/area_status_dot.dart';
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 
@@ -47,9 +49,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     super.initState();
     _includeWomenCycleFuture = _loadIncludeWomenCycle();
     _bootstrap.ensureBootstrappedFromOnboarding().then((_) {
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
     });
   }
 
@@ -57,7 +57,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     final prefs = await SharedPreferences.getInstance();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return true;
-
     final raw = (prefs.getString('${user.uid}:gender') ?? '')
         .trim()
         .toLowerCase();
@@ -68,16 +67,10 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return '—';
-    final d = date.day.toString().padLeft(2, '0');
-    final m = date.month.toString().padLeft(2, '0');
-    final y = date.year.toString();
-    return '$d/$m/$y';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
-  String _scoreLabel(int? score) {
-    if (score == null) return '—';
-    return '$score';
-  }
+  String _scoreLabel(int? score) => score == null ? '—' : '$score';
 
   String _scoreClass(int? score) {
     if (score == null) return 'Sem dados';
@@ -95,6 +88,44 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     if (score >= 40) return const Color(0xFFFB923C);
     if (score >= 20) return const Color(0xFFEF4444);
     return const Color(0xFFB91C1C);
+  }
+
+  Color _sourceColor(AreaDataSource source) {
+    switch (source) {
+      case AreaDataSource.manual:
+        return const Color(0xFF7DD3FC);
+      case AreaDataSource.onboarding:
+        return const Color(0xFFC4B5FD);
+      case AreaDataSource.dailyQuestions:
+        return const Color(0xFFFF7AD9);
+      case AreaDataSource.automatic:
+        return const Color(0xFF4ADE80);
+      case AreaDataSource.estimated:
+        return const Color(0xFFFBBF24);
+      case AreaDataSource.mixed:
+        return const Color(0xFF60A5FA);
+      case AreaDataSource.unknown:
+        return const Color(0xFF94A3B8);
+    }
+  }
+
+  IconData _sourceIcon(AreaDataSource source) {
+    switch (source) {
+      case AreaDataSource.manual:
+        return Icons.edit_rounded;
+      case AreaDataSource.onboarding:
+        return Icons.flag_rounded;
+      case AreaDataSource.dailyQuestions:
+        return Icons.quiz_rounded;
+      case AreaDataSource.automatic:
+        return Icons.auto_awesome_rounded;
+      case AreaDataSource.estimated:
+        return Icons.analytics_rounded;
+      case AreaDataSource.mixed:
+        return Icons.hub_rounded;
+      case AreaDataSource.unknown:
+        return Icons.help_outline_rounded;
+    }
   }
 
   AreaStatus _statusFromScore(int? score) {
@@ -133,25 +164,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     return _store.score(def.id, items.map((e) => e.id).toList());
   }
 
-  String _buildExplanation(AreaAssessment? assessment) {
-    if (assessment == null || assessment.status == AreaStatus.noData) {
-      return 'Ainda não há dados suficientes para essa subárea. Conforme você responder check-ins, registrar eventos ou usar as partes ligadas do app, essa leitura fica mais confiável.';
-    }
-
-    final parts = <String>[];
-    final reason = (assessment.reason ?? '').trim();
-    final details = (assessment.details ?? '').trim();
-    final action = (assessment.recommendedAction ?? '').trim();
-
-    if (reason.isNotEmpty) parts.add(reason);
-    if (details.isNotEmpty) parts.add(details);
-    if (action.isNotEmpty) parts.add('Próximo passo: $action');
-
-    return parts.isEmpty
-        ? 'Status calculado com base nos dados disponíveis.'
-        : parts.join('\n\n');
-  }
-
   Future<void> _openItemDetails(
     AreaDef area,
     AreaItemDef item,
@@ -160,13 +172,12 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
     final a =
         assessment ?? await _store.getComputedAssessment(area.id, item.id);
     final trend = await _store.trendLabel(area.id, item.id);
-
     if (!mounted) return;
 
     final status = a?.status ?? AreaStatus.noData;
-    final color = _statusColor(status);
+    final scoreColor = _statusColor(status);
+    final sourceColor = _sourceColor(a?.source ?? AreaDataSource.unknown);
 
-    final navigator = Navigator.of(context);
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -181,184 +192,182 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
           ),
           child: SafeArea(
             top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    AreaStatusDot(status: status, size: 16),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        item.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: color.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Text(
-                        _scoreClass(a?.score),
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _InfoChip(
-                      label: 'Score',
-                      value:
-                          '${_scoreLabel(a?.score)} · ${_scoreClass(a?.score)}',
-                    ),
-                    _InfoChip(
-                      label: 'Fonte',
-                      value: a != null ? _sourceLabel(a.source) : '—',
-                    ),
-                    if (trend != null && trend.trim().isNotEmpty)
-                      _InfoChip(label: 'Tendência', value: trend),
-                    _InfoChip(
-                      label: 'Atualizado',
-                      value: _formatDate(a?.lastUpdatedAt),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
                     children: [
-                      Text(
-                        item.description,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          height: 1.35,
-                        ),
-                      ),
-                      if ((a?.recommendedAction ?? '').trim().isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          'Ação sugerida',
-                          style: TextStyle(
-                            color: color,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: scoreColor.withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: scoreColor.withValues(alpha: 0.35),
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          a!.recommendedAction!,
+                        child: Center(
+                          child: AreaStatusDot(status: status, size: 18),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          item.title,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 13,
-                            height: 1.3,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
                           ),
                         ),
-                      ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scoreColor.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: scoreColor.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Text(
+                          _scoreClass(a?.score),
+                          style: TextStyle(
+                            color: scoreColor,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Explicação',
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _InfoChip(
+                        label: 'Score',
+                        value:
+                            '${_scoreLabel(a?.score)} · ${_scoreClass(a?.score)}',
+                        color: scoreColor,
+                        icon: Icons.stacked_bar_chart_rounded,
+                      ),
+                      _InfoChip(
+                        label: 'Fonte',
+                        value: a != null ? _sourceLabel(a.source) : '—',
+                        color: sourceColor,
+                        icon: _sourceIcon(a?.source ?? AreaDataSource.unknown),
+                      ),
+                      if (trend != null && trend.trim().isNotEmpty)
+                        _InfoChip(
+                          label: 'Tendência',
+                          value: trend,
+                          color: const Color(0xFF60A5FA),
+                          icon: Icons.trending_up_rounded,
+                        ),
+                      _InfoChip(
+                        label: 'Atualizado',
+                        value: _formatDate(a?.lastUpdatedAt),
+                        color: const Color(0xFFF59E0B),
+                        icon: Icons.schedule_rounded,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          scoreColor.withValues(alpha: 0.14),
+                          Colors.white.withValues(alpha: 0.03),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: scoreColor.withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: Text(
+                      item.description,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _buildExplanation(a),
-                  style: const TextStyle(color: Colors.white70, height: 1.38),
-                ),
-                const SizedBox(height: 16),
-                if (area.id == 'body_health' && item.id == 'checkups') ...[
+                  const SizedBox(height: 14),
+                  if (a != null)
+                    AreaDetailExplainerPanel(
+                      assessment: a,
+                      title: 'Como essa subárea está sendo lida',
+                    ),
+                  if (area.id == 'body_health' && item.id == 'checkups') ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF22C55E),
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: sheetContext,
+                            initialDate: now,
+                            firstDate: DateTime(now.year - 20),
+                            lastDate: now,
+                          );
+                          if (picked == null) return;
+
+                          await _store.updateLastCheckupDate(picked);
+                          if (!mounted) return;
+                          Navigator.of(sheetContext).pop();
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.event_available_rounded),
+                        label: const Text('Atualizar data do check-up'),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     height: 46,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.black,
-                      ),
-                      onPressed: () async {
-                        final now = DateTime.now();
-                        final picked = await showDatePicker(
-                          context: sheetContext,
-                          initialDate: now,
-                          firstDate: DateTime(now.year - 20),
-                          lastDate: now,
-                        );
-                        if (picked == null) return;
-
-                        await _store.updateLastCheckupDate(picked);
-                        if (!mounted) return;
-                        setState(() {});
-                        navigator.pop();
-                      },
-                      child: const Text('Atualizar data do check-up'),
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                      child: const Text('Fechar'),
                     ),
                   ),
-                  const SizedBox(height: 10),
                 ],
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: OutlinedButton(
-                    onPressed: () => navigator.pop(),
-                    child: const Text('Fechar'),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         );
       },
     );
-
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   void _maybeAutoOpenInitialItem(AreaDef def, List<AreaItemDef> items) {
     if (_didAutoOpenInitialItem) return;
-
     final initialItemId = widget.initialItemId?.trim();
     if (initialItemId == null || initialItemId.isEmpty) return;
-
     AreaItemDef? item;
     for (final candidate in items) {
       if (candidate.id == initialItemId) {
@@ -366,10 +375,8 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
         break;
       }
     }
-
     if (item == null) return;
     _didAutoOpenInitialItem = true;
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final assessment = await _store.getComputedAssessment(def.id, item!.id);
@@ -381,7 +388,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
   @override
   Widget build(BuildContext context) {
     final def = AreasCatalog.byId(widget.areaId);
-
     return FutureBuilder<bool>(
       future: _includeWomenCycleFuture,
       builder: (context, sexSnap) {
@@ -390,7 +396,6 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
           def.id,
           includeWomenCycle: includeWomenCycle,
         );
-
         _maybeAutoOpenInitialItem(def, items);
 
         return Scaffold(
@@ -561,25 +566,60 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                         final a = snap.data;
                         final status = a?.status ?? AreaStatus.noData;
                         final color = _statusColor(status);
+                        final sourceColor = _sourceColor(
+                          a?.source ?? AreaDataSource.unknown,
+                        );
+                        final reason = (a?.reason ?? '').trim();
+                        final scoreClass = _scoreClass(a?.score);
 
                         return InkWell(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(22),
                           onTap: () => _openItemDetails(def, item, a),
                           child: Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0F0F1A),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: color.withValues(alpha: 0.22),
+                              gradient: LinearGradient(
+                                colors: [
+                                  color.withValues(alpha: 0.14),
+                                  const Color(0xFF0F0F1A),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: color.withValues(alpha: 0.26),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: color.withValues(alpha: 0.10),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                AreaStatusDot(status: status, size: 14),
-                                const SizedBox(width: 10),
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: color.withValues(alpha: 0.16),
+                                    border: Border.all(
+                                      color: color.withValues(alpha: 0.35),
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: AreaStatusDot(
+                                      status: status,
+                                      size: 15,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -592,7 +632,7 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                                               item.title,
                                               style: const TextStyle(
                                                 color: Colors.white,
-                                                fontWeight: FontWeight.w800,
+                                                fontWeight: FontWeight.w900,
                                                 fontSize: 14,
                                               ),
                                             ),
@@ -603,14 +643,16 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                                             style: TextStyle(
                                               color: color,
                                               fontWeight: FontWeight.w900,
-                                              fontSize: 13,
+                                              fontSize: 14,
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 5),
+                                      const SizedBox(height: 7),
                                       Text(
-                                        a?.reason ?? item.description,
+                                        reason.isEmpty
+                                            ? item.description
+                                            : reason,
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
@@ -619,20 +661,25 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
                                           height: 1.35,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 10),
                                       Wrap(
                                         spacing: 8,
-                                        runSpacing: 6,
+                                        runSpacing: 8,
                                         children: [
                                           _MiniPill(
-                                            text: _scoreClass(a?.score),
+                                            text: scoreClass,
                                             color: color,
+                                            icon: Icons.bolt_rounded,
                                           ),
                                           _MiniPill(
                                             text: a != null
                                                 ? _sourceLabel(a.source)
                                                 : 'Sem fonte',
-                                            color: Colors.white70,
+                                            color: sourceColor,
+                                            icon: _sourceIcon(
+                                              a?.source ??
+                                                  AreaDataSource.unknown,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -657,39 +704,53 @@ class _AreaDetailPageState extends State<AreaDetailPage> {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label, required this.value});
+  const _InfoChip({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
 
   final String label;
   final String value;
+  final Color color;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
+          Icon(icon, color: color, size: 15),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -698,27 +759,39 @@ class _InfoChip extends StatelessWidget {
 }
 
 class _MiniPill extends StatelessWidget {
-  const _MiniPill({required this.text, required this.color});
+  const _MiniPill({
+    required this.text,
+    required this.color,
+    required this.icon,
+  });
 
   final String text;
   final Color color;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.20)),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

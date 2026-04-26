@@ -9,10 +9,10 @@
 // - Adiciona o ícone do livro com explicação clara do sistema de score
 // - Liga o sino à central real de alertas com badge numérico estilo WhatsApp
 //
-// Ajuste desta revisão:
-// - remove o nome/perfil vivo do topo
-// - mantém toda a lógica interna do perfil viva para uso futuro
-// - limpa a top bar para ficar visualmente melhor
+// Revisão desta leva:
+// - começa a tirar carga operacional da UI
+// - usa AreasTabController para bootstrap + sync do perfil vivo + refresh digital
+// - mantém o topo limpo, sem mostrar o nome do perfil
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,7 +21,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/alerts/life_alerts_service.dart';
 import 'package:vida_app/features/alerts/presentation/widgets/alerts_bell_button.dart';
-import 'package:vida_app/features/areas/application/bootstrap/areas_bootstrap_service.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/device/device_usage_service.dart';
@@ -31,6 +30,7 @@ import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
 import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas_tab_controller.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
@@ -51,10 +51,10 @@ class AreasTab extends StatefulWidget {
 
 class _AreasTabState extends State<AreasTab> {
   final AreasStore _store = AreasStore();
-  final AreasBootstrapService _bootstrap = AreasBootstrapService();
   final SessionStorage _session = SessionStorage();
   final DailyCheckinService _dailyCheckinService = DailyCheckinService();
   final DeviceUsageService _deviceUsage = DeviceUsageService();
+  final AreasTabController _controller = AreasTabController();
 
   bool _dailyGateBusy = false;
   bool _usageOverlayOpen = false;
@@ -76,7 +76,6 @@ class _AreasTabState extends State<AreasTab> {
   void initState() {
     super.initState();
     _refreshState();
-
     if (widget.isActive) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _handleTabActivated();
@@ -101,13 +100,9 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   Future<void> _refreshDynamicProfile() async {
-    final label = await _dailyCheckinService.currentProfileLabel(
-      now: DateTime.now(),
-    );
+    final label = await _controller.currentProfileLabel();
     if (!mounted) return;
-    setState(() {
-      _resolvedProfileLabel = label;
-    });
+    setState(() => _resolvedProfileLabel = label);
   }
 
   void _refreshState() {
@@ -115,37 +110,27 @@ class _AreasTabState extends State<AreasTab> {
       _resolvedSex = value;
       return value;
     });
-
     _nameFuture = _loadUserName().then((value) {
       _resolvedName = value;
       return value;
     });
-
     _birthDateFuture = _loadBirthDate().then((value) {
       _resolvedBirthDate = value;
       return value;
     });
-
-    _profileLabelFuture = _dailyCheckinService
-        .currentProfileLabel(now: DateTime.now())
-        .then((value) {
-          _resolvedProfileLabel = value;
-          return value;
-        });
-
+    _profileLabelFuture = _controller.currentProfileLabel().then((value) {
+      _resolvedProfileLabel = value;
+      return value;
+    });
     _scoreFuture = _sexFuture
         .then((_) async {
-          await _bootstrap.ensureBootstrappedFromOnboarding();
-          try {
-            await _deviceUsage.refreshAndPersistDigitalBuckets();
-          } catch (_) {}
+          await _controller.prepareAreas();
           return _loadScores();
         })
         .then((value) {
           _resolvedScores = value;
           return value;
         });
-
     _readyFuture = Future.wait<dynamic>([
       _sexFuture,
       _nameFuture,
@@ -166,25 +151,19 @@ class _AreasTabState extends State<AreasTab> {
     final prefs = await SharedPreferences.getInstance();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return UserSex.female;
-
-    final uid = user.uid;
-    final gender = (prefs.getString('$uid:gender') ?? '').trim();
+    final gender = (prefs.getString('${user.uid}:gender') ?? '').trim();
     return _parseSex(gender);
   }
 
   Future<String> _loadUserName() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return 'Usuário';
-
     final nick = (await _session.readNickname(user.uid))?.trim() ?? '';
     if (nick.isNotEmpty) return nick;
-
     final display = (user.displayName ?? '').trim();
     if (display.isNotEmpty) return display;
-
     final email = (user.email ?? '').trim();
     if (email.contains('@')) return email.split('@').first;
-
     return 'Usuário';
   }
 
@@ -192,7 +171,6 @@ class _AreasTabState extends State<AreasTab> {
     final prefs = await SharedPreferences.getInstance();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
-
     final uid = user.uid;
     final raw =
         prefs.getString('birth_date_$uid') ??
@@ -200,9 +178,7 @@ class _AreasTabState extends State<AreasTab> {
         prefs.getString('$uid:birthdate') ??
         prefs.getString('$uid:dateOfBirth') ??
         prefs.getString('$uid:dob');
-
     if (raw == null || raw.trim().isEmpty) return null;
-
     return DateTime.tryParse(raw.trim());
   }
 
@@ -211,16 +187,13 @@ class _AreasTabState extends State<AreasTab> {
     final includeWomenCycle =
         (_resolvedSex ?? UserSex.female) == UserSex.female;
     final map = <String, int?>{};
-
     for (final def in defs) {
       final items = AreasCatalog.itemsForArea(
         def.id,
         includeWomenCycle: includeWomenCycle,
       );
-
       map[def.id] = await _store.score(def.id, items.map((e) => e.id).toList());
     }
-
     return map;
   }
 
@@ -237,9 +210,8 @@ class _AreasTabState extends State<AreasTab> {
           child: Image.asset(
             'assets/images/life_dashboard_bg.png',
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) {
-              return Container(color: const Color(0xFF0B1020));
-            },
+            errorBuilder: (_, __, ___) =>
+                Container(color: const Color(0xFF0B1020)),
           ),
         ),
         Positioned.fill(child: Container(color: const Color(0x990B1020))),
@@ -274,9 +246,8 @@ class _AreasTabState extends State<AreasTab> {
     return sum / totalAreas;
   }
 
-  int _definedStatusesCount(Map<String, int?> scores) {
-    return scores.values.where((value) => value != null).length;
-  }
+  int _definedStatusesCount(Map<String, int?> scores) =>
+      scores.values.where((value) => value != null).length;
 
   String _classificationLabel(double score) {
     if (score >= 80) return 'Ótimo';
@@ -294,8 +265,8 @@ class _AreasTabState extends State<AreasTab> {
       isScrollControlled: true,
       builder: (_) => const DailyCheckinSheet(),
     );
-
     if (!mounted) return;
+    await _controller.refreshProfileAfterImportantChange();
     await _refreshDynamicProfile();
     setState(() {});
   }
@@ -307,9 +278,8 @@ class _AreasTabState extends State<AreasTab> {
     );
   }
 
-  void _openAvatarEditor() {
-    _showSoonMessage('Editor de avatar será ligado aqui em breve.');
-  }
+  void _openAvatarEditor() =>
+      _showSoonMessage('Editor de avatar será ligado aqui em breve.');
 
   Future<void> _openScoreRules() async {
     await showModalBottomSheet(
@@ -324,7 +294,6 @@ class _AreasTabState extends State<AreasTab> {
     final birthDate = _resolvedBirthDate ?? await _birthDateFuture;
     final sex = _resolvedSex ?? await _sexFuture;
     final userName = _resolvedName ?? await _nameFuture;
-
     if (!mounted || birthDate == null) {
       if (mounted) {
         _showSoonMessage(
@@ -333,7 +302,6 @@ class _AreasTabState extends State<AreasTab> {
       }
       return;
     }
-
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
@@ -344,14 +312,12 @@ class _AreasTabState extends State<AreasTab> {
 
   Future<void> _openArea(String areaId) async {
     final def = AreasCatalog.byId(areaId);
-
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
             area_detail.AreaDetailPage(areaId: areaId, title: def.title),
       ),
     );
-
     if (!mounted) return;
     _refreshState();
     setState(() {});
@@ -359,15 +325,11 @@ class _AreasTabState extends State<AreasTab> {
 
   Future<void> _checkDailyGate() async {
     if (_dailyGateBusy || !widget.isActive) return;
-
     _dailyGateBusy = true;
     try {
       final today = DateTime.now();
       final canUse = await _dailyCheckinService.canUseAreas(today);
-
-      if (!mounted) return;
-      if (canUse) return;
-
+      if (!mounted || canUse) return;
       await showModalBottomSheet(
         context: context,
         backgroundColor: Colors.transparent,
@@ -376,10 +338,10 @@ class _AreasTabState extends State<AreasTab> {
         isScrollControlled: true,
         builder: (_) => const DailyCheckinSheet(),
       );
-
       if (!mounted) return;
       final canUseAfter = await _dailyCheckinService.canUseAreas(today);
       if (canUseAfter) {
+        await _controller.refreshProfileAfterImportantChange();
         await _refreshDynamicProfile();
         setState(() {});
       }
@@ -390,17 +352,11 @@ class _AreasTabState extends State<AreasTab> {
 
   Future<void> _checkUsageAccessGate() async {
     if (_usageOverlayOpen) return;
-
     final supported = await _deviceUsage.isAndroidSupported();
     if (!supported) return;
-
     final has = await _deviceUsage.hasUsageAccess();
-    if (!mounted) return;
-
-    if (has) return;
-
+    if (!mounted || has) return;
     _usageOverlayOpen = true;
-
     await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -409,20 +365,17 @@ class _AreasTabState extends State<AreasTab> {
           try {
             await _deviceUsage.refreshAndPersistDigitalBuckets();
           } catch (_) {}
-
           _refreshState();
           if (mounted) setState(() {});
         },
       ),
     );
-
     _usageOverlayOpen = false;
   }
 
   @override
   Widget build(BuildContext context) {
     final defs = AreasCatalog.all();
-
     return FutureBuilder<void>(
       future: _readyFuture,
       builder: (context, readySnap) {
@@ -430,7 +383,6 @@ class _AreasTabState extends State<AreasTab> {
             readySnap.connectionState != ConnectionState.done) {
           return _buildLoadingState();
         }
-
         final sex = _resolvedSex ?? UserSex.female;
         final character = AreasModelAssets.character(sex);
         final userName = (_resolvedName ?? 'Usuário').trim();
@@ -439,7 +391,6 @@ class _AreasTabState extends State<AreasTab> {
           _resolvedBirthDate,
           DateTime.now(),
         );
-
         final avg = _averageScore(scores, totalAreas: defs.length);
         final defined = _definedStatusesCount(scores);
         final classification = _classificationLabel(avg);
@@ -448,22 +399,16 @@ class _AreasTabState extends State<AreasTab> {
           builder: (context, c) {
             final h = c.maxHeight;
             final w = c.maxWidth;
-
-            const double gridBottom = 4;
-            const double hudTopGap = 2;
-            const double hudHeight = 148;
-
-            final double gridHeight = ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
-
-            final double gridTop = h - gridHeight - gridBottom;
-            final double characterHeight = h * 0.47;
-
-            final double avatarTopMin =
+            const gridBottom = 4.0;
+            const hudTopGap = 2.0;
+            const hudHeight = 148.0;
+            final gridHeight = ((w - 20 - 12) / 3) / 1.7 * 3 + 12;
+            final gridTop = h - gridHeight - gridBottom;
+            final characterHeight = h * 0.47;
+            final avatarTopMin =
                 MediaQuery.of(context).padding.top + hudHeight + 18;
-
-            final double avatarTopMax = gridTop - characterHeight - 4;
-
-            final double avatarTop = avatarTopMax <= avatarTopMin
+            final avatarTopMax = gridTop - characterHeight - 4;
+            final avatarTop = avatarTopMax <= avatarTopMin
                 ? avatarTopMin
                 : ((avatarTopMin + avatarTopMax) / 2);
 
@@ -473,9 +418,8 @@ class _AreasTabState extends State<AreasTab> {
                   child: Image.asset(
                     'assets/images/life_dashboard_bg.png',
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) {
-                      return Container(color: const Color(0xFF0B1020));
-                    },
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: const Color(0xFF0B1020)),
                   ),
                 ),
                 Positioned(
@@ -878,9 +822,7 @@ class _TopHudCompact extends StatelessWidget {
 
 class _MiniActionShell extends StatelessWidget {
   const _MiniActionShell({required this.child});
-
   final Widget child;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -898,10 +840,8 @@ class _MiniActionShell extends StatelessWidget {
 
 class _MiniActionButton extends StatelessWidget {
   const _MiniActionButton({required this.icon, required this.onTap});
-
   final IconData icon;
   final VoidCallback onTap;
-
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -927,11 +867,9 @@ class _AreaCard extends StatelessWidget {
     required this.score,
     required this.onTap,
   });
-
   final IconData icon;
   final int? score;
   final VoidCallback onTap;
-
   Color _color() {
     final s = score;
     if (s == null) return const Color(0xFF94A3B8);
@@ -945,7 +883,6 @@ class _AreaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = _color();
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -973,14 +910,11 @@ class _AgeAccessInfo {
     required this.progressToNextBirthday,
     required this.daysUntilBirthday,
   });
-
   final bool hasBirthDate;
   final int age;
   final double progressToNextBirthday;
   final int daysUntilBirthday;
-
   String get ageLabel => hasBirthDate ? '$age' : '--';
-
   String get progressLabel {
     if (!hasBirthDate) return 'Sem data de nascimento';
     if (daysUntilBirthday == 0) return 'Aniversário hoje';
@@ -998,7 +932,6 @@ class _AgeAccessInfo {
   }
 
   String get accessLabel => '$contentAccessAge+';
-
   Color get accessBadgeColor {
     switch (contentAccessAge) {
       case 18:
@@ -1038,29 +971,21 @@ class _AgeAccessInfo {
         daysUntilBirthday: 0,
       );
     }
-
     final today = DateTime(now.year, now.month, now.day);
     final birth = DateTime(birthDate.year, birthDate.month, birthDate.day);
     final thisYearBirthday = _safeDate(today.year, birth.month, birth.day);
-
     int age = today.year - birth.year;
-    if (today.isBefore(thisYearBirthday)) {
-      age--;
-    }
-
+    if (today.isBefore(thisYearBirthday)) age--;
     final lastBirthday = today.isBefore(thisYearBirthday)
         ? _safeDate(today.year - 1, birth.month, birth.day)
         : thisYearBirthday;
-
     final nextBirthday = today.isBefore(thisYearBirthday)
         ? thisYearBirthday
         : _safeDate(today.year + 1, birth.month, birth.day);
-
     final totalDays = nextBirthday.difference(lastBirthday).inDays;
     final elapsedDays = today.difference(lastBirthday).inDays;
     final progress = totalDays <= 0 ? 0.0 : elapsedDays / totalDays;
     final daysUntilBirthday = nextBirthday.difference(today).inDays;
-
     return _AgeAccessInfo(
       hasBirthDate: true,
       age: age < 0 ? 0 : age,
@@ -1084,7 +1009,6 @@ class _AgeAccessInfo {
 
 class _LocalScoreRulesSheet extends StatelessWidget {
   const _LocalScoreRulesSheet();
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1140,21 +1064,14 @@ class _LocalScoreRulesSheet extends StatelessWidget {
                 icon: Icons.stacked_line_chart_rounded,
                 title: 'Nota e cor',
                 text:
-                    'Cada subárea tenta chegar em uma nota de 0 a 100. Depois ela vira um estado visual.\n\n'
-                    '• 80 a 100 = Ótimo\n'
-                    '• 60 a 79 = Bom\n'
-                    '• 40 a 59 = Médio\n'
-                    '• 20 a 39 = Ruim\n'
-                    '• 0 a 19 = Crítico\n'
-                    '• Sem dado útil = cinza',
+                    'Cada subárea tenta chegar em uma nota de 0 a 100. Depois ela vira um estado visual.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
                 icon: Icons.quiz_rounded,
                 title: 'Check-in adaptativo',
                 text:
-                    'O sistema escolhe 5 perguntas por dia.\n\n'
-                    'Ele usa perfil, prioridade, histórico recente e rotação para evitar repetição.',
+                    'O sistema escolhe 5 perguntas por dia e usa perfil, prioridade, histórico recente e rotação.',
               ),
               const SizedBox(height: 10),
               const _RuleCard(
@@ -1168,9 +1085,7 @@ class _LocalScoreRulesSheet extends StatelessWidget {
                 icon: Icons.update_rounded,
                 title: 'Persistência e decaimento',
                 text:
-                    'Se a subárea já teve dado, o score fica salvo.\n\n'
-                    'Depois de 14 dias sem atualização, ele começa a cair 5% do valor por dia.\n\n'
-                    'Se morrer até zero, volta para cinza.',
+                    'Depois de 14 dias sem atualização, o score começa a cair 5% do valor por dia.',
               ),
               const SizedBox(height: 14),
               SizedBox(
@@ -1195,11 +1110,9 @@ class _RuleCard extends StatelessWidget {
     required this.title,
     required this.text,
   });
-
   final IconData icon;
   final String title;
   final String text;
-
   @override
   Widget build(BuildContext context) {
     return Container(

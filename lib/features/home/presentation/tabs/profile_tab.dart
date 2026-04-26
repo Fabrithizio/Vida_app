@@ -2,11 +2,9 @@
 // FILE: lib/features/home/presentation/tabs/profile_tab.dart
 //
 // O que faz:
-// - Mostra o perfil do usuário com dados da conta, apelido e onboarding.
-// - Mantém a seção atual de dados pessoais básicos.
-// - Adiciona uma área própria para editar os dados do onboarding que mudam
-//   com o tempo (contexto de vida / rotina / trabalho / finanças etc.).
-// - Salva tudo nas mesmas chaves já usadas no onboarding: "uid:id_da_pergunta".
+// - Mostra o perfil do usuário com dados da conta, apelido e onboarding
+// - Usa só ids mutáveis do sistema novo
+// - Centraliza leitura/salvamento em services auxiliares
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,26 +16,30 @@ import 'package:vida_app/core/onboarding/questions.dart';
 import 'package:vida_app/data/local/session_storage.dart';
 import 'package:vida_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vida_app/features/health_sync/presentation/pages/smart_health_page.dart';
+import 'package:vida_app/features/home/presentation/tabs/profile_mutable_answers_service.dart';
+import 'package:vida_app/features/home/presentation/tabs/profile_mutable_question_ids.dart';
+import 'package:vida_app/features/home/presentation/tabs/profile_mutable_summary_formatter.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
-
   @override
   State<ProfileTab> createState() => _ProfileTabState();
 }
 
 class _ProfileTabState extends State<ProfileTab> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final ProfileMutableAnswersService _mutableService =
+      const ProfileMutableAnswersService();
+  final ProfileMutableSummaryFormatter _summaryFormatter =
+      const ProfileMutableSummaryFormatter();
 
   bool _loading = true;
   User? _user;
   PackageInfo? _pkg;
-
   String _nickname = '-';
   final TextEditingController _nicknameCtrl = TextEditingController();
   bool _savingNickname = false;
 
-  // Onboarding / perfil básico
   String _gender = '-';
   String _focus = '-';
   String _goal = '-';
@@ -46,53 +48,7 @@ class _ProfileTabState extends State<ProfileTab> {
   String _cpfMasked = '-';
   bool _personalDone = false;
   bool _lifeDone = false;
-
-  // Resumo dos dados mutáveis
   Map<String, String> _mutableAnswers = <String, String>{};
-
-  static const List<String> _mutableQuestionIds = <String>[
-    'living_with',
-    'children_count',
-    'family_relationship',
-    'home_routine_load',
-    'study_work',
-    'occupation_type',
-    'work_field',
-    'work_schedule_format',
-    'work_demand_type',
-    'work_satisfaction',
-    'health_self_rating',
-    'health_limitations',
-    'sleep_hours_avg',
-    'exercise_frequency',
-    'last_checkup',
-    'stress_level',
-    'emotional_state',
-    'rest_capacity',
-    'mental_load',
-    'life_demands_capacity',
-    'financial_situation',
-    'income_stability',
-    'financial_main_difficulty',
-    'expense_tracking',
-    'dependents_financial',
-    'social_life',
-    'emotional_support',
-    'romantic_relationship',
-    'friendship_connection',
-    'loneliness',
-    'personal_organization',
-    'home_organization',
-    'screen_time',
-    'phone_usage_purpose',
-    'consistency',
-    'routine_predictability',
-    'routine_main_weight',
-    'focus',
-    'goal',
-    'app_help',
-    'start_preference',
-  ];
 
   @override
   void initState() {
@@ -133,9 +89,7 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   String _formatBr(DateTime d) {
-    return '${d.day.toString().padLeft(2, '0')}/'
-        '${d.month.toString().padLeft(2, '0')}/'
-        '${d.year.toString().padLeft(4, '0')}';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year.toString().padLeft(4, '0')}';
   }
 
   Question? _questionById(String id) {
@@ -147,7 +101,6 @@ class _ProfileTabState extends State<ProfileTab> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-
     final user = _auth.currentUser;
     final pkg = await PackageInfo.fromPlatform();
 
@@ -165,16 +118,13 @@ class _ProfileTabState extends State<ProfileTab> {
     if (user != null) {
       final prefs = await SharedPreferences.getInstance();
       final uid = user.uid;
-
       personalDone = prefs.getBool('personal_done_$uid') ?? false;
       lifeDone = prefs.getBool('life_done_$uid') ?? false;
-
       gender = (prefs.getString('$uid:gender') ?? '').trim();
       focus = (prefs.getString('$uid:focus') ?? '').trim();
       goal = (prefs.getString('$uid:goal') ?? '').trim();
       final dobIso = (prefs.getString('$uid:dob') ?? '').trim();
       final cpf = (prefs.getString('$uid:cpf') ?? '').trim();
-
       final storedNick = await SessionStorage().readNickname(uid);
       final v = (storedNick ?? '').trim();
       nickname = v.isEmpty ? '-' : v;
@@ -187,20 +137,18 @@ class _ProfileTabState extends State<ProfileTab> {
       }
 
       if (cpf.isNotEmpty) cpfMasked = _maskCpf(cpf);
-
       gender = gender.isEmpty ? '-' : gender;
       focus = focus.isEmpty ? '-' : focus;
       goal = goal.isEmpty ? '-' : goal;
 
-      for (final id in _mutableQuestionIds) {
-        final raw = (prefs.getString('$uid:$id') ?? '').trim();
-        if (raw.isEmpty) continue;
-        final q = _questionById(id);
+      final loaded = await _mutableService.loadAll();
+      for (final entry in loaded.entries) {
+        final q = _questionById(entry.key);
         if (q != null && q.type == QuestionType.date) {
-          final dt = _parseIsoDate(raw);
-          mutableAnswers[id] = dt == null ? raw : _formatBr(dt);
+          final dt = _parseIsoDate(entry.value);
+          mutableAnswers[entry.key] = dt == null ? entry.value : _formatBr(dt);
         } else {
-          mutableAnswers[id] = raw;
+          mutableAnswers[entry.key] = entry.value;
         }
       }
     }
@@ -240,7 +188,6 @@ class _ProfileTabState extends State<ProfileTab> {
   Future<void> _saveNickname() async {
     final user = _user;
     if (user == null) return;
-
     final value = _nicknameCtrl.text.trim();
     if (value.isEmpty) {
       ScaffoldMessenger.of(
@@ -248,16 +195,13 @@ class _ProfileTabState extends State<ProfileTab> {
       ).showSnackBar(const SnackBar(content: Text('Digite um nome/apelido.')));
       return;
     }
-
     setState(() => _savingNickname = true);
     await SessionStorage().saveNickname(user.uid, value);
-
     if (!mounted) return;
     setState(() {
       _nickname = value;
       _savingNickname = false;
     });
-
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Apelido salvo.')));
@@ -266,17 +210,13 @@ class _ProfileTabState extends State<ProfileTab> {
   Future<void> _openMutableDataEditor() async {
     final user = _user;
     if (user == null) return;
-
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) =>
             _MutableLifeDataPage(uid: user.uid, initialValues: _mutableAnswers),
       ),
     );
-
-    if (changed == true) {
-      await _load();
-    }
+    if (changed == true) await _load();
   }
 
   Future<void> _signOut() async {
@@ -286,7 +226,6 @@ class _ProfileTabState extends State<ProfileTab> {
     try {
       await _auth.signOut();
     } catch (_) {}
-
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -308,7 +247,6 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     final user = _user;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: _loading
@@ -424,8 +362,7 @@ class _ProfileTabState extends State<ProfileTab> {
                         ),
                       ),
                       subtitle: Text(
-                        'Edite rotina, trabalho, finanças, relações, saúde e outras respostas do onboarding que podem mudar com o tempo.\n\n'
-                        'Preenchidos: $_filledMutableCount de ${_mutableQuestionIds.length}',
+                        'Edite rotina, trabalho, finanças, relações e prioridades atuais.\n\nPreenchidos: $_filledMutableCount de ${profileMutableQuestionIds.length}',
                         style: const TextStyle(color: Colors.white60),
                       ),
                       trailing: const Icon(
@@ -438,27 +375,37 @@ class _ProfileTabState extends State<ProfileTab> {
                     _MutablePreviewRow(
                       icon: Icons.home_rounded,
                       label: 'Casa e família',
-                      value: _mutableAnswers['living_with'] ?? '-',
+                      value: _summaryFormatter.formatValue(
+                        _mutableAnswers['living_with'],
+                      ),
                     ),
                     _MutablePreviewRow(
                       icon: Icons.work_rounded,
                       label: 'Trabalho / estudos',
-                      value: _mutableAnswers['study_work'] ?? '-',
+                      value: _summaryFormatter.formatValue(
+                        _mutableAnswers['study_work'],
+                      ),
                     ),
                     _MutablePreviewRow(
-                      icon: Icons.favorite_rounded,
-                      label: 'Saúde e corpo',
-                      value: _mutableAnswers['health_self_rating'] ?? '-',
+                      icon: Icons.psychology_rounded,
+                      label: 'Mente e carga',
+                      value: _summaryFormatter.formatValue(
+                        _mutableAnswers['stress_level'],
+                      ),
                     ),
                     _MutablePreviewRow(
                       icon: Icons.account_balance_wallet_rounded,
                       label: 'Finanças',
-                      value: _mutableAnswers['financial_situation'] ?? '-',
+                      value: _summaryFormatter.formatValue(
+                        _mutableAnswers['financial_situation'],
+                      ),
                     ),
                     _MutablePreviewRow(
                       icon: Icons.flag_rounded,
                       label: 'Prioridade atual',
-                      value: _mutableAnswers['goal'] ?? '-',
+                      value: _summaryFormatter.formatValue(
+                        _mutableAnswers['goal'],
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Padding(
@@ -607,17 +554,14 @@ class _ProfileTabState extends State<ProfileTab> {
 
 class _HeaderCard extends StatelessWidget {
   const _HeaderCard({required this.user, required this.nickname});
-
   final User? user;
   final String nickname;
-
   @override
   Widget build(BuildContext context) {
     final photo = user?.photoURL;
     final title = (nickname.trim().isEmpty || nickname == '-')
         ? (user?.displayName ?? 'Usuário')
         : nickname;
-
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -666,27 +610,21 @@ class _HeaderCard extends StatelessWidget {
 
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle({required this.title});
-
   final String title;
-
   @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w900,
-        fontSize: 14,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Text(
+    title,
+    style: const TextStyle(
+      color: Colors.white,
+      fontWeight: FontWeight.w900,
+      fontSize: 14,
+    ),
+  );
 }
 
 class _InfoCard extends StatelessWidget {
   const _InfoCard({required this.children});
-
   final List<Widget> children;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -702,11 +640,9 @@ class _InfoCard extends StatelessWidget {
 
 class _InfoRow extends StatelessWidget {
   const _InfoRow({required this.label, required this.value, this.trailing});
-
   final String label;
   final String value;
   final Widget? trailing;
-
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -734,11 +670,9 @@ class _MutablePreviewRow extends StatelessWidget {
     required this.label,
     required this.value,
   });
-
   final IconData icon;
   final String label;
   final String value;
-
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -764,10 +698,8 @@ class _MutablePreviewRow extends StatelessWidget {
 
 class _MutableLifeDataPage extends StatefulWidget {
   const _MutableLifeDataPage({required this.uid, required this.initialValues});
-
   final String uid;
   final Map<String, String> initialValues;
-
   @override
   State<_MutableLifeDataPage> createState() => _MutableLifeDataPageState();
 }
@@ -775,50 +707,8 @@ class _MutableLifeDataPage extends StatefulWidget {
 class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
   late final Map<String, String> _values;
   bool _saving = false;
-
-  static const List<String> _orderedIds = <String>[
-    'living_with',
-    'children_count',
-    'family_relationship',
-    'home_routine_load',
-    'study_work',
-    'occupation_type',
-    'work_field',
-    'work_schedule_format',
-    'work_demand_type',
-    'work_satisfaction',
-    'health_self_rating',
-    'health_limitations',
-    'sleep_hours_avg',
-    'exercise_frequency',
-    'last_checkup',
-    'stress_level',
-    'emotional_state',
-    'rest_capacity',
-    'mental_load',
-    'life_demands_capacity',
-    'financial_situation',
-    'income_stability',
-    'financial_main_difficulty',
-    'expense_tracking',
-    'dependents_financial',
-    'social_life',
-    'emotional_support',
-    'romantic_relationship',
-    'friendship_connection',
-    'loneliness',
-    'personal_organization',
-    'home_organization',
-    'screen_time',
-    'phone_usage_purpose',
-    'consistency',
-    'routine_predictability',
-    'routine_main_weight',
-    'focus',
-    'goal',
-    'app_help',
-    'start_preference',
-  ];
+  final ProfileMutableAnswersService _mutableService =
+      const ProfileMutableAnswersService();
 
   @override
   void initState() {
@@ -828,7 +718,7 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
 
   List<Question> get _questions {
     final map = <String, Question>{for (final q in lifeQuestions) q.id: q};
-    return _orderedIds
+    return profileMutableQuestionIds
         .map((id) => map[id])
         .whereType<Question>()
         .toList(growable: false);
@@ -907,7 +797,6 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
         );
       },
     );
-
     if (result == null) return;
     setState(() {
       if (result == '__clear__') {
@@ -920,7 +809,6 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
 
   Future<void> _editDate(Question q) async {
     final controller = TextEditingController(text: _values[q.id] ?? '');
-
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
@@ -961,15 +849,12 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
         );
       },
     );
-
     controller.dispose();
-
     if (result == null) return;
     if (result == '__clear__') {
       setState(() => _values.remove(q.id));
       return;
     }
-
     final iso = _brToIso(result);
     if (iso == null) {
       if (!mounted) return;
@@ -978,10 +863,7 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
       );
       return;
     }
-
-    setState(() {
-      _values[q.id] = _isoToBr(iso);
-    });
+    setState(() => _values[q.id] = _isoToBr(iso));
   }
 
   String? _brToIso(String raw) {
@@ -993,12 +875,8 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
     if (day == null || month == null || year == null) return null;
     try {
       final dt = DateTime(year, month, day);
-      if (dt.year != year || dt.month != month || dt.day != day) {
-        return null;
-      }
-      return '${dt.year.toString().padLeft(4, '0')}-'
-          '${dt.month.toString().padLeft(2, '0')}-'
-          '${dt.day.toString().padLeft(2, '0')}';
+      if (dt.year != year || dt.month != month || dt.day != day) return null;
+      return '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
     } catch (_) {
       return null;
     }
@@ -1007,9 +885,7 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
   String _isoToBr(String iso) {
     final dt = DateTime.tryParse(iso);
     if (dt == null) return iso;
-    return '${dt.day.toString().padLeft(2, '0')}/'
-        '${dt.month.toString().padLeft(2, '0')}/'
-        '${dt.year.toString().padLeft(4, '0')}';
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year.toString().padLeft(4, '0')}';
   }
 
   String _storeValue(Question q) {
@@ -1024,18 +900,18 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
 
   Future<void> _saveAll() async {
     setState(() => _saving = true);
-    final prefs = await SharedPreferences.getInstance();
-
+    final map = <String, String>{};
     for (final q in _questions) {
-      final key = '${widget.uid}:${q.id}';
       final value = _storeValue(q);
-      if (value.isEmpty) {
-        await prefs.remove(key);
-      } else {
-        await prefs.setString(key, value);
+      if (value.isNotEmpty) map[q.id] = value;
+    }
+    await _mutableService.saveMany(map);
+    final prefs = await SharedPreferences.getInstance();
+    for (final q in _questions) {
+      if (!map.containsKey(q.id)) {
+        await prefs.remove('${widget.uid}:${q.id}');
       }
     }
-
     if (!mounted) return;
     setState(() => _saving = false);
     Navigator.of(context).pop(true);
@@ -1053,7 +929,6 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
   @override
   Widget build(BuildContext context) {
     final grouped = _groupedQuestions();
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -1072,7 +947,7 @@ class _MutableLifeDataPageState extends State<_MutableLifeDataPage> {
               border: Border.all(color: Colors.white12),
             ),
             child: const Text(
-              'Aqui você atualiza as respostas do onboarding que podem mudar com o tempo, como rotina, trabalho, finanças, relações, saúde e prioridades atuais.',
+              'Aqui você atualiza as respostas do onboarding que podem mudar com o tempo, como rotina, trabalho, finanças, relações e prioridades atuais.',
               style: TextStyle(color: Colors.white70, height: 1.4),
             ),
           ),
@@ -1143,11 +1018,9 @@ class _EditableQuestionTile extends StatelessWidget {
     required this.value,
     required this.onTap,
   });
-
   final Question question;
   final String value;
   final VoidCallback onTap;
-
   @override
   Widget build(BuildContext context) {
     return ListTile(

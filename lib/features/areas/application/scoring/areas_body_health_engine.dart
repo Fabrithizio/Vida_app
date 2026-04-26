@@ -5,6 +5,10 @@
 // - Calcula itens da área Corpo & Saúde usando Corpo & Saúde + Health Connect
 // - Mantém check-ups, sono, movimento, hidratação, alimentação e IMC
 // - Calcula energia por sinais reais, sem depender do check-in diário
+//
+// Ajustes desta versão:
+// - alimentação e hidratação usam média móvel dos últimos 14 dias
+// - isso cria persistência real e evita virar cinza no dia seguinte
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -35,7 +39,11 @@ class AreasBodyHealthEngine {
     getAssessment,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = (prefs.getString('$uid:last_checkup') ?? '').trim();
+    final raw =
+        ((prefs.getString('$uid:last_checkup') ??
+                prefs.getString('${uid}:last_checkup') ??
+                '')
+            .trim());
     if (raw.isEmpty) return getAssessment('body_health', 'checkups');
     final date = _parseIsoDate(raw);
     if (date == null) return getAssessment('body_health', 'checkups');
@@ -47,34 +55,44 @@ class AreasBodyHealthEngine {
     late final int score;
     late final AreaStatus status;
     late final String action;
+    late final String reason;
 
     if (monthsApprox <= 8.0) {
       score = 92;
       status = AreaStatus.excellent;
+      reason =
+          'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Ótimo. Continue mantendo esse cuidado em dia.';
     } else if (monthsApprox <= 12.0) {
       score = 72;
       status = AreaStatus.good;
+      reason =
+          'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Bom. Só fique atento para não deixar passar muito mais tempo.';
     } else if (monthsApprox <= 14.4) {
       score = 50;
       status = AreaStatus.medium;
+      reason =
+          'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Já vale começar a se organizar para atualizar esse cuidado.';
     } else if (monthsApprox < 24.0) {
       score = 30;
       status = AreaStatus.poor;
+      reason =
+          'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Seu check-up está atrasado. Vale priorizar isso.';
     } else {
       score = 10;
       status = AreaStatus.critical;
+      reason =
+          'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.';
       action = 'Faz muito tempo sem check-up. Isso virou prioridade.';
     }
 
     return AreaAssessment(
       status: status,
       score: score,
-      reason:
-          'Seu último check-up foi há cerca de ${monthsApprox.toStringAsFixed(1)} meses.',
+      reason: reason,
       source: AreaDataSource.manual,
       lastUpdatedAt: date,
       recommendedAction: action,
@@ -282,44 +300,78 @@ class AreasBodyHealthEngine {
   Future<AreaAssessment?> computedNutrition({
     required Future<void> Function(String areaId) onAreaUpdated,
   }) async {
-    final entry = await _bodyCare.loadDay(DateTime.now());
-    if (entry.food == null) return null;
+    final recent = await _bodyCare.loadRecentEntries(days: 14);
+    final values = recent
+        .map((e) => e.value.food)
+        .whereType<int>()
+        .map((v) => _scoreFromBodyCareScale(v).toDouble())
+        .toList();
 
+    if (values.isEmpty) return null;
+
+    final avg = values.reduce((a, b) => a + b) / values.length;
+    final lastUpdatedAt = recent
+        .map((e) => e.value.updatedAt)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (latest, date) {
+          if (latest == null) return date;
+          return date.isAfter(latest) ? date : latest;
+        });
+
+    final score = avg.round().clamp(0, 100);
     await onAreaUpdated('body_health');
-    final score = _scoreFromBodyCareScale(entry.food!);
+
     return AreaAssessment(
       status: _statusFromScore(score),
       score: score,
-      reason: 'Sua alimentação veio do módulo Corpo & Saúde.',
+      reason:
+          'Sua alimentação está usando a média móvel dos últimos ${values.length} registros dentro da janela de 14 dias.',
       source: AreaDataSource.mixed,
-      lastUpdatedAt: entry.updatedAt,
+      lastUpdatedAt: lastUpdatedAt,
       recommendedAction: score >= 80
           ? 'Boa base alimentar.'
           : 'Vale melhorar a constância da alimentação.',
       details:
-          'A alimentação continua valendo, mas com menor confiança que dado automático.',
+          'A pontuação de alimentação usa a média dos últimos 14 dias registrados no módulo Corpo & Saúde, para manter persistência real em vez de sumir no dia seguinte.',
     );
   }
 
   Future<AreaAssessment?> computedHydration({
     required Future<void> Function(String areaId) onAreaUpdated,
   }) async {
-    final entry = await _bodyCare.loadDay(DateTime.now());
-    if (entry.water == null) return null;
+    final recent = await _bodyCare.loadRecentEntries(days: 14);
+    final values = recent
+        .map((e) => e.value.water)
+        .whereType<int>()
+        .map((v) => _scoreFromBodyCareScale(v).toDouble())
+        .toList();
 
+    if (values.isEmpty) return null;
+
+    final avg = values.reduce((a, b) => a + b) / values.length;
+    final lastUpdatedAt = recent
+        .map((e) => e.value.updatedAt)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (latest, date) {
+          if (latest == null) return date;
+          return date.isAfter(latest) ? date : latest;
+        });
+
+    final score = avg.round().clamp(0, 100);
     await onAreaUpdated('body_health');
-    final score = _scoreFromBodyCareScale(entry.water!);
+
     return AreaAssessment(
       status: _statusFromScore(score),
       score: score,
-      reason: 'Sua hidratação veio do módulo Corpo & Saúde.',
+      reason:
+          'Sua hidratação está usando a média móvel dos últimos ${values.length} registros dentro da janela de 14 dias.',
       source: AreaDataSource.mixed,
-      lastUpdatedAt: entry.updatedAt,
+      lastUpdatedAt: lastUpdatedAt,
       recommendedAction: score >= 80
           ? 'Seu cuidado com água está bom.'
           : 'Vale distribuir mais água ao longo do dia.',
       details:
-          'A hidratação continua valendo, mas depende do registro do usuário.',
+          'A pontuação de hidratação usa a média dos últimos 14 dias registrados no módulo Corpo & Saúde, para manter persistência real e não ficar cinza no dia seguinte.',
     );
   }
 
@@ -429,8 +481,8 @@ class AreasBodyHealthEngine {
   AreaStatus _statusFromScore(int score) {
     if (score >= 85) return AreaStatus.excellent;
     if (score >= 70) return AreaStatus.good;
-    if (score >= 50) return AreaStatus.medium;
-    if (score >= 25) return AreaStatus.poor;
+    if (score >= 45) return AreaStatus.medium;
+    if (score >= 20) return AreaStatus.poor;
     return AreaStatus.critical;
   }
 }

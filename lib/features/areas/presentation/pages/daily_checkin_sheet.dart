@@ -6,6 +6,10 @@
 // - Mostra uma pergunta por vez
 // - Exibe o perfil vivo atual do usuário
 // - Mantém o salvamento pelo DailyCheckinService
+//
+// Ajustes desta versão:
+// - ao responder a última pergunta, o sheet fecha sozinho
+// - mantém navegação anterior/próxima para revisar respostas
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -93,6 +97,21 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
         }
       }
     });
+
+    if (!mounted) return;
+
+    if (done) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    if (isLast && nextPending == -1 && _answered >= _questions.length) {
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    }
   }
 
   void _goPrev() {
@@ -203,13 +222,19 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
               ],
             ),
             const SizedBox(height: 16),
-            _QuestionCard(
-              question: question,
-              accent: accent,
-              selectedValue: answer,
-              options: options,
-              saving: _saving,
-              onSelect: _answerCurrent,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: _QuestionCard(
+                key: ValueKey<String>(question.id),
+                question: question,
+                accent: accent,
+                selectedValue: answer,
+                options: options,
+                saving: _saving,
+                onSelect: _answerCurrent,
+              ),
             ),
             const SizedBox(height: 16),
             Row(
@@ -244,6 +269,7 @@ class _DailyCheckinSheetState extends State<DailyCheckinSheet> {
 
 class _QuestionCard extends StatelessWidget {
   const _QuestionCard({
+    super.key,
     required this.question,
     required this.accent,
     required this.selectedValue,
@@ -326,6 +352,7 @@ class _AnswerCard extends StatelessWidget {
     required this.disabled,
     required this.onTap,
   });
+
   final String text;
   final Color accent;
   final bool selected;
@@ -413,9 +440,11 @@ class _TopBadge extends StatelessWidget {
     required this.text,
     required this.color,
   });
+
   final IconData icon;
   final String text;
   final Color color;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -446,7 +475,9 @@ class _TopBadge extends StatelessWidget {
 
 class _ProfileBadge extends StatelessWidget {
   const _ProfileBadge({required this.label});
+
   final String label;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -476,11 +507,13 @@ class _NavButton extends StatelessWidget {
     this.filled = false,
     this.color = Colors.white,
   });
+
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
   final bool filled;
   final Color color;
+
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
@@ -555,6 +588,6 @@ IconData _iconForArea(String areaId) {
     case 'purpose_values':
       return Icons.autorenew_rounded;
     default:
-      return Icons.stars_rounded;
+      return Icons.auto_awesome_rounded;
   }
 }
