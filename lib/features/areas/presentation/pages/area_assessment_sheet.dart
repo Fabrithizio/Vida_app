@@ -1,5 +1,5 @@
 // ============================================================================
-// FILE: lib/features/home/presentation/tabs/areas/area_assessment_sheet.dart
+// FILE: lib/features/areas/presentation/pages/area_assessment_sheet.dart
 //
 // O que esse arquivo faz:
 // - Abre o bottom sheet para o usuário escolher o status manual de uma subárea
