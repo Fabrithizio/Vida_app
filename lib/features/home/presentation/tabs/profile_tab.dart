@@ -4,15 +4,15 @@
 // O que faz:
 // - Mostra o perfil do usuário com visual mais alinhado ao app atual
 // - Centraliza identidade, contexto atual, perfil vivo, saúde, conta e app
-// - Mantém edição do apelido e dos dados mutáveis do onboarding
+// - Mantém edição dos dados mutáveis do onboarding
+// - Agora também permite trocar o apelido uma única vez
 // - Prepara melhor a tela para crescer com Play Store e sync futuro
 //
 // Ajustes desta versão:
-// - topo mais vivo e menos técnico
+// - topo reage de forma sutil ao estado geral do Areas
 // - destaque para perfil vivo e status de saúde
-// - contexto atual mais claro e útil
-// - detalhes técnicos rebaixados para a parte final
-// - mantém compatibilidade com os services já usados no projeto
+// - apelido do app pode ser alterado uma vez por toque na seção da conta
+// - detalhes técnicos continuam presentes, mas menos protagonistas
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,7 +22,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vida_app/core/onboarding/questions.dart';
 import 'package:vida_app/data/local/session_storage.dart';
+import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/application/profile/live_user_profile_bridge.dart';
+import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
 import 'package:vida_app/features/auth/presentation/pages/login_page.dart';
 import 'package:vida_app/features/health_sync/health_sync_service.dart';
@@ -47,6 +49,9 @@ class _ProfileTabState extends State<ProfileTab> {
       const ProfileMutableSummaryFormatter();
   final LiveUserProfileBridge _profileBridge = LiveUserProfileBridge();
   final SmartHealthSyncService _smartHealthService = SmartHealthSyncService();
+  final AreasStore _areasStore = AreasStore.consolidated();
+
+  static const String _nicknameChangedOnceKey = 'profile:nickname_changed_once';
 
   bool _loading = true;
 
@@ -55,8 +60,6 @@ class _ProfileTabState extends State<ProfileTab> {
   SmartHealthSnapshot? _healthSnapshot;
 
   String _nickname = '-';
-  final TextEditingController _nicknameCtrl = TextEditingController();
-
   String _gender = '-';
   String _focus = '-';
   String _goal = '-';
@@ -65,6 +68,9 @@ class _ProfileTabState extends State<ProfileTab> {
   String _cpfMasked = '-';
   bool _personalDone = false;
   bool _lifeDone = false;
+  bool _nicknameChangedOnce = false;
+
+  int? _areasAverageScore;
 
   String _liveProfileLabel = 'Em adaptação';
   String _liveProfileReason =
@@ -78,12 +84,6 @@ class _ProfileTabState extends State<ProfileTab> {
   void initState() {
     super.initState();
     _load();
-  }
-
-  @override
-  void dispose() {
-    _nicknameCtrl.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -101,9 +101,11 @@ class _ProfileTabState extends State<ProfileTab> {
     String cpfMasked = '-';
     bool personalDone = false;
     bool lifeDone = false;
+    bool nicknameChangedOnce = false;
     final mutableAnswers = <String, String>{};
 
     SmartHealthSnapshot? healthSnapshot;
+    int? areasAverageScore;
     String liveProfileLabel = 'Em adaptação';
     String liveProfileReason =
         'O app ainda está organizando seus sinais mais recentes.';
@@ -116,6 +118,8 @@ class _ProfileTabState extends State<ProfileTab> {
 
       personalDone = prefs.getBool('personal_done_$uid') ?? false;
       lifeDone = prefs.getBool('life_done_$uid') ?? false;
+      nicknameChangedOnce =
+          prefs.getBool('$uid:$_nicknameChangedOnceKey') ?? false;
 
       gender = (prefs.getString('$uid:gender') ?? '').trim();
       focus = (prefs.getString('$uid:focus') ?? '').trim();
@@ -160,6 +164,7 @@ class _ProfileTabState extends State<ProfileTab> {
       }
 
       healthSnapshot = await _smartHealthService.readSnapshot(uid);
+      areasAverageScore = await _computeAreasAverageScore();
 
       try {
         liveProfileLabel = await _profileBridge.currentLabel();
@@ -178,7 +183,6 @@ class _ProfileTabState extends State<ProfileTab> {
       _user = user;
       _pkg = pkg;
       _nickname = nickname;
-      _nicknameCtrl.text = nickname == '-' ? '' : nickname;
       _gender = gender;
       _focus = focus;
       _goal = goal;
@@ -187,14 +191,46 @@ class _ProfileTabState extends State<ProfileTab> {
       _cpfMasked = cpfMasked;
       _personalDone = personalDone;
       _lifeDone = lifeDone;
+      _nicknameChangedOnce = nicknameChangedOnce;
       _mutableAnswers = mutableAnswers;
       _healthSnapshot = healthSnapshot;
+      _areasAverageScore = areasAverageScore;
       _liveProfileLabel = liveProfileLabel;
       _liveProfileReason = liveProfileReason;
       _liveTags = liveTags;
       _livePrimaryAreas = livePrimaryAreas;
       _loading = false;
     });
+  }
+
+  Future<int?> _computeAreasAverageScore() async {
+    try {
+      final defs = AreasCatalog.all();
+      if (defs.isEmpty) return null;
+
+      final includeWomenCycle = _sexForJourney() == UserSex.female;
+      var sum = 0;
+      var count = 0;
+
+      for (final def in defs) {
+        final items = AreasCatalog.itemsForArea(
+          def.id,
+          includeWomenCycle: includeWomenCycle,
+        );
+        final score = await _areasStore.score(
+          def.id,
+          items.map((e) => e.id).toList(),
+        );
+        if (score == null) continue;
+        sum += score;
+        count++;
+      }
+
+      if (count == 0) return null;
+      return (sum / count).round().clamp(0, 100);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _refreshUser() async {
@@ -206,6 +242,91 @@ class _ProfileTabState extends State<ProfileTab> {
 
   Future<void> _copyToClipboard(String text) async {
     _showSnack('Copie manualmente: $text');
+  }
+
+  Future<void> _changeNicknameOnce() async {
+    final user = _user;
+    if (user == null) return;
+
+    if (_nicknameChangedOnce) {
+      _showSnack('Você já usou sua alteração única de apelido.');
+      return;
+    }
+
+    String draftValue = _nickname == '-' ? '' : _nickname;
+
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF111111),
+          title: const Text(
+            'Alterar apelido do app',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Você só poderá alterar esse apelido uma vez. Escolha com calma.',
+                style: TextStyle(color: Colors.white70, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: draftValue,
+                autofocus: true,
+                maxLength: 24,
+                style: const TextStyle(color: Colors.white),
+                onChanged: (value) => draftValue = value,
+                decoration: const InputDecoration(
+                  hintText: 'Digite seu novo apelido',
+                  hintStyle: TextStyle(color: Colors.white38),
+                  counterStyle: TextStyle(color: Colors.white38),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white24),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.green),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(draftValue.trim()),
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+
+    final value = result.trim();
+    if (value.isEmpty) {
+      _showSnack('Digite um apelido válido.');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await SessionStorage().saveNickname(user.uid, value);
+    await prefs.setBool('${user.uid}:$_nicknameChangedOnceKey', true);
+
+    if (!mounted) return;
+
+    setState(() {
+      _nickname = value;
+      _nicknameChangedOnce = true;
+    });
+
+    _showSnack('Apelido atualizado.');
   }
 
   Future<void> _openMutableDataEditor() async {
@@ -366,6 +487,26 @@ class _ProfileTabState extends State<ProfileTab> {
     return const Color(0xFF94A3B8);
   }
 
+  Color _heroToneColor() {
+    final score = _areasAverageScore;
+    if (score == null) return _liveProfileColor();
+    if (score >= 80) return const Color(0xFF22C55E);
+    if (score >= 60) return const Color(0xFFF59E0B);
+    if (score >= 40) return const Color(0xFFFB923C);
+    if (score >= 20) return const Color(0xFFEF4444);
+    return const Color(0xFFB91C1C);
+  }
+
+  String _areasStatusLabel() {
+    final score = _areasAverageScore;
+    if (score == null) return 'Sem leitura';
+    if (score >= 80) return 'Ótimo';
+    if (score >= 60) return 'Bom';
+    if (score >= 40) return 'Médio';
+    if (score >= 20) return 'Ruim';
+    return 'Crítico';
+  }
+
   String _healthLabel() {
     final snapshot = _healthSnapshot;
     if (snapshot == null) return 'Sem leitura';
@@ -426,6 +567,9 @@ class _ProfileTabState extends State<ProfileTab> {
                   healthLabel: _healthLabel(),
                   liveProfileColor: _liveProfileColor(),
                   healthColor: _healthColor(),
+                  heroToneColor: _heroToneColor(),
+                  areasStatusLabel: _areasStatusLabel(),
+                  areasAverageScore: _areasAverageScore,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -449,10 +593,12 @@ class _ProfileTabState extends State<ProfileTab> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _MiniStatCard(
-                        icon: Icons.watch_rounded,
-                        label: 'Saúde',
-                        value: _healthLabel(),
-                        valueColor: _healthColor(),
+                        icon: Icons.dashboard_rounded,
+                        label: 'Areas',
+                        value: _areasAverageScore == null
+                            ? '—'
+                            : '${_areasAverageScore!}',
+                        valueColor: _heroToneColor(),
                       ),
                     ),
                   ],
@@ -697,6 +843,26 @@ class _ProfileTabState extends State<ProfileTab> {
                           icon: Icons.badge_rounded,
                           label: 'Apelido no app',
                           value: _nickname,
+                          trailing: TextButton(
+                            onPressed: _changeNicknameOnce,
+                            child: Text(
+                              _nicknameChangedOnce ? 'Usado' : 'Alterar',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _nicknameChangedOnce
+                                ? 'Você já usou sua alteração única de apelido.'
+                                : 'Você pode alterar esse apelido uma única vez.',
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
+                          ),
                         ),
                         const Divider(height: 18, color: Colors.white12),
                         _RichInfoRow(
@@ -848,6 +1014,9 @@ class _ProfileHeroCard extends StatelessWidget {
     required this.healthLabel,
     required this.liveProfileColor,
     required this.healthColor,
+    required this.heroToneColor,
+    required this.areasStatusLabel,
+    required this.areasAverageScore,
   });
 
   final User? user;
@@ -857,6 +1026,9 @@ class _ProfileHeroCard extends StatelessWidget {
   final String healthLabel;
   final Color liveProfileColor;
   final Color healthColor;
+  final Color heroToneColor;
+  final String areasStatusLabel;
+  final int? areasAverageScore;
 
   @override
   Widget build(BuildContext context) {
@@ -872,7 +1044,8 @@ class _ProfileHeroCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            liveProfileColor.withValues(alpha: 0.26),
+            heroToneColor.withValues(alpha: 0.18),
+            heroToneColor.withValues(alpha: 0.08),
             const Color(0xFF0F0F1A),
           ],
           begin: Alignment.topLeft,
@@ -882,7 +1055,7 @@ class _ProfileHeroCard extends StatelessWidget {
         border: Border.all(color: Colors.white12),
         boxShadow: [
           BoxShadow(
-            color: liveProfileColor.withValues(alpha: 0.12),
+            color: heroToneColor.withValues(alpha: 0.08),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -939,6 +1112,12 @@ class _ProfileHeroCard extends StatelessWidget {
                         _SoftPill(
                           label: 'Saúde: $healthLabel',
                           color: healthColor,
+                        ),
+                        _SoftPill(
+                          label: areasAverageScore == null
+                              ? 'Areas: $areasStatusLabel'
+                              : 'Areas: $areasStatusLabel (${areasAverageScore!})',
+                          color: heroToneColor,
                         ),
                       ],
                     ),
