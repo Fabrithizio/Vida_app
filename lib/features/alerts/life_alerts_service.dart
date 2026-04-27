@@ -7,8 +7,13 @@
 // - Prioriza o que realmente merece atenção do usuário
 // - Lê radar, corpo em dia, jornada, finanças, check-in, timeline e metas
 // - Remove alertas automaticamente quando o estado real já foi resolvido
-// - Agora integra a nova central de objetivos com lembretes, atrasos,
-//   tarefas puxadas para o Meu Dia, aguardando alguém e recorrência
+// - Agora integra saúde desconectada / sem sync recente e aniversário
+//
+// Ajustes importantes desta versão:
+// - leitura contextual por readKey
+// - novos alertas: check-in pendente, saúde desconectada/stale, aniversário
+// - ids/contextos mais inteligentes para o alerta poder voltar quando fizer
+//   sentido de novo
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -20,6 +25,7 @@ import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/body_care/body_care_service.dart';
 import 'package:vida_app/features/goals/goals_alerts_bridge.dart';
+import 'package:vida_app/features/health_sync/health_sync_service.dart';
 import 'package:vida_app/features/timeline/timeline_store.dart';
 
 class LifeAlertsService {
@@ -30,12 +36,14 @@ class LifeAlertsService {
     AlertsCenterRepository? repository,
     BodyCareService? bodyCareService,
     GoalsAlertsBridge? goalsAlertsBridge,
+    SmartHealthSyncService? smartHealthService,
   }) : _areasStore = areasStore,
        _dailyCheckinService = dailyCheckinService,
        _timelineStore = timelineStore,
        _repository = repository ?? AlertsCenterRepository(),
        _bodyCareService = bodyCareService ?? BodyCareService(),
-       _goalsAlertsBridge = goalsAlertsBridge ?? GoalsAlertsBridge();
+       _goalsAlertsBridge = goalsAlertsBridge ?? GoalsAlertsBridge(),
+       _smartHealthService = smartHealthService ?? SmartHealthSyncService();
 
   final AreasStore _areasStore;
   final DailyCheckinService _dailyCheckinService;
@@ -43,6 +51,7 @@ class LifeAlertsService {
   final AlertsCenterRepository _repository;
   final BodyCareService _bodyCareService;
   final GoalsAlertsBridge _goalsAlertsBridge;
+  final SmartHealthSyncService _smartHealthService;
 
   Future<List<LifeAlert>> generate({
     required DateTime now,
@@ -56,6 +65,8 @@ class LifeAlertsService {
     final prefs = await SharedPreferences.getInstance();
     final uid = user.uid;
 
+    alerts.addAll(await _buildBirthdayAlerts(now, prefs, uid));
+    alerts.addAll(await _buildDailyCheckinPendingAlerts(now));
     alerts.addAll(await _buildCheckupAlerts(now, prefs, uid));
     alerts.addAll(await _buildBadCheckinAlerts(now));
     alerts.addAll(await _buildStaleAreaAlerts(now));
@@ -72,6 +83,7 @@ class LifeAlertsService {
     alerts.addAll(await _buildAlwaysOnAlerts(now, prefs, uid));
     alerts.addAll(await _buildBodyCareAlerts(now));
     alerts.addAll(await _buildGoalsAlerts(now));
+    alerts.addAll(await _buildHealthAlerts(now, uid));
     alerts.addAll(await _buildLifeJourneyAlerts(now, prefs, uid));
 
     alerts.sort((a, b) {
@@ -82,11 +94,12 @@ class LifeAlertsService {
       return b.createdAt.compareTo(a.createdAt);
     });
 
-    final readIds = await _repository.loadReadIds();
+    final readKeys = await _repository.loadReadKeys();
     return alerts
         .map(
-          (item) =>
-              readIds.contains(item.id) ? item.copyWith(isRead: true) : item,
+          (item) => readKeys.contains(item.effectiveReadKey)
+              ? item.copyWith(isRead: true)
+              : item,
         )
         .toList();
   }
@@ -104,7 +117,10 @@ class LifeAlertsService {
     return alerts.where((item) => !item.isRead).length;
   }
 
-  Future<void> markAsRead(String id) => _repository.markAsRead(id);
+  Future<void> markAsRead(String key) => _repository.markAsReadKey(key);
+
+  Future<void> markAlertAsRead(LifeAlert alert) =>
+      _repository.markAsReadAlert(alert);
 
   Future<void> markAllAsRead({
     required DateTime now,
@@ -117,6 +133,83 @@ class LifeAlertsService {
       monthSpending: monthSpending,
     );
     await _repository.markAllAsRead(alerts);
+  }
+
+  Future<List<LifeAlert>> _buildBirthdayAlerts(
+    DateTime now,
+    SharedPreferences prefs,
+    String uid,
+  ) async {
+    final alerts = <LifeAlert>[];
+    final birthRaw =
+        (prefs.getString('birth_date_$uid') ??
+                prefs.getString('$uid:birthDate') ??
+                prefs.getString('$uid:birthdate') ??
+                prefs.getString('$uid:dateOfBirth') ??
+                prefs.getString('$uid:dob') ??
+                '')
+            .trim();
+
+    if (birthRaw.isEmpty) return alerts;
+    final birthDate = DateTime.tryParse(birthRaw);
+    if (birthDate == null) return alerts;
+
+    if (birthDate.day != now.day || birthDate.month != now.month) {
+      return alerts;
+    }
+
+    final age = _ageAt(birthDate, now);
+    final contextKey =
+        'birthday_${now.year}_${birthDate.day}_${birthDate.month}';
+
+    alerts.add(
+      LifeAlert(
+        id: contextKey,
+        readKey: contextKey,
+        type: LifeAlertType.birthdayCelebration,
+        title: 'Hoje é seu dia 🎉',
+        message:
+            'Parabéns${age > 0 ? ' pelos $age anos' : ''}! A Linha da Vida e o resto do app podem ter coisas novas para você hoje.',
+        priority: LifeAlertPriority.high,
+        createdAt: now,
+        actionLabel: 'Abrir Linha da Vida',
+        routeHint: 'life_journey',
+        metadata: {
+          'year': now.year.toString(),
+          'birthdayDay': birthDate.day.toString(),
+          'birthdayMonth': birthDate.month.toString(),
+          'age': age.toString(),
+        },
+      ),
+    );
+
+    return alerts;
+  }
+
+  Future<List<LifeAlert>> _buildDailyCheckinPendingAlerts(DateTime now) async {
+    final alerts = <LifeAlert>[];
+    final day = DateTime(now.year, now.month, now.day);
+    final canUse = await _dailyCheckinService.canUseAreas(day);
+    if (canUse) return alerts;
+
+    final key =
+        'daily_checkin_pending_${day.toIso8601String().split('T').first}';
+    alerts.add(
+      LifeAlert(
+        id: key,
+        readKey: key,
+        type: LifeAlertType.dailyCheckinPending,
+        title: 'Check-in do dia pendente',
+        message:
+            'Seu check-in de hoje ainda não foi fechado. Responder isso ajuda o app a ler melhor seu momento atual.',
+        priority: LifeAlertPriority.high,
+        createdAt: now,
+        actionLabel: 'Abrir check-in',
+        routeHint: 'areas',
+      ),
+    );
+
+    return alerts;
   }
 
   Future<List<LifeAlert>> _buildCheckupAlerts(
@@ -137,15 +230,18 @@ class LifeAlertsService {
 
     final months = _monthsBetween(lastCheckup, now);
     final days = now.difference(lastCheckup).inDays;
+    final iso = raw.split('T').first;
 
     if (months >= 12) {
+      final key = 'checkup_overdue_critical_$iso';
       alerts.add(
         LifeAlert(
-          id: 'checkup_overdue_critical',
+          id: key,
+          readKey: key,
           type: LifeAlertType.overdueCheckup,
           title: 'Check-up atrasado',
           message:
-              'Já faz $days dias desde o último check-up.\nVale marcar uma revisão.',
+              'Já faz $days dias desde o último check-up. Vale marcar uma revisão.',
           priority: LifeAlertPriority.critical,
           createdAt: now,
           areaId: 'body_health',
@@ -155,13 +251,15 @@ class LifeAlertsService {
         ),
       );
     } else if (months >= 6) {
+      final key = 'checkup_overdue_attention_$iso';
       alerts.add(
         LifeAlert(
-          id: 'checkup_overdue_attention',
+          id: key,
+          readKey: key,
           type: LifeAlertType.overdueCheckup,
           title: 'Check-up precisa de atenção',
           message:
-              'Já faz $days dias desde o último check-up.\nFique atento às datas.',
+              'Já faz $days dias desde o último check-up. Fique atento às datas.',
           priority: LifeAlertPriority.medium,
           createdAt: now,
           areaId: 'body_health',
@@ -209,13 +307,16 @@ class LifeAlertsService {
     }
 
     if (badDays >= 3) {
+      final key =
+          'bad_checkin_streak_${DateTime(now.year, now.month, now.day).toIso8601String().split('T').first}_$badDays';
       alerts.add(
         LifeAlert(
-          id: 'bad_checkin_streak',
+          id: key,
+          readKey: key,
           type: LifeAlertType.badCheckinStreak,
           title: 'Vários dias difíceis seguidos',
           message:
-              'Seu check-in mostrou sinais ruins por $badDays dias seguidos.\nVale revisar suas áreas prioritárias.',
+              'Seu check-in mostrou sinais ruins por $badDays dias seguidos. Vale revisar suas áreas prioritárias.',
           priority: LifeAlertPriority.high,
           createdAt: now,
           actionLabel: 'Abrir check-in',
@@ -246,12 +347,21 @@ class LifeAlertsService {
       final days = now.difference(last).inDays;
       if (days < 30) continue;
 
+      final bucket = days >= 90
+          ? '90'
+          : days >= 60
+          ? '60'
+          : '30';
+      final lastIso = last.toIso8601String().split('T').first;
+
       alerts.add(
         LifeAlert(
-          id: 'stale_$areaId',
+          id: 'stale_${areaId}_${bucket}_$lastIso',
+          readKey: 'stale_${areaId}_${bucket}_$lastIso',
           type: LifeAlertType.staleArea,
           title: 'Área sem atualização',
-          message: 'A área "$areaId" está sem atualização há $days dias.',
+          message:
+              'A área "${_areaLabel(areaId)}" está sem atualização há $days dias.',
           priority: days >= 60
               ? LifeAlertPriority.high
               : LifeAlertPriority.medium,
@@ -297,11 +407,15 @@ class LifeAlertsService {
     }
 
     final ratio = spending / budget;
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
     if (ratio >= 1.0) {
+      final key =
+          'budget_exceeded_${monthKey}_${spending.toStringAsFixed(0)}_${budget.toStringAsFixed(0)}';
       alerts.add(
         LifeAlert(
-          id: 'budget_exceeded',
+          id: key,
+          readKey: key,
           type: LifeAlertType.budgetExceeded,
           title: 'Orçamento estourado',
           message:
@@ -314,9 +428,11 @@ class LifeAlertsService {
         ),
       );
     } else if (ratio >= 0.85) {
+      final key = 'budget_high_usage_${monthKey}_${(ratio * 100).round()}';
       alerts.add(
         LifeAlert(
-          id: 'budget_high_usage',
+          id: key,
+          readKey: key,
           type: LifeAlertType.highSpendingMonth,
           title: 'Gastos altos no mês',
           message:
@@ -340,11 +456,14 @@ class LifeAlertsService {
       if (item.type != TimelineBlockType.event) continue;
 
       final diff = item.start.difference(now);
+      final startKey = item.start.toIso8601String();
 
       if (!diff.isNegative && diff.inHours <= 24) {
+        final key = 'timeline_upcoming_${item.id}_$startKey';
         alerts.add(
           LifeAlert(
-            id: 'timeline_upcoming_${item.id}',
+            id: key,
+            readKey: key,
             type: LifeAlertType.upcomingTimelineEvent,
             title: 'Evento próximo',
             message: '"${item.title}" acontece em ${_humanizeDuration(diff)}.',
@@ -360,13 +479,15 @@ class LifeAlertsService {
       }
 
       if (diff.isNegative && diff.inHours >= -24) {
+        final key = 'timeline_overdue_${item.id}_$startKey';
         alerts.add(
           LifeAlert(
-            id: 'timeline_overdue_${item.id}',
+            id: key,
+            readKey: key,
             type: LifeAlertType.overdueTimelineEvent,
             title: 'Evento passou',
             message:
-                'O evento "${item.title}" já passou.\nVeja se precisa remarcar ou concluir.',
+                'O evento "${item.title}" já passou. Veja se precisa remarcar ou concluir.',
             priority: LifeAlertPriority.medium,
             createdAt: now,
             relatedId: item.id,
@@ -402,6 +523,7 @@ class LifeAlertsService {
       alerts.add(
         LifeAlert(
           id: 'always_on_$key',
+          readKey: 'always_on_$key',
           type: LifeAlertType.alwaysOnRelevant,
           title: 'Radar encontrou algo para você',
           message: reason.isEmpty ? title : '$title • $reason',
@@ -428,13 +550,16 @@ class LifeAlertsService {
     if (entry.water == null) pending.add('água');
 
     if (pending.isNotEmpty) {
+      final key =
+          'bodycare_pending_${day.toIso8601String().split('T').first}_${pending.join('_')}';
       alerts.add(
         LifeAlert(
-          id: 'bodycare_pending_${day.toIso8601String().split('T').first}',
+          id: key,
+          readKey: key,
           type: LifeAlertType.bodyCarePending,
           title: 'Corpo em dia incompleto hoje',
           message:
-              'Ainda falta cuidar de: ${pending.join(', ')}.\nFechar isso mantém o ritmo vivo.',
+              'Ainda falta cuidar de: ${pending.join(', ')}. Fechar isso mantém o ritmo vivo.',
           priority: pending.length >= 2
               ? LifeAlertPriority.high
               : LifeAlertPriority.medium,
@@ -449,9 +574,76 @@ class LifeAlertsService {
   }
 
   Future<List<LifeAlert>> _buildGoalsAlerts(DateTime now) async {
-    // Integração nova:
-    // agora o sino lê a central de objetivos real em vez dos prefs antigos.
     return _goalsAlertsBridge.build(now);
+  }
+
+  Future<List<LifeAlert>> _buildHealthAlerts(DateTime now, String uid) async {
+    final alerts = <LifeAlert>[];
+    final snapshot = await _smartHealthService.readSnapshot(uid);
+
+    if (!snapshot.isConnected) {
+      final key = 'health_sync_disconnected';
+      alerts.add(
+        LifeAlert(
+          id: key,
+          readKey: key,
+          type: LifeAlertType.healthSyncDisconnected,
+          title: 'Saúde automática desconectada',
+          message:
+              'O app ainda não está recebendo dados do Health Connect. Conectar isso pode deixar Corpo & Saúde mais preciso.',
+          priority: LifeAlertPriority.medium,
+          createdAt: now,
+          actionLabel: 'Abrir conexão de saúde',
+          routeHint: 'smart_health',
+        ),
+      );
+      return alerts;
+    }
+
+    final lastSyncAt = snapshot.lastSyncAt;
+    if (lastSyncAt == null) {
+      final key = 'health_sync_stale_never';
+      alerts.add(
+        LifeAlert(
+          id: key,
+          readKey: key,
+          type: LifeAlertType.healthSyncStale,
+          title: 'Saúde conectada, mas sem sync útil',
+          message:
+              'A conexão de saúde existe, mas o app ainda não conseguiu registrar uma sincronização válida.',
+          priority: LifeAlertPriority.medium,
+          createdAt: now,
+          actionLabel: 'Sincronizar saúde',
+          routeHint: 'smart_health',
+        ),
+      );
+      return alerts;
+    }
+
+    final days = now.difference(lastSyncAt).inDays;
+    if (days >= 4) {
+      final bucket = days >= 10 ? '10+' : '4+';
+      final lastSyncIso = lastSyncAt.toIso8601String().split('T').first;
+      final key = 'health_sync_stale_${bucket}_$lastSyncIso';
+      alerts.add(
+        LifeAlert(
+          id: key,
+          readKey: key,
+          type: LifeAlertType.healthSyncStale,
+          title: 'Saúde sem sincronizar há alguns dias',
+          message:
+              'Sua última sync de saúde foi há $days dias. Atualizar isso pode melhorar a leitura do corpo.',
+          priority: days >= 10
+              ? LifeAlertPriority.high
+              : LifeAlertPriority.medium,
+          createdAt: now,
+          actionLabel: 'Sincronizar saúde',
+          routeHint: 'smart_health',
+        ),
+      );
+    }
+
+    return alerts;
   }
 
   Future<List<LifeAlert>> _buildLifeJourneyAlerts(
@@ -474,6 +666,7 @@ class LifeAlertsService {
     alerts.add(
       LifeAlert(
         id: 'journey_unlock_$unlockKey',
+        readKey: 'journey_unlock_$unlockKey',
         type: LifeAlertType.lifeJourneyUnlocked,
         title: 'Novo desbloqueio na linha da vida',
         message: unlockLabel,
@@ -507,6 +700,15 @@ class LifeAlertsService {
     return months < 0 ? 0 : months;
   }
 
+  int _ageAt(DateTime birthDate, DateTime now) {
+    var age = now.year - birthDate.year;
+    final birthdayThisYear = DateTime(now.year, birthDate.month, birthDate.day);
+    if (DateTime(now.year, now.month, now.day).isBefore(birthdayThisYear)) {
+      age--;
+    }
+    return age < 0 ? 0 : age;
+  }
+
   String _humanizeDuration(Duration d) {
     if (d.inMinutes < 60) return '${d.inMinutes} min';
     if (d.inHours < 24) {
@@ -515,5 +717,26 @@ class LifeAlertsService {
       return m == 0 ? '$h h' : '${h}h ${m}min';
     }
     return '${d.inDays} dias';
+  }
+
+  String _areaLabel(String areaId) {
+    switch (areaId) {
+      case 'body_health':
+        return 'Corpo & Saúde';
+      case 'mind_emotion':
+        return 'Mente & Emoções';
+      case 'finance_material':
+        return 'Finanças & Material';
+      case 'work_vocation':
+        return 'Trabalho & Vocação';
+      case 'learning_intellect':
+        return 'Aprendizado & Intelecto';
+      case 'relations_community':
+        return 'Relações & Comunidade';
+      case 'digital_tech':
+        return 'Digital & Tecnologia';
+      default:
+        return areaId;
+    }
   }
 }

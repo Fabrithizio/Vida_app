@@ -7,6 +7,11 @@
 // - Abre a central de alertas do app
 // - Suporta modo compacto para encaixar no HUD pequeno da aba Áreas
 // - Faz deep link direto para páginas importantes quando o alerta é tocado
+//
+// Ajustes desta versão:
+// - respeita readKey contextual ao marcar leitura
+// - abre saúde e check-in diário de forma mais direta
+// - trata aniversário como atalho para a Linha da Vida
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,9 +22,11 @@ import 'package:vida_app/features/alerts/life_alerts_service.dart';
 import 'package:vida_app/features/alerts/presentation/pages/alerts_center_page.dart';
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart';
+import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
 import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
 import 'package:vida_app/features/body_care/presentation/pages/body_care_page.dart';
 import 'package:vida_app/features/goals/presentation/pages/goals_hub_page.dart';
+import 'package:vida_app/features/health_sync/presentation/pages/smart_health_page.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AlertsBellButton extends StatefulWidget {
@@ -72,7 +79,7 @@ class _AlertsBellButtonState extends State<AlertsBellButton> {
   Future<void> _open() async {
     final selectedAlert = await Navigator.of(context).push<LifeAlert>(
       MaterialPageRoute(
-        builder: (_) => AlertsCenterPage(
+        builder: (context) => AlertsCenterPage(
           service: widget.service,
           onOpenRoute: widget.onOpenRoute,
           monthlyBudget: widget.monthlyBudget,
@@ -98,15 +105,31 @@ class _AlertsBellButtonState extends State<AlertsBellButton> {
       case LifeAlertType.bodyCarePending:
         await Navigator.of(
           context,
-        ).push(MaterialPageRoute(builder: (_) => const BodyCarePage()));
+        ).push(MaterialPageRoute(builder: (context) => const BodyCarePage()));
         return;
       case LifeAlertType.lifeJourneyUnlocked:
+      case LifeAlertType.birthdayCelebration:
         await _openLifeJourneyAlert();
         return;
       case LifeAlertType.goalMomentum:
         await Navigator.of(
           context,
-        ).push(MaterialPageRoute(builder: (_) => const GoalsHubPage()));
+        ).push(MaterialPageRoute(builder: (context) => const GoalsHubPage()));
+        return;
+      case LifeAlertType.dailyCheckinPending:
+      case LifeAlertType.badCheckinStreak:
+        await showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          isScrollControlled: true,
+          builder: (context) => const DailyCheckinSheet(),
+        );
+        return;
+      case LifeAlertType.healthSyncDisconnected:
+      case LifeAlertType.healthSyncStale:
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (context) => const SmartHealthPage()),
+        );
         return;
       default:
         final route = alert.routeHint;
@@ -137,7 +160,7 @@ class _AlertsBellButtonState extends State<AlertsBellButton> {
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AreaDetailPage(
+        builder: (context) => AreaDetailPage(
           areaId: areaId,
           title: def.title,
           initialItemId: itemId == null || itemId.isEmpty ? null : itemId,
@@ -185,7 +208,7 @@ class _AlertsBellButtonState extends State<AlertsBellButton> {
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
+        builder: (context) =>
             LifeJourneyPage(userName: userName, sex: sex, birthDate: birthDate),
       ),
     );

@@ -6,6 +6,10 @@
 // - Mostra o que merece atenção agora
 // - Permite marcar tudo como lido
 // - Deixa o sininho realmente útil e conectado com o resto do app
+//
+// Ajustes desta versão:
+// - usa a leitura contextual por readKey
+// - novos ícones para aniversário, check-in diário e saúde
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -56,7 +60,7 @@ class _AlertsCenterPageState extends State<AlertsCenterPage> {
 
   Future<void> _openAlert(LifeAlert alert) async {
     if (!alert.isRead) {
-      await widget.service.markAsRead(alert.id);
+      await widget.service.markAlertAsRead(alert);
     }
 
     if (!mounted) return;
@@ -93,6 +97,7 @@ class _AlertsCenterPageState extends State<AlertsCenterPage> {
       case LifeAlertType.staleArea:
         return Icons.favorite_rounded;
       case LifeAlertType.badCheckinStreak:
+      case LifeAlertType.dailyCheckinPending:
         return Icons.monitor_heart_rounded;
       case LifeAlertType.budgetExceeded:
       case LifeAlertType.highSpendingMonth:
@@ -109,6 +114,11 @@ class _AlertsCenterPageState extends State<AlertsCenterPage> {
       case LifeAlertType.lifeJourneyUnlocked:
       case LifeAlertType.genericUnlock:
         return Icons.auto_awesome_rounded;
+      case LifeAlertType.birthdayCelebration:
+        return Icons.celebration_rounded;
+      case LifeAlertType.healthSyncDisconnected:
+      case LifeAlertType.healthSyncStale:
+        return Icons.watch_rounded;
     }
   }
 

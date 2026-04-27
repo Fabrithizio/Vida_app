@@ -5,6 +5,13 @@
 // - Centraliza os tipos e prioridades do centro de alertas do app
 // - Permite marcar alertas como lidos
 // - Suporta alertas do radar, corpo em dia, jornada, finanças e metas
+// - Agora também suporta leitura contextual por readKey
+//
+// Regra nova importante:
+// - um alerta não depende mais só de id fixo
+// - ele pode carregar uma chave de leitura contextual
+// - isso evita o problema de “li uma vez e nunca mais voltou” quando
+//   o estado melhora e depois piora de novo
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -24,6 +31,10 @@ enum LifeAlertType {
   goalMomentum,
   lifeJourneyUnlocked,
   genericUnlock,
+  dailyCheckinPending,
+  birthdayCelebration,
+  healthSyncDisconnected,
+  healthSyncStale,
 }
 
 @immutable
@@ -41,6 +52,7 @@ class LifeAlert {
     this.actionLabel,
     this.routeHint,
     this.metadata = const <String, dynamic>{},
+    this.readKey,
   });
 
   final String id;
@@ -56,6 +68,15 @@ class LifeAlert {
   final String? routeHint;
   final Map<String, dynamic> metadata;
 
+  /// Chave usada para persistir leitura contextual.
+  /// Quando não vier preenchida, o app cai de volta para o próprio id.
+  final String? readKey;
+
+  String get effectiveReadKey {
+    final value = (readKey ?? '').trim();
+    return value.isEmpty ? id : value;
+  }
+
   LifeAlert copyWith({
     String? id,
     LifeAlertType? type,
@@ -69,6 +90,7 @@ class LifeAlert {
     String? actionLabel,
     String? routeHint,
     Map<String, dynamic>? metadata,
+    String? readKey,
   }) {
     return LifeAlert(
       id: id ?? this.id,
@@ -83,6 +105,7 @@ class LifeAlert {
       actionLabel: actionLabel ?? this.actionLabel,
       routeHint: routeHint ?? this.routeHint,
       metadata: metadata ?? this.metadata,
+      readKey: readKey ?? this.readKey,
     );
   }
 
@@ -99,6 +122,7 @@ class LifeAlert {
     'actionLabel': actionLabel,
     'routeHint': routeHint,
     'metadata': metadata,
+    'readKey': readKey,
   };
 
   static LifeAlert fromMap(Map<String, dynamic> map) {
@@ -125,6 +149,7 @@ class LifeAlert {
       metadata: Map<String, dynamic>.from(
         (map['metadata'] as Map?) ?? const <String, dynamic>{},
       ),
+      readKey: map['readKey'] as String?,
     );
   }
 
