@@ -12,11 +12,13 @@
 // - respeita readKey contextual ao marcar leitura
 // - abre saúde e check-in diário de forma mais direta
 // - trata aniversário como atalho para a Linha da Vida
+// - agora prioriza o apelido do app como nome exibido do usuário
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vida_app/data/local/app_user_identity_service.dart';
 import 'package:vida_app/data/models/life_alert.dart';
 import 'package:vida_app/features/alerts/life_alerts_service.dart';
 import 'package:vida_app/features/alerts/presentation/pages/alerts_center_page.dart';
@@ -52,6 +54,8 @@ class AlertsBellButton extends StatefulWidget {
 }
 
 class _AlertsBellButtonState extends State<AlertsBellButton> {
+  final AppUserIdentityService _identity = AppUserIdentityService();
+
   int _unread = 0;
 
   @override
@@ -200,11 +204,7 @@ class _AlertsBellButtonState extends State<AlertsBellButton> {
         ? UserSex.female
         : UserSex.male;
 
-    final display = (user.displayName ?? '').trim();
-    final email = (user.email ?? '').trim();
-    final userName = display.isNotEmpty
-        ? display
-        : (email.contains('@') ? email.split('@').first : 'Usuário');
+    final userName = await _identity.displayNameForUser(user);
 
     await Navigator.of(context).push(
       MaterialPageRoute(

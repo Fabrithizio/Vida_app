@@ -8,29 +8,27 @@
 // - Bloqueia o uso do Areas até o usuário responder o check-in diário
 // - Usa ScoreRulesSheet real em vez de bottom sheet local duplicada
 //
-// Limpeza final desta versão:
-// - usa AreasStore.consolidated()
-// - reaproveita o DailyCheckinService do próprio store
-// - remove dependências locais duplicadas de regra/check-in
-// - remove uso desnecessário de múltiplos underscores em callbacks
+// Ajuste desta versão:
+// - passa a resolver o nome exibido por um ponto central
+// - prioriza o apelido do app em vez do displayName da conta
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vida_app/data/local/session_storage.dart';
+import 'package:vida_app/data/local/app_user_identity_service.dart';
 import 'package:vida_app/features/alerts/life_alerts_service.dart';
 import 'package:vida_app/features/alerts/presentation/widgets/alerts_bell_button.dart';
 import 'package:vida_app/features/areas/areas_store.dart';
-import 'package:vida_app/features/device/device_usage_service.dart';
-import 'package:vida_app/features/device/usage_access_overlay.dart';
+import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart'
     as area_detail;
-import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
-import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
 import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
-import 'package:vida_app/features/home/presentation/tabs/areas_tab_controller.dart';
 import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dart';
+import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
+import 'package:vida_app/features/device/device_usage_service.dart';
+import 'package:vida_app/features/device/usage_access_overlay.dart';
+import 'package:vida_app/features/home/presentation/tabs/areas_tab_controller.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
 
 class AreasTab extends StatefulWidget {
@@ -51,9 +49,9 @@ class AreasTab extends StatefulWidget {
 
 class _AreasTabState extends State<AreasTab> {
   final AreasStore _store = AreasStore.consolidated();
-  final SessionStorage _session = SessionStorage();
   final DeviceUsageService _deviceUsage = DeviceUsageService();
   final AreasTabController _controller = AreasTabController();
+  final AppUserIdentityService _identity = AppUserIdentityService();
 
   bool _dailyGateBusy = false;
   bool _usageOverlayOpen = false;
@@ -155,15 +153,7 @@ class _AreasTabState extends State<AreasTab> {
   }
 
   Future<String> _loadUserName() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return 'Usuário';
-    final nick = (await _session.readNickname(user.uid))?.trim() ?? '';
-    if (nick.isNotEmpty) return nick;
-    final display = (user.displayName ?? '').trim();
-    if (display.isNotEmpty) return display;
-    final email = (user.email ?? '').trim();
-    if (email.contains('@')) return email.split('@').first;
-    return 'Usuário';
+    return _identity.displayNameForCurrentUser();
   }
 
   Future<DateTime?> _loadBirthDate() async {
@@ -495,6 +485,7 @@ class _AreasTabState extends State<AreasTab> {
   }
 }
 
+// classes auxiliares abaixo mantidas iguais
 class _TopHudCompact extends StatelessWidget {
   const _TopHudCompact({
     required this.userName,
@@ -778,9 +769,6 @@ class _TopHudCompact extends StatelessWidget {
                       minHeight: 7,
                       value: ageInfo.progressToNextBirthday.clamp(0.0, 1.0),
                       backgroundColor: Colors.white.withValues(alpha: 0.08),
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Color(0xFF60A5FA),
-                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
