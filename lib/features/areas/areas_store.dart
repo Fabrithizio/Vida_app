@@ -32,6 +32,7 @@ import 'package:vida_app/features/areas/application/scoring/areas_environment_en
 import 'package:vida_app/features/areas/application/scoring/areas_finance_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_mind_emotion_engine.dart';
 import 'package:vida_app/features/areas/application/scoring/areas_purpose_engine.dart';
+import 'package:vida_app/features/areas/application/scoring/areas_learning_consistency_engine.dart';
 import 'package:vida_app/features/areas/data/repositories/areas_storage_repository.dart';
 import 'package:vida_app/features/areas/daily_checkin_service.dart';
 import 'package:vida_app/features/finance/data/repositories/finance_repository.dart';
@@ -79,6 +80,7 @@ class AreasStore {
     required AreasEnvironmentEngine environment,
     AreasPurposeEngine? purpose,
     AreasFinanceEngine? financeEngine,
+    AreasLearningConsistencyEngine? learningConsistency,
   }) : _storage = storage,
        _bootstrap = bootstrap ?? AreasBootstrapService(storage: storage),
        _dailyCheckinService = dailyCheckinService,
@@ -133,7 +135,8 @@ class AreasStore {
                  AreasDailyQuestionsEngine(
                    dailyCheckinService: dailyCheckinService,
                  ),
-           );
+           ),
+       _learningConsistency = learningConsistency ?? AreasLearningConsistencyEngine();
 
   factory AreasStore.consolidated({
     FinanceRepository? financeRepository,
@@ -189,6 +192,7 @@ class AreasStore {
   final AreasEnvironmentEngine _environment;
   final AreasPurposeEngine _purpose;
   final AreasFinanceEngine _financeEngine;
+  final AreasLearningConsistencyEngine _learningConsistency;
 
   Future<void> ensureBootstrappedFromOnboarding() =>
       _bootstrap.ensureBootstrappedFromOnboarding();
@@ -273,6 +277,12 @@ class AreasStore {
 
     if (areaId == 'digital_tech' && itemId == 'night_use') {
       return _deviceUsage.computedNightUse(user.uid);
+    }
+
+    if (areaId == 'learning_intellect' && itemId == 'consistency') {
+      return _learningConsistency.computedConsistency(
+        onAreaUpdated: markAreaUpdated,
+      );
     }
 
     if (areaId == 'body_health' && itemId == 'women_cycle') {

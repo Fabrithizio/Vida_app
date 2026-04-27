@@ -8,19 +8,27 @@
 // - Mantém o botão de adicionar por último
 // - Usa o módulo corporal para colorir os cards dos dias
 // - Mantém compras, tarefas da casa e timeline funcionando
+//
+// Ajustes desta versão:
+// - topo da data ficou mais claramente clicável
+// - a data agora mostra sequência atual e proteções
+// - ao tocar, abre o calendário bonito de constância
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
 import '../../../../data/models/timeline_block.dart';
+import '../../../areas/daily_checkin_service.dart';
 import '../../../body_care/body_care_service.dart';
 import '../../../body_care/presentation/pages/body_care_page.dart';
 import '../../../goals/presentation/pages/goals_hub_page.dart';
 import '../../../home_tasks/home_tasks_store.dart';
 import '../../../notifications/application/notification_service.dart';
 import '../../../shopping/shopping_list_store.dart';
+import '../../../timeline/application/day_consistency_service.dart';
 import '../../../timeline/timeline_store.dart';
 import 'day/create_block_sheet.dart';
+import 'day/day_consistency_calendar_sheet.dart';
 import 'day/edit_block_sheet.dart';
 import 'day/timeline_day_view.dart';
 import 'day/timeline_summary_view.dart';
@@ -48,12 +56,18 @@ class DayTab extends StatefulWidget {
 class _DayTabState extends State<DayTab> {
   late final TimelineStore _store;
   final BodyCareService _bodyCare = BodyCareService();
+  late final DayConsistencyService _consistency = DayConsistencyService(
+    timelineStore: widget.timelineStore,
+    bodyCare: _bodyCare,
+    dailyCheckinService: DailyCheckinService(),
+  );
 
   bool _loading = true;
   TimelineRange _range = TimelineRange.day;
   DateTime _selected = DateTime.now();
   late Future<Map<String, BodyCareEntry>> _weekBodyCareFuture;
   late Future<BodyCareOverview> _bodyOverviewFuture;
+  late Future<DayConsistencySummary> _consistencyFuture;
 
   @override
   void initState() {
@@ -82,6 +96,7 @@ class _DayTabState extends State<DayTab> {
   void _reloadAsyncData() {
     _weekBodyCareFuture = _bodyCare.loadRangeMap(_stripDays());
     _bodyOverviewFuture = _bodyCare.loadOverview();
+    _consistencyFuture = _consistency.summaryAndPersist(anchorDay: _selected);
   }
 
   void _refreshBodyCareUi() {
@@ -91,7 +106,7 @@ class _DayTabState extends State<DayTab> {
 
   void _onStoreChanged() {
     if (!mounted) return;
-    setState(() {});
+    setState(_reloadAsyncData);
   }
 
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -150,16 +165,19 @@ class _DayTabState extends State<DayTab> {
   }
 
   Future<void> _pickVisibleDay() async {
-    final picked = await showDatePicker(
+    final summary = await _consistency.summaryAndPersist(anchorDay: _selected);
+    if (!mounted) return;
+
+    final picked = await showModalBottomSheet<DateTime>(
       context: context,
-      locale: const Locale('pt', 'BR'),
-      initialDate: _selected,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      helpText: 'Selecionar data',
-      confirmText: 'OK',
-      cancelText: 'Cancelar',
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => DayConsistencyCalendarSheet(
+        initialSelectedDay: _selected,
+        summary: summary,
+      ),
     );
+
     if (picked == null || !mounted) return;
     setState(() {
       _selected = _dayOnly(picked);
@@ -271,7 +289,10 @@ class _DayTabState extends State<DayTab> {
     await _store.add(created);
     await NotificationService.instance.scheduleForBlock(created);
     if (!mounted) return;
-    setState(() => _selected = _dayOnly(created.start));
+    setState(() {
+      _selected = _dayOnly(created.start);
+      _reloadAsyncData();
+    });
   }
 
   Future<void> _openEditBlock(TimelineBlock block) async {
@@ -284,6 +305,7 @@ class _DayTabState extends State<DayTab> {
     if (result == null) return;
     if (result.delete == true) {
       await _store.removeById(block.id);
+      if (mounted) setState(_reloadAsyncData);
       return;
     }
     final TimelineBlock? updated = result.updated as TimelineBlock?;
@@ -299,16 +321,21 @@ class _DayTabState extends State<DayTab> {
     }
     await _store.update(updated);
     if (!mounted) return;
-    setState(() => _selected = _dayOnly(updated.start));
+    setState(() {
+      _selected = _dayOnly(updated.start);
+      _reloadAsyncData();
+    });
   }
 
   Future<void> _toggleDone(TimelineBlock block) async {
     await _store.toggleDone(block.id);
+    if (mounted) setState(_reloadAsyncData);
   }
 
   Future<void> _updateByDrag(TimelineBlock updated) async {
     if (_store.hasConflict(updated, excludeId: updated.id)) return;
     await _store.update(updated);
+    if (mounted) setState(_reloadAsyncData);
   }
 
   List<TimelineBlock> _itemsForRange() {
@@ -510,7 +537,10 @@ class _DayTabState extends State<DayTab> {
               final selected = d == _dayOnly(_selected);
               return InkWell(
                 borderRadius: BorderRadius.circular(18),
-                onTap: () => setState(() => _selected = d),
+                onTap: () => setState(() {
+                  _selected = d;
+                  _reloadAsyncData();
+                }),
                 child: _buildDayStatusCard(
                   day: d,
                   selected: selected,
@@ -755,6 +785,131 @@ class _DayTabState extends State<DayTab> {
     );
   }
 
+  Widget _dateHeader() {
+    return FutureBuilder<DayConsistencySummary>(
+      future: _consistencyFuture,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final streak = summary?.currentStreak ?? 0;
+        final protections = summary?.availableProtections ?? 0;
+
+        Color accent;
+        if (streak >= 21) {
+          accent = const Color(0xFF22C55E);
+        } else if (streak >= 7) {
+          accent = const Color(0xFFF59E0B);
+        } else if (streak >= 3) {
+          accent = const Color(0xFF60A5FA);
+        } else {
+          accent = const Color(0xFF94A3B8);
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: _goPrev,
+                icon: const Icon(Icons.chevron_left),
+              ),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: _pickVisibleDay,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          accent.withValues(alpha: 0.16),
+                          Colors.white.withValues(alpha: 0.04),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: accent.withValues(alpha: 0.30)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.10),
+                          blurRadius: 16,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: accent.withValues(alpha: 0.28),
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.calendar_month_rounded,
+                            color: accent,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _fullDateLabel(_selected),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Sequência: $streak dias • Proteções: $protections',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: accent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white54,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _goNext,
+                icon: const Icon(Icons.chevron_right),
+              ),
+              const SizedBox(width: 4),
+              OutlinedButton(onPressed: _goToday, child: const Text('Hoje')),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -786,70 +941,7 @@ class _DayTabState extends State<DayTab> {
                 },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: _goPrev,
-                    icon: const Icon(Icons.chevron_left),
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: _pickVisibleDay,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _fullDateLabel(_selected),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _range == TimelineRange.day
-                                  ? 'Timeline do dia'
-                                  : 'Resumo por ${_range.name}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _goNext,
-                    icon: const Icon(Icons.chevron_right),
-                  ),
-                  const SizedBox(width: 4),
-                  OutlinedButton(
-                    onPressed: _goToday,
-                    child: const Text('Hoje'),
-                  ),
-                ],
-              ),
-            ),
+            _dateHeader(),
             if (_range == TimelineRange.day) ...[
               _dateStrip(),
               _buildQuickActionsRow(),
