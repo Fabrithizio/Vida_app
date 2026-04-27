@@ -17,6 +17,7 @@ import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vida_app/features/finance/application/finance_areas_sync_bridge.dart';
 
 import '../../data/local/finance_seed_data.dart';
 import '../../data/models/finance_category.dart';
@@ -56,6 +57,7 @@ class FinanceTab extends StatefulWidget {
 
 class _FinanceTabState extends State<FinanceTab> {
   late final FinanceStore _store;
+  final FinanceAreasSyncBridge _areasSyncBridge = FinanceAreasSyncBridge();
 
   bool _loadingPrefs = true;
   bool _hideValues = false;
@@ -297,6 +299,37 @@ class _FinanceTabState extends State<FinanceTab> {
   Future<void> _refreshAll() async {
     await _store.load();
     await _loadPrefs();
+    await _syncAreasFinanceSnapshotFromCurrentState();
+  }
+
+  Future<void> _syncAreasFinanceSnapshotFromCurrentState() async {
+    final summary = _buildPlanningSummary();
+
+    final monthlyBudget =
+        FinanceAreasSyncBridge.monthlyBudgetFromPlanningSummary(summary);
+
+    final totalDebts =
+        FinanceAreasSyncBridge.totalOutstandingDebtFromTransactions(
+          _store.transactions,
+        );
+
+    final emergencyReserve = FinanceAreasSyncBridge.reserveFromBuckets(
+      _investmentBucketCurrent,
+    );
+
+    final goalsProgress = FinanceAreasSyncBridge.goalsProgressFromBuckets(
+      bucketCurrent: _investmentBucketCurrent,
+      bucketGoal: _investmentBucketGoal,
+      overallTarget: _investmentTarget,
+    );
+
+    await _areasSyncBridge.sync(
+      store: _store,
+      monthlyBudget: monthlyBudget,
+      totalDebts: totalDebts,
+      emergencyReserve: emergencyReserve,
+      goalsProgress: goalsProgress,
+    );
   }
 
   Future<void> _loadPrefs() async {
@@ -403,6 +436,8 @@ class _FinanceTabState extends State<FinanceTab> {
       _investmentBucketGoal = nextBucketGoal;
       _loadingPrefs = false;
     });
+
+    await _syncAreasFinanceSnapshotFromCurrentState();
   }
 
   Future<void> _refreshMarketData({bool silent = false}) async {
@@ -745,6 +780,7 @@ class _FinanceTabState extends State<FinanceTab> {
 
     if (confirmed != true) return;
     await _store.removeTransaction(transaction.id);
+    await _refreshAll();
   }
 
   Future<void> _openPlanningSheet() async {

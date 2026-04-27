@@ -12,6 +12,10 @@
 // - injeta essa mesma instância em aggregation/body/mind/purpose/finance
 // - evita duplicação silenciosa de engine no construtor
 // - mantém a fachada do módulo estável e mais previsível
+//
+// Ajuste desta revisão:
+// - saveFinanceSnapshot agora também salva o gasto mensal consolidado
+// - isso liga melhor Finanças com Areas e com alertas de orçamento
 // ============================================================================
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -336,6 +340,7 @@ class AreasStore {
     double? totalDebts,
     double? emergencyReserve,
     double? goalsProgress,
+    double? monthSpending,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -352,6 +357,9 @@ class AreasStore {
     await setNum('$uid:total_debts', totalDebts);
     await setNum('$uid:emergency_reserve', emergencyReserve);
     await setNum('$uid:finance_goals_progress', goalsProgress);
+    await setNum('$uid:month_spending', monthSpending);
+    await setNum('$uid:finance_month_spending', monthSpending);
+
     await prefs.setString(
       '$uid:finance_updated_at',
       DateTime.now().toIso8601String(),
