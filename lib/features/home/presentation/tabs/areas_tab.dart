@@ -23,6 +23,7 @@ import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart'
     as area_detail;
+import 'package:vida_app/features/areas/presentation/pages/areas_rpg_profile_page.dart';
 import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
 import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dart';
 import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
@@ -267,8 +268,19 @@ class _AreasTabState extends State<AreasTab> {
     );
   }
 
-  void _openAvatarEditor() =>
-      _showSoonMessage('Editor de avatar será ligado aqui em breve.');
+  Future<void> _openRpgProfile() async {
+    final userName = (_resolvedName ?? await _nameFuture).trim();
+    final scores = _resolvedScores ?? await _scoreFuture;
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AreasRpgProfilePage(
+          userName: userName.isEmpty ? 'Usuário' : userName,
+          areaScores: scores,
+        ),
+      ),
+    );
+  }
 
   Future<void> _openScoreRules() async {
     await showModalBottomSheet(
@@ -428,7 +440,7 @@ class _AreasTabState extends State<AreasTab> {
                       alertsService: widget.alertsService,
                       onOpenAlertRoute: widget.onOpenAlertRoute,
                       onCheckinTap: _openCheckin,
-                      onAvatarTap: _openAvatarEditor,
+                      onAvatarTap: _openRpgProfile,
                       onScoreRulesTap: _openScoreRules,
                       onAgeTimelineTap: _openLifeJourney,
                     ),
@@ -590,7 +602,7 @@ class _TopHudCompact extends StatelessWidget {
                             ),
                           ),
                           child: const Icon(
-                            Icons.edit_rounded,
+                            Icons.auto_awesome_rounded,
                             color: Colors.white,
                             size: 9,
                           ),
