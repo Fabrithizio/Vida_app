@@ -2,6 +2,8 @@
 // FILE: lib/features/reflexo_card_game/domain/reflexo_content.dart
 // ============================================================================
 
+import 'dart:math';
+
 import 'reflexo_models.dart';
 
 class ReflexoContent {
@@ -233,15 +235,43 @@ class ReflexoContent {
   ];
 
   static List<ReflexoCardDefinition> buildDeck({required int seedOffset}) {
+    final rng = Random(9137 + seedOffset);
+    final units = allCards.where((card) => card.isUnit).toList()..shuffle(rng);
+    final spells = allCards.where((card) => card.isSpell).toList()
+      ..shuffle(rng);
+    final traps = allCards.where((card) => card.isTrap).toList()..shuffle(rng);
+
+    ReflexoCardDefinition takeFrom(
+      List<ReflexoCardDefinition> source,
+      int index,
+    ) {
+      return source[index % source.length];
+    }
+
     final deck = <ReflexoCardDefinition>[];
+
+    // Mão inicial saudável: 3 unidades + 1 carta especial.
+    // Depois o baralho segue aproximadamente 80% unidades, 10% feitiços e 10% armadilhas.
+    for (var i = 0; i < 3; i++) {
+      deck.add(takeFrom(units, i));
+    }
+    deck.add(seedOffset.isEven ? takeFrom(spells, 0) : takeFrom(traps, 0));
+
+    var unitIndex = 3;
+    var spellIndex = 1;
+    var trapIndex = 1;
     while (deck.length < 30) {
-      for (final card in allCards) {
-        deck.add(card);
-        if (deck.length >= 30) break;
+      final position = deck.length;
+      if (position == 8 || position == 18) {
+        deck.add(takeFrom(spells, spellIndex++));
+      } else if (position == 13 || position == 23) {
+        deck.add(takeFrom(traps, trapIndex++));
+      } else {
+        deck.add(takeFrom(units, unitIndex++));
       }
     }
-    final pivot = seedOffset % deck.length;
-    return [...deck.sublist(pivot), ...deck.sublist(0, pivot)];
+
+    return deck;
   }
 
   static Map<ReflexoAttribute, int> attributesForPlayer(ReflexoPlayerId id) {
@@ -353,12 +383,25 @@ class ReflexoContent {
         .toList();
     final risky = options.where((e) => e.requirement >= 18).toList();
 
-    ReflexoDestinyOption pick(List<ReflexoDestinyOption> list, int salt) {
+    ReflexoDestinyOption pick(
+      List<ReflexoDestinyOption> list,
+      int salt,
+      Set<String> used,
+    ) {
       final source = list.isEmpty ? options : list;
-      return source[(round + player.id.index + salt) % source.length];
+      for (var offset = 0; offset < source.length; offset++) {
+        final candidate =
+            source[(round + player.id.index + salt + offset) % source.length];
+        if (used.add(candidate.id)) return candidate;
+      }
+      for (final candidate in options) {
+        if (used.add(candidate.id)) return candidate;
+      }
+      return source.first;
     }
 
-    return [pick(safe, 1), pick(mid, 2), pick(risky, 3)];
+    final used = <String>{};
+    return [pick(safe, 1, used), pick(mid, 2, used), pick(risky, 3, used)];
   }
 
   static List<ReflexoTacticOption> tacticOptionsFor({

@@ -707,16 +707,26 @@ class ReflexoDuelController extends ChangeNotifier {
     }
 
     final attackerDamage = _attackDamageWithPressure(maybeAttacker, active);
+    final defenderPower = defender.visibleAttack;
     final precision =
         maybeAttacker.hasAbility(ReflexoAbility.precisao) ||
         (active.mainArchetype == ReflexoArchetype.sombra &&
             active.archetypeAwakened);
-    final defenderDamage = precision ? 0 : defender.visibleAttack;
+
+    if (!precision && attackerDamage < defenderPower) {
+      _addLog(
+        '${maybeAttacker.card.name} não consegue atacar ${defender.card.name}: ataque menor (${attackerDamage} < $defenderPower).',
+      );
+      notifyListeners();
+      _scheduleBotIfNeeded();
+      return;
+    }
 
     final updatedDefender = _damageUnit(defender, attackerDamage);
-    final updatedAttacker = precision
-        ? maybeAttacker
-        : _damageUnit(maybeAttacker, defenderDamage);
+    final shouldTradeDamage = !precision && attackerDamage == defenderPower;
+    final updatedAttacker = shouldTradeDamage
+        ? _damageUnit(maybeAttacker, defenderPower)
+        : maybeAttacker;
 
     final overflow = max(
       0,
@@ -752,8 +762,13 @@ class ReflexoDuelController extends ChangeNotifier {
         serial: _animationSerial++,
       ),
     );
+    final combatText = shouldTradeDamage
+        ? 'Ambas trocaram dano.'
+        : precision
+        ? 'Precisão evitou contra-ataque.'
+        : 'Ataque superior, sem contra-ataque.';
     _addLog(
-      '${active.name}: ${maybeAttacker.card.name} atacou ${defender.card.name}.',
+      '${active.name}: ${maybeAttacker.card.name} atacou ${defender.card.name}. $combatText',
     );
     _checkGameOver();
     notifyListeners();
@@ -1271,18 +1286,32 @@ class ReflexoDuelController extends ChangeNotifier {
     if (attackers.isEmpty) return;
 
     attackers.sort((a, b) => b.visibleAttack.compareTo(a.visibleAttack));
-    final attacker = attackers.first;
-    selectUnit(attacker.instanceId);
-
     final enemyUnits = state.opponent.field;
-    if (enemyUnits.isNotEmpty) {
-      final targets = [...enemyUnits]
-        ..sort((a, b) => a.health.compareTo(b.health));
-      attackUnit(targets.first.instanceId);
-      return;
+
+    for (final attacker in attackers) {
+      selectUnit(attacker.instanceId);
+      final validTargets = enemyUnits.where((target) {
+        final precision =
+            attacker.hasAbility(ReflexoAbility.precisao) ||
+            (state.current.mainArchetype == ReflexoArchetype.sombra &&
+                state.current.archetypeAwakened);
+        final damage = _attackDamageWithPressure(attacker, state.current);
+        return precision || damage >= target.visibleAttack;
+      }).toList()..sort((a, b) => a.health.compareTo(b.health));
+
+      if (validTargets.isNotEmpty) {
+        attackUnit(validTargets.first.instanceId);
+        return;
+      }
     }
 
-    attackReflexo();
+    for (final attacker in attackers) {
+      selectUnit(attacker.instanceId);
+      if (_canAttackReflexo(attacker)) {
+        attackReflexo();
+        return;
+      }
+    }
   }
 }
 
