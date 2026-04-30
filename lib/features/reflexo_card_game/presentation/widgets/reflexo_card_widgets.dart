@@ -1,4 +1,6 @@
-// lib/features/reflexo_card_game/presentation/widgets/reflexo_card_widgets.dart
+// ============================================================================
+// FILE: lib/features/reflexo_card_game/presentation/widgets/reflexo_card_widgets.dart
+// ============================================================================
 
 import 'package:flutter/material.dart';
 
@@ -18,43 +20,70 @@ class ReflexoCardTile extends StatelessWidget {
   final VoidCallback onTap;
   final bool enabled;
 
+  Color get _typeColor {
+    switch (card.type) {
+      case ReflexoCardType.unit:
+        return const Color(0xFF60A5FA);
+      case ReflexoCardType.spell:
+        return const Color(0xFFA78BFA);
+      case ReflexoCardType.trap:
+        return const Color(0xFFF472B6);
+      case ReflexoCardType.equipment:
+        return const Color(0xFFFBBF24);
+    }
+  }
+
+  IconData get _typeIcon {
+    switch (card.type) {
+      case ReflexoCardType.unit:
+        return Icons.person_rounded;
+      case ReflexoCardType.spell:
+        return Icons.auto_fix_high_rounded;
+      case ReflexoCardType.trap:
+        return Icons.visibility_off_rounded;
+      case ReflexoCardType.equipment:
+        return Icons.construction_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final opacity = enabled ? 1.0 : 0.45;
+    final opacity = enabled ? 1.0 : 0.42;
     return Opacity(
       opacity: opacity,
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(14),
         onLongPress: () => showReflexoCardDetails(context, card),
-        child: Container(
-          width: 106,
-          margin: const EdgeInsets.only(right: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF18213D), Color(0xFF090D18)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: Colors.white24),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x55000000),
-                blurRadius: 10,
-                offset: Offset(0, 5),
+        child: Stack(
+          children: [
+            Container(
+              width: 106,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF18213D), Color(0xFF090D18)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: _typeColor.withValues(alpha: 0.55)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x55000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 5),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
                     child: _CardImageBox(
                       imageAsset: card.imageAsset,
-                      icon: card.attribute.icon,
+                      icon: _typeIcon,
+                      color: _typeColor,
                     ),
                   ),
                   Padding(
@@ -76,19 +105,25 @@ class ReflexoCardTile extends StatelessWidget {
                         Row(
                           children: [
                             _StatPill(
-                              label: 'C $cost',
+                              label: '$cost',
                               color: const Color(0xFF60A5FA),
                             ),
                             const Spacer(),
-                            _StatPill(
-                              label: 'A ${card.attack}',
-                              color: const Color(0xFFF97316),
-                            ),
-                            const SizedBox(width: 3),
-                            _StatPill(
-                              label: 'V ${card.health}',
-                              color: const Color(0xFF22C55E),
-                            ),
+                            if (card.isUnit) ...[
+                              _StatPill(
+                                label: '${card.attack}',
+                                color: const Color(0xFFF97316),
+                              ),
+                              const SizedBox(width: 3),
+                              _StatPill(
+                                label: '${card.health}',
+                                color: const Color(0xFF22C55E),
+                              ),
+                            ] else
+                              _StatPill(
+                                label: _typeLabel(card.type),
+                                color: _typeColor,
+                              ),
                           ],
                         ),
                       ],
@@ -96,31 +131,48 @@ class ReflexoCardTile extends StatelessWidget {
                   ),
                 ],
               ),
-              if (!enabled)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.28),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'sem energia',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+            ),
+            if (!enabled)
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Text(
+                    'sem energia',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
+  }
+
+  String _typeLabel(ReflexoCardType type) {
+    switch (type) {
+      case ReflexoCardType.unit:
+        return 'UN';
+      case ReflexoCardType.spell:
+        return 'MAG';
+      case ReflexoCardType.trap:
+        return 'ARM';
+      case ReflexoCardType.equipment:
+        return 'EQP';
+    }
   }
 }
 
@@ -129,23 +181,25 @@ class ReflexoUnitCard extends StatelessWidget {
     super.key,
     required this.unit,
     required this.selected,
-    this.isAttacker = false,
-    this.isTarget = false,
     required this.onTap,
+    this.isAttacking = false,
+    this.isTargeted = false,
   });
 
   final ReflexoUnitInstance unit;
   final bool selected;
-  final bool isAttacker;
-  final bool isTarget;
   final VoidCallback onTap;
+  final bool isAttacking;
+  final bool isTargeted;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isTarget
-        ? const Color(0xFFEF4444)
-        : selected
+    final borderColor = selected
         ? const Color(0xFF38BDF8)
+        : isTargeted
+        ? const Color(0xFFEF4444)
+        : isAttacking
+        ? const Color(0xFFFBBF24)
         : unit.readyToAttack
         ? const Color(0xFF22C55E)
         : Colors.white24;
@@ -153,100 +207,144 @@ class ReflexoUnitCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       onLongPress: () => showReflexoUnitDetails(context, unit),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        scale: isAttacker
-            ? 1.10
-            : isTarget
-            ? 0.94
-            : 1.0,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 68,
-          height: 88,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF1B2542), Color(0xFF0A0F1D)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-            border: Border.all(color: borderColor, width: selected ? 2 : 1),
-            boxShadow: selected
-                ? const [
-                    BoxShadow(
-                      color: Color(0x8838BDF8),
-                      blurRadius: 16,
-                      offset: Offset(0, 5),
-                    ),
-                  ]
-                : const [],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        transform: Matrix4.translationValues(0, isAttacking ? -7 : 0, 0)
+          ..scale(isTargeted ? 0.95 : 1.0),
+        width: 68,
+        height: 88,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1B2542), Color(0xFF0A0F1D)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(5, 5, 5, 25),
-                  child: _CardImageBox(
-                    imageAsset: unit.card.imageAsset,
-                    icon: unit.card.attribute.icon,
+          border: Border.all(
+            color: borderColor,
+            width: selected || isTargeted ? 2 : 1,
+          ),
+          boxShadow: selected || isAttacking || isTargeted
+              ? [
+                  BoxShadow(
+                    color: borderColor.withValues(alpha: 0.55),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
                   ),
+                ]
+              : const [],
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(5, 5, 5, 25),
+                child: _CardImageBox(
+                  imageAsset: unit.card.imageAsset,
+                  icon: unit.card.attribute.icon,
+                  color: const Color(0xFF60A5FA),
                 ),
               ),
-              Positioned(
-                top: 3,
-                left: 3,
-                child: _StatPill(
-                  label: 'A ${unit.visibleAttack}',
-                  color: const Color(0xFFF97316),
-                ),
+            ),
+            Positioned(
+              top: 3,
+              left: 3,
+              child: _StatPill(
+                label: '${unit.visibleAttack}',
+                color: const Color(0xFFF97316),
               ),
+            ),
+            Positioned(
+              top: 3,
+              right: 3,
+              child: _StatPill(
+                label: '${unit.health}',
+                color: const Color(0xFF22C55E),
+              ),
+            ),
+            if (unit.shield > 0)
               Positioned(
-                top: 3,
+                bottom: 21,
                 right: 3,
                 child: _StatPill(
-                  label: 'V ${unit.health}',
-                  color: const Color(0xFF22C55E),
+                  label: '${unit.shield}',
+                  color: const Color(0xFF60A5FA),
                 ),
               ),
-              if (unit.shield > 0)
-                Positioned(
-                  bottom: 21,
-                  right: 3,
-                  child: _StatPill(
-                    label: 'E ${unit.shield}',
-                    color: const Color(0xFF60A5FA),
-                  ),
-                ),
-              if (unit.hasBarrier)
-                const Positioned(
-                  bottom: 21,
-                  left: 4,
-                  child: Icon(
-                    Icons.shield_rounded,
-                    color: Color(0xFF93C5FD),
-                    size: 14,
-                  ),
-                ),
-              Positioned(
-                left: 5,
-                right: 5,
-                bottom: 4,
-                child: Text(
-                  unit.card.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: unit.readyToAttack ? Colors.white : Colors.white60,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                  ),
+            if (unit.hasBarrier)
+              const Positioned(
+                bottom: 21,
+                left: 4,
+                child: Icon(
+                  Icons.shield_rounded,
+                  color: Color(0xFF93C5FD),
+                  size: 14,
                 ),
               ),
-            ],
-          ),
+            Positioned(
+              left: 5,
+              right: 5,
+              bottom: 4,
+              child: Text(
+                unit.card.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: unit.readyToAttack ? Colors.white : Colors.white60,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class ReflexoTrapSlot extends StatelessWidget {
+  const ReflexoTrapSlot({super.key, required this.trapCount});
+
+  final int trapCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message:
+          'Armadilhas preparadas. O adversário vê que existem, mas não sabe qual é.',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(2, (index) {
+          final active = index < trapCount;
+          return Container(
+            width: 28,
+            height: 36,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(7),
+              gradient: active
+                  ? const LinearGradient(
+                      colors: [Color(0xFFF472B6), Color(0xFF581C87)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                  : null,
+              color: active ? null : Colors.white.withValues(alpha: 0.04),
+              border: Border.all(
+                color: active ? Colors.white38 : Colors.white10,
+              ),
+            ),
+            child: Icon(
+              active
+                  ? Icons.visibility_off_rounded
+                  : Icons.crop_portrait_rounded,
+              color: active ? Colors.white : Colors.white24,
+              size: 15,
+            ),
+          );
+        }),
       ),
     );
   }
@@ -293,21 +391,24 @@ class ReflexoBuffChips extends StatelessWidget {
         final duration = buff.turnsRemaining == null
             ? '∞'
             : '${buff.turnsRemaining}T';
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1D4ED8).withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: const Color(0xFF60A5FA).withValues(alpha: 0.35),
+        return Tooltip(
+          message: '${buff.name}: ${buff.summary}',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1D4ED8).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: const Color(0xFF60A5FA).withValues(alpha: 0.35),
+              ),
             ),
-          ),
-          child: Text(
-            '${buff.summary} · $duration',
-            style: const TextStyle(
-              color: Color(0xFFBFDBFE),
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
+            child: Text(
+              '${buff.summary} · $duration',
+              style: const TextStyle(
+                color: Color(0xFFBFDBFE),
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         );
@@ -317,10 +418,15 @@ class ReflexoBuffChips extends StatelessWidget {
 }
 
 class _CardImageBox extends StatelessWidget {
-  const _CardImageBox({required this.imageAsset, required this.icon});
+  const _CardImageBox({
+    required this.imageAsset,
+    required this.icon,
+    required this.color,
+  });
 
   final String? imageAsset;
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -342,12 +448,18 @@ class _CardImageBox extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(9),
-        gradient: const RadialGradient(
-          colors: [Color(0xFF334155), Color(0xFF0F172A)],
+        gradient: RadialGradient(
+          colors: [color.withValues(alpha: 0.70), const Color(0xFF0F172A)],
           radius: 1.0,
         ),
       ),
-      child: Center(child: Icon(icon, color: Colors.white70, size: 25)),
+      child: Center(
+        child: Icon(
+          icon,
+          color: Colors.white.withValues(alpha: 0.80),
+          size: 25,
+        ),
+      ),
     );
   }
 }
@@ -385,9 +497,7 @@ void showReflexoCardDetails(BuildContext context, ReflexoCardDefinition card) {
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
-    builder: (context) {
-      return _CardDetailsSheet(card: card);
-    },
+    builder: (context) => _CardDetailsSheet(card: card),
   );
 }
 
@@ -395,9 +505,7 @@ void showReflexoUnitDetails(BuildContext context, ReflexoUnitInstance unit) {
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
-    builder: (context) {
-      return _UnitDetailsSheet(unit: unit);
-    },
+    builder: (context) => _UnitDetailsSheet(unit: unit),
   );
 }
 
@@ -410,10 +518,13 @@ class _CardDetailsSheet extends StatelessWidget {
     return _DetailsShell(
       title: card.name,
       children: [
+        _DetailLine('Tipo', _typeName(card.type)),
         _DetailLine('Custo', '${card.cost}'),
-        _DetailLine('Ataque', '${card.attack}'),
-        _DetailLine('Vida', '${card.health}'),
-        _DetailLine('Escudo', '${card.shield}'),
+        if (card.isUnit) ...[
+          _DetailLine('Ataque', '${card.attack}'),
+          _DetailLine('Vida', '${card.health}'),
+          _DetailLine('Escudo', '${card.shield}'),
+        ],
         _DetailLine('Atributo', card.attribute.label),
         _DetailLine('Arquétipo', card.archetype.label),
         if (card.secondaryAttribute != null)
@@ -426,6 +537,19 @@ class _CardDetailsSheet extends StatelessWidget {
         if (card.text.isNotEmpty) _DetailParagraph(card.text),
       ],
     );
+  }
+
+  String _typeName(ReflexoCardType type) {
+    switch (type) {
+      case ReflexoCardType.unit:
+        return 'Unidade';
+      case ReflexoCardType.spell:
+        return 'Feitiço';
+      case ReflexoCardType.trap:
+        return 'Armadilha virada';
+      case ReflexoCardType.equipment:
+        return 'Equipamento';
+    }
   }
 }
 

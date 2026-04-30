@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../domain/reflexo_content.dart';
 import '../../domain/reflexo_models.dart';
-import '../widgets/reflexo_duel_hud.dart';
 import 'reflexo_deck_page.dart';
 import 'reflexo_duel_page.dart';
 
@@ -66,7 +65,7 @@ class ReflexoGameLobbyPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Use cartas, Destinos e d20 para vencer o Reflexo inimigo. Esta versão foca em deixar o jogo realmente jogável antes do Wi-Fi.',
+                    'Use cartas, Destinos, Tática, Pressão e d20 para vencer o Reflexo inimigo. Esta versão foca em deixar o jogo realmente jogável antes do Wi-Fi.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.72),
                       height: 1.35,
@@ -74,8 +73,20 @@ class ReflexoGameLobbyPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   _LobbyButton(
-                    icon: Icons.sports_esports_rounded,
-                    title: 'Jogar protótipo local',
+                    icon: Icons.smart_toy_rounded,
+                    title: 'Jogar contra Bot',
+                    subtitle:
+                        'Modo ideal para testar sozinho e sentir o ritmo.',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ReflexoDuelPage(vsBot: true),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _LobbyButton(
+                    icon: Icons.group_rounded,
+                    title: 'Jogar local 2 jogadores',
                     subtitle: 'Dois jogadores no mesmo aparelho por enquanto.',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
@@ -106,7 +117,7 @@ class ReflexoGameLobbyPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            ReflexoAttributesPanel(player: preview),
+            _LobbyAttributesPanel(player: preview),
           ],
         ),
       ),
@@ -128,6 +139,140 @@ class ReflexoGameLobbyPage extends StatelessWidget {
       attributes: ReflexoContent.attributesForPlayer(ReflexoPlayerId.one),
       mainArchetype: ReflexoArchetype.berserker,
       secondaryArchetype: ReflexoArchetype.guardiao,
+    );
+  }
+}
+
+class _LobbyAttributesPanel extends StatelessWidget {
+  const _LobbyAttributesPanel({required this.player});
+
+  final ReflexoPlayerState player;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1020),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Icon(
+                  player.mainArchetype == ReflexoArchetype.berserker
+                      ? Icons.local_fire_department_rounded
+                      : Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      player.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${player.mainArchetype.label} · ${player.mainArchetype.shortDescription}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.70),
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Atributos do Reflexo',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.86),
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...ReflexoAttribute.values.map((attribute) {
+            final value = player.attributes[attribute] ?? 0;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    attribute.icon,
+                    color: const Color(0xFF93C5FD),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 82,
+                    child: Text(
+                      attribute.label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        minHeight: 7,
+                        value: (value / 100).clamp(0.0, 1.0),
+                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF60A5FA),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 28,
+                    child: Text(
+                      '$value',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

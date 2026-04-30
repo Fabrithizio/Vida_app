@@ -1,6 +1,5 @@
 // lib/features/reflexo_card_game/application/reflexo_duel_controller.dart
 
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -9,17 +8,22 @@ import '../domain/reflexo_content.dart';
 import '../domain/reflexo_models.dart';
 
 class ReflexoDuelController extends ChangeNotifier {
-  ReflexoDuelController() {
+  ReflexoDuelController({this.vsBot = false}) {
     startNewGame();
   }
 
+  final bool vsBot;
+  bool _botBusy = false;
+
   final Random _rng = Random();
   int _unitSerial = 0;
+  int _animationSerial = 0;
 
   late ReflexoGameState state;
 
   void startNewGame() {
     _unitSerial = 0;
+    _animationSerial = 0;
     final p1Deck = ReflexoContent.buildDeck(seedOffset: 0);
     final p2Deck = ReflexoContent.buildDeck(seedOffset: 5);
 
@@ -27,15 +31,13 @@ class ReflexoDuelController extends ChangeNotifier {
       id: ReflexoPlayerId.one,
       name: 'Jogador 1',
       deck: p1Deck,
-      main: ReflexoArchetype.berserker,
-      secondary: ReflexoArchetype.guardiao,
+      archetype: ReflexoArchetype.berserker,
     );
     var p2 = _buildPlayer(
       id: ReflexoPlayerId.two,
-      name: 'Jogador 2',
+      name: vsBot ? 'Bot Estrategista' : 'Jogador 2',
       deck: p2Deck,
-      main: ReflexoArchetype.estrategista,
-      secondary: ReflexoArchetype.sombra,
+      archetype: ReflexoArchetype.estrategista,
     );
 
     p1 = _drawCards(p1, 4);
@@ -52,20 +54,22 @@ class ReflexoDuelController extends ChangeNotifier {
       activePlayer: ReflexoPlayerId.one,
       players: players,
       destinyOptions: _buildDestinyOptions(players, 1),
+      tacticOptions: const {},
+      pressureEvent: null,
       timeline: const [
-        'Rodada 1 começou com Fase de Destino.',
-        'Destinos aparecem a cada 3 rodadas: 1, 4, 7...',
+        'Rodada 1: Destino.',
+        'Cada jogador escolhe um buff e rola o próprio d20.',
       ],
     );
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   ReflexoPlayerState _buildPlayer({
     required ReflexoPlayerId id,
     required String name,
     required List<ReflexoCardDefinition> deck,
-    required ReflexoArchetype main,
-    required ReflexoArchetype secondary,
+    required ReflexoArchetype archetype,
   }) {
     return ReflexoPlayerState(
       id: id,
@@ -77,10 +81,11 @@ class ReflexoDuelController extends ChangeNotifier {
       hand: const [],
       field: const [],
       discard: const [],
+      traps: const [],
       buffs: const [],
       attributes: ReflexoContent.attributesForPlayer(id),
-      mainArchetype: main,
-      secondaryArchetype: secondary,
+      mainArchetype: archetype,
+      secondaryArchetype: null,
     );
   }
 
@@ -91,6 +96,19 @@ class ReflexoDuelController extends ChangeNotifier {
     return {
       for (final entry in players.entries)
         entry.key: ReflexoContent.destinyPoolFor(
+          player: entry.value,
+          round: round,
+        ),
+    };
+  }
+
+  Map<ReflexoPlayerId, List<ReflexoTacticOption>> _buildTacticOptions(
+    Map<ReflexoPlayerId, ReflexoPlayerState> players,
+    int round,
+  ) {
+    return {
+      for (final entry in players.entries)
+        entry.key: ReflexoContent.tacticOptionsFor(
           player: entry.value,
           round: round,
         ),
@@ -114,6 +132,7 @@ class ReflexoDuelController extends ChangeNotifier {
     _setPlayer(player);
     _addLog('${player.name} escolheu um Destino secreto.');
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   void rollDestiny(ReflexoPlayerId playerId) {
@@ -123,6 +142,7 @@ class ReflexoDuelController extends ChangeNotifier {
     if (destiny == null) {
       _addLog('${player.name} precisa escolher um Destino antes de rolar.');
       notifyListeners();
+      _scheduleBotIfNeeded();
       return;
     }
     if (player.lastRollRound == state.round) return;
@@ -137,16 +157,19 @@ class ReflexoDuelController extends ChangeNotifier {
       lastRollRound: state.round,
     );
     if (success) {
+      updated = updated.copyWith(d20Successes: updated.d20Successes + 1);
       updated = _applyDestinySuccess(updated, destiny, natural, total, bonus);
     } else {
       updated = _applyDestinyFailure(updated, destiny, natural, total, bonus);
     }
+    updated = _maybeAwaken(updated);
 
     _setPlayer(updated);
     if (_bothPlayersRolled()) {
       _startPlayerTurn(ReflexoPlayerId.one);
     }
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   int _rollBonus(ReflexoPlayerState player, ReflexoDestinyOption destiny) {
@@ -154,10 +177,14 @@ class ReflexoDuelController extends ChangeNotifier {
     final disciplina = player.attributes[ReflexoAttribute.disciplina] ?? 0;
     var bonus = 0;
     if (instinto >= 70 && destiny.requirement >= 12) bonus += 1;
-    if (instinto >= 90 && destiny.requirement >= 18) bonus += 1;
     if (disciplina >= 70 && destiny.requirement <= 8) bonus += 1;
     if (player.mainArchetype == ReflexoArchetype.oraculo) bonus += 1;
-    return bonus.clamp(0, 2).toInt();
+    if (player.mainArchetype == ReflexoArchetype.oraculo &&
+        player.archetypeAwakened &&
+        destiny.requirement >= 12) {
+      bonus += 1;
+    }
+    return bonus.clamp(0, 3).toInt();
   }
 
   ReflexoPlayerState _applyDestinySuccess(
@@ -174,7 +201,7 @@ class ReflexoDuelController extends ChangeNotifier {
     switch (destiny.effect) {
       case ReflexoDestinyEffect.energy:
         return player.copyWith(
-          buffs: [...player.buffs, _buffFromDestiny(destiny)],
+          energy: (player.energy + destiny.amount).clamp(0, 12).toInt(),
         );
       case ReflexoDestinyEffect.attackAll:
       case ReflexoDestinyEffect.shieldAll:
@@ -184,14 +211,12 @@ class ReflexoDuelController extends ChangeNotifier {
           buffs: [...player.buffs, _buffFromDestiny(destiny)],
         );
       case ReflexoDestinyEffect.draw:
-        return _drawCards(
-          player,
-          destiny.amount,
-        ).copyWith(buffs: [...player.buffs, _buffFromDestiny(destiny)]);
+        return _drawCards(player, destiny.amount);
       case ReflexoDestinyEffect.heal:
+        final healed = min(100 - player.life, destiny.amount);
         return player.copyWith(
           life: min(100, player.life + destiny.amount),
-          buffs: [...player.buffs, _buffFromDestiny(destiny)],
+          healingDone: player.healingDone + healed,
         );
     }
   }
@@ -206,22 +231,10 @@ class ReflexoDuelController extends ChangeNotifier {
     _addLog(
       '${player.name} rolou d20: $natural${bonus > 0 ? ' +$bonus' : ''} = $total. ${destiny.name} falhou.',
     );
-    // Falha não pune nesta versão. Ela só dá metade de efeitos seguros.
     if (destiny.effect == ReflexoDestinyEffect.energy &&
         destiny.requirement <= 8) {
       _addLog('${player.name} recebeu efeito fraco: +1 energia.');
-      return player.copyWith(
-        buffs: [
-          ...player.buffs,
-          const ReflexoActiveBuff(
-            id: 'falha_energia_fraca',
-            name: 'Efeito fraco',
-            summary: '+1 energia',
-            energyBonus: 1,
-            turnsRemaining: 1,
-          ),
-        ],
-      );
+      return player.copyWith(energy: min(10, player.energy + 1));
     }
     return player;
   }
@@ -292,18 +305,117 @@ class ReflexoDuelController extends ChangeNotifier {
         state.player(ReflexoPlayerId.two).lastRollRound == state.round;
   }
 
+  void selectTactic(ReflexoPlayerId playerId, ReflexoTacticOption option) {
+    if (state.phase != ReflexoMatchPhase.tactic) return;
+    var player = state.player(playerId).copyWith(selectedTactic: option);
+    player = _applyTactic(player, option);
+    player = _maybeAwaken(player);
+    _setPlayer(player);
+    _addLog('${player.name} escolheu Tática: ${option.name}.');
+    if (_bothPlayersTacticReady()) {
+      _startPlayerTurn(ReflexoPlayerId.one);
+    }
+    notifyListeners();
+    _scheduleBotIfNeeded();
+  }
+
+  bool _bothPlayersTacticReady() {
+    return state.player(ReflexoPlayerId.one).selectedTactic != null &&
+        state.player(ReflexoPlayerId.two).selectedTactic != null;
+  }
+
+  ReflexoPlayerState _applyTactic(
+    ReflexoPlayerState player,
+    ReflexoTacticOption option,
+  ) {
+    switch (option.effect) {
+      case ReflexoTacticEffect.reserve:
+        return player.copyWith(
+          reserve: min(10, player.reserve + option.amount),
+        );
+      case ReflexoTacticEffect.draw:
+        return _drawCards(player, option.amount);
+      case ReflexoTacticEffect.firstUnitAttack:
+        return player.copyWith(
+          buffs: [
+            ...player.buffs,
+            ReflexoActiveBuff(
+              id: option.id,
+              name: option.name,
+              summary: option.shortText,
+              firstUnitAttackBonus: option.amount,
+              turnsRemaining: 1,
+            ),
+          ],
+        );
+      case ReflexoTacticEffect.firstUnitShield:
+        return player.copyWith(
+          buffs: [
+            ...player.buffs,
+            ReflexoActiveBuff(
+              id: option.id,
+              name: option.name,
+              summary: option.shortText,
+              firstUnitShieldBonus: option.amount,
+              turnsRemaining: 1,
+            ),
+          ],
+        );
+      case ReflexoTacticEffect.heal:
+        final healed = min(100 - player.life, option.amount);
+        return player.copyWith(
+          life: min(100, player.life + option.amount),
+          healingDone: player.healingDone + healed,
+        );
+      case ReflexoTacticEffect.costReduction:
+        return player.copyWith(
+          buffs: [
+            ...player.buffs,
+            ReflexoActiveBuff(
+              id: option.id,
+              name: option.name,
+              summary: option.shortText,
+              costReduction: option.amount,
+              turnsRemaining: 1,
+            ),
+          ],
+        );
+    }
+  }
+
+  void startPressureCombat() {
+    if (state.phase != ReflexoMatchPhase.pressure) return;
+    _startPlayerTurn(ReflexoPlayerId.one);
+    notifyListeners();
+    _scheduleBotIfNeeded();
+  }
+
   void _startPlayerTurn(ReflexoPlayerId id) {
     final baseEnergy = state.round <= 3 ? 3 : 5;
     var player = state.player(id);
+    final pressureDiscount = _pressureDiscountFor(player);
     final totalEnergy = (baseEnergy + player.reserve + player.energyBonus)
         .clamp(0, 10)
         .toInt();
     player = player.copyWith(
       energy: totalEnergy,
       reserve: 0,
+      cardsPlayedThisTurn: 0,
       field: player.field
           .map((unit) => unit.copyWith(canAttack: true, exhausted: false))
           .toList(),
+      buffs: pressureDiscount > 0
+          ? [
+              ...player.buffs,
+              ReflexoActiveBuff(
+                id: 'pressure_discount_${state.round}_${player.id.name}',
+                name: 'Ritmo Forçado',
+                summary: '-$pressureDiscount custo na 1ª carta',
+                costReduction: pressureDiscount,
+                turnsRemaining: 1,
+              ),
+            ]
+          : player.buffs,
     );
     player = _drawCards(
       player,
@@ -318,52 +430,97 @@ class ReflexoDuelController extends ChangeNotifier {
     _addLog('Turno de ${player.name}. Energia: ${player.energy}.');
   }
 
+  int _pressureDiscountFor(ReflexoPlayerState player) {
+    final pressure = state.pressureEvent;
+    if (pressure?.effect == ReflexoPressureEffect.firstCardDiscount &&
+        player.cardsPlayedThisTurn == 0) {
+      return pressure!.amount;
+    }
+    return 0;
+  }
+
   void playCard(int handIndex) {
     if (state.phase != ReflexoMatchPhase.playerTurn) return;
     var player = state.current;
     if (handIndex < 0 || handIndex >= player.hand.length) return;
     final card = player.hand[handIndex];
-    if (!card.isUnit) return;
-    if (player.field.length >= 5) {
-      _addLog('Campo cheio. Limite: 5 unidades.');
-      notifyListeners();
-      return;
-    }
     final cost = effectiveCost(player, card);
     if (player.energy < cost) {
-      _addLog('Energia insuficiente para ${card.name}.');
+      _addLog('Energia insuficiente para ${card.name}. Precisa de $cost.');
       notifyListeners();
+      _scheduleBotIfNeeded();
+      return;
+    }
+    if (card.isUnit && player.field.length >= 5) {
+      _addLog('Campo cheio. Limite: 5 unidades.');
+      notifyListeners();
+      _scheduleBotIfNeeded();
+      return;
+    }
+    if (card.isTrap && player.traps.length >= 2) {
+      _addLog('Limite de 2 armadilhas preparadas.');
+      notifyListeners();
+      _scheduleBotIfNeeded();
       return;
     }
 
     final hand = [...player.hand]..removeAt(handIndex);
-    final unit = _createUnit(player.id, card);
-    final field = [...player.field, unit];
     player = player.copyWith(
       energy: player.energy - cost,
       hand: hand,
-      field: field,
+      cardsPlayedThisTurn: player.cardsPlayedThisTurn + 1,
+      cardsPlayedTotal: player.cardsPlayedTotal + 1,
+      energySpent: player.energySpent + cost,
     );
+
+    if (card.isUnit) {
+      final unit = _createUnit(player.id, card, player);
+      player = player.copyWith(field: [...player.field, unit]);
+      player = _consumeFirstUnitBuffs(player);
+      _addLog('${player.name} colocou ${card.name} em campo.');
+    } else if (card.isSpell) {
+      player = _resolveSpell(player, card);
+      player = player.copyWith(discard: [...player.discard, card]);
+    } else if (card.isTrap) {
+      player = player.copyWith(traps: [...player.traps, card]);
+      _addLog('${player.name} preparou uma armadilha virada.');
+    } else {
+      player = player.copyWith(discard: [...player.discard, card]);
+    }
+
+    player = _applyCardCountPassives(player);
+    player = _maybeAwaken(player);
     _setPlayer(player);
-    _addLog('${player.name} colocou ${card.name} em campo.');
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   int effectiveCost(ReflexoPlayerState player, ReflexoCardDefinition card) {
     final attribute = player.attributes[card.attribute] ?? 0;
     var reduction = player.costReduction;
     if (attribute >= 90) reduction += 1;
+    if (player.mainArchetype == ReflexoArchetype.inventor) {
+      final amount = player.archetypeAwakened ? 2 : 1;
+      if (player.cardsPlayedThisTurn == 0) reduction += amount;
+    }
+    if (player.mainArchetype == ReflexoArchetype.alquimista &&
+        player.archetypeAwakened &&
+        player.reserve >= 3) {
+      reduction += 1;
+    }
     return max(1, card.cost - reduction);
   }
 
   ReflexoUnitInstance _createUnit(
     ReflexoPlayerId owner,
     ReflexoCardDefinition card,
+    ReflexoPlayerState player,
   ) {
-    final player = state.player(owner);
     final attr = player.attributes[card.attribute] ?? 0;
     var healthBonus = 0;
     var attackBonus = 0;
+    var shieldBonus = player.shieldBonus;
+
     if (card.attribute == ReflexoAttribute.vigor && attr >= 50)
       healthBonus += 2;
     if (card.attribute == ReflexoAttribute.vigor && attr >= 70)
@@ -372,7 +529,24 @@ class ReflexoDuelController extends ChangeNotifier {
       attackBonus += 1;
     if (card.attribute == ReflexoAttribute.foco && attr >= 90) attackBonus += 1;
 
-    final shield = card.shield + player.shieldBonus;
+    if (player.mainArchetype == ReflexoArchetype.berserker) {
+      attackBonus += player.archetypeAwakened ? 2 : 1;
+    }
+    if (player.mainArchetype == ReflexoArchetype.guardiao) {
+      shieldBonus += player.archetypeAwakened ? 3 : 1;
+    }
+    if (player.firstUnitAttackBonus > 0)
+      attackBonus += player.firstUnitAttackBonus;
+    if (player.firstUnitShieldBonus > 0)
+      shieldBonus += player.firstUnitShieldBonus;
+
+    final pressure = state.pressureEvent;
+    if (pressure?.effect == ReflexoPressureEffect.lowLifeFury &&
+        card.health > 0 &&
+        card.health <= 14) {
+      attackBonus += pressure!.amount;
+    }
+
     return ReflexoUnitInstance(
       instanceId: 'u_${owner.index}_${_unitSerial++}',
       owner: owner,
@@ -380,12 +554,112 @@ class ReflexoDuelController extends ChangeNotifier {
       attack: card.attack + attackBonus,
       health: card.health + healthBonus,
       maxHealth: card.health + healthBonus,
-      shield: shield,
+      shield: card.shield + shieldBonus,
       hasBarrier: card.abilities.contains(ReflexoAbility.barreira),
       canAttack: card.abilities.contains(ReflexoAbility.investida),
       exhausted: false,
       turnPlayed: state.round,
     );
+  }
+
+  ReflexoPlayerState _consumeFirstUnitBuffs(ReflexoPlayerState player) {
+    var buffs = [...player.buffs];
+    buffs = buffs
+        .where(
+          (b) => b.firstUnitAttackBonus == 0 && b.firstUnitShieldBonus == 0,
+        )
+        .toList();
+    return player.copyWith(
+      buffs: buffs,
+      shieldGenerated: player.shieldGenerated + player.firstUnitShieldBonus,
+    );
+  }
+
+  ReflexoPlayerState _resolveSpell(
+    ReflexoPlayerState player,
+    ReflexoCardDefinition card,
+  ) {
+    switch (card.id) {
+      case 'raio_prismatico':
+        final target = _lowestHealthUnit(state.opponent);
+        if (target == null) {
+          _addLog('${card.name} não encontrou alvo.');
+          return player;
+        }
+        var opponent = state.opponent;
+        final damaged = _damageUnit(target, 6);
+        opponent = _replaceOrRemoveUnit(opponent, damaged);
+        _setPlayer(opponent);
+        _addLog(
+          '${player.name} usou ${card.name}: 6 dano em ${target.card.name}.',
+        );
+        return player;
+      case 'forca_subita':
+        if (player.field.isEmpty) {
+          _addLog('${card.name} não encontrou unidade aliada.');
+          return player;
+        }
+        final unit = player.field.first;
+        final updated = unit.copyWith(attack: unit.attack + 3);
+        _addLog(
+          '${player.name} usou ${card.name}: +3 ataque em ${unit.card.name}.',
+        );
+        return _replaceOrRemoveUnit(player, updated);
+      case 'reparo_rapido':
+        final target = _lowestHealthUnit(player);
+        if (target == null) {
+          _addLog('${card.name} não encontrou unidade aliada.');
+          return player;
+        }
+        final heal = min(8, target.maxHealth - target.health);
+        final updated = target.copyWith(
+          health: min(target.maxHealth, target.health + 8),
+        );
+        _addLog(
+          '${player.name} usou ${card.name}: curou $heal em ${target.card.name}.',
+        );
+        return _replaceOrRemoveUnit(
+          player.copyWith(healingDone: player.healingDone + heal),
+          updated,
+        );
+      default:
+        _addLog('${player.name} usou ${card.name}.');
+        return player;
+    }
+  }
+
+  ReflexoUnitInstance? _lowestHealthUnit(ReflexoPlayerState player) {
+    if (player.field.isEmpty) return null;
+    final sorted = [...player.field]
+      ..sort((a, b) => a.health.compareTo(b.health));
+    return sorted.first;
+  }
+
+  ReflexoPlayerState _applyCardCountPassives(ReflexoPlayerState player) {
+    if (player.mainArchetype == ReflexoArchetype.estrategista) {
+      final threshold = player.archetypeAwakened ? 2 : 3;
+      if (player.cardsPlayedThisTurn > 0 &&
+          player.cardsPlayedThisTurn % threshold == 0) {
+        _addLog('${player.name} ativou Estrategista: comprou 1 carta.');
+        return _drawCards(player, 1);
+      }
+    }
+    if (player.mainArchetype == ReflexoArchetype.comandante &&
+        player.cardsPlayedThisTurn == 2 &&
+        player.field.isNotEmpty) {
+      final buffed = player.field
+          .map(
+            (u) => u.copyWith(
+              attack: u.attack + 1,
+              health: u.health + 1,
+              maxHealth: u.maxHealth + 1,
+            ),
+          )
+          .toList();
+      _addLog('${player.name} ativou Comandante: aliados receberam +1/+1.');
+      return player.copyWith(field: buffed);
+    }
+    return player;
   }
 
   void selectUnit(String unitId) {
@@ -396,6 +670,7 @@ class ReflexoDuelController extends ChangeNotifier {
     if (!ownsUnit) return;
     state = state.copyWith(selectedUnitId: unitId);
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   void attackUnit(String defenderId) {
@@ -410,40 +685,79 @@ class ReflexoDuelController extends ChangeNotifier {
     var active = state.current;
     var opponent = state.opponent;
 
-    final attackerDamage = attacker.visibleAttack + active.attackBonus;
-    final precision = attacker.hasAbility(ReflexoAbility.precisao);
+    final trapResult = _triggerAttackTraps(
+      active,
+      opponent,
+      attacker,
+      attacksReflexo: false,
+    );
+    active = trapResult.active;
+    opponent = trapResult.opponent;
+    final maybeAttacker = active.field
+        .where((u) => u.instanceId == attacker.instanceId)
+        .firstOrNull;
+    if (maybeAttacker == null) {
+      _setPlayers(active, opponent);
+      _addLog(
+        '${attacker.card.name} foi destruído por armadilha antes do ataque.',
+      );
+      notifyListeners();
+      _scheduleBotIfNeeded();
+      return;
+    }
+
+    final attackerDamage = _attackDamageWithPressure(maybeAttacker, active);
+    final precision =
+        maybeAttacker.hasAbility(ReflexoAbility.precisao) ||
+        (active.mainArchetype == ReflexoArchetype.sombra &&
+            active.archetypeAwakened);
     final defenderDamage = precision ? 0 : defender.visibleAttack;
 
     final updatedDefender = _damageUnit(defender, attackerDamage);
     final updatedAttacker = precision
-        ? attacker
-        : _damageUnit(attacker, defenderDamage);
+        ? maybeAttacker
+        : _damageUnit(maybeAttacker, defenderDamage);
 
+    final overflow = max(
+      0,
+      attackerDamage - (defender.health + defender.shield),
+    );
     active = _replaceOrRemoveUnit(
       active,
       updatedAttacker.copyWith(exhausted: true, canAttack: false),
     );
     opponent = _replaceOrRemoveUnit(opponent, updatedDefender);
 
-    if (attacker.hasAbility(ReflexoAbility.vinculo)) {
-      active = active.copyWith(
-        life: min(100, active.life + max(1, attackerDamage ~/ 2)),
-      );
+    var dealtToPlayer = 0;
+    if (active.mainArchetype == ReflexoArchetype.berserker &&
+        active.archetypeAwakened &&
+        overflow > 0 &&
+        !updatedDefender.alive) {
+      dealtToPlayer = overflow;
+      opponent = opponent.copyWith(life: max(0, opponent.life - overflow));
+      _addLog('Perfuração Berserker: $overflow dano excedente no Reflexo.');
     }
 
-    _setPlayers(active, opponent);
-    state = state.copyWith(selectedUnitId: null);
-    _setAttackAnimation(
-      ReflexoAttackAnimation(
-        attackerId: attacker.instanceId,
+    active = _afterDamageDealt(
+      active,
+      attackerDamage + dealtToPlayer,
+      maybeAttacker,
+    );
+    _setPlayers(_maybeAwaken(active), opponent);
+    state = state.copyWith(
+      selectedUnitId: null,
+      lastAttackAnimation: ReflexoAttackAnimation(
+        attackerId: maybeAttacker.instanceId,
         targetUnitId: defenderId,
+        serial: _animationSerial++,
       ),
     );
     _addLog(
-      '${active.name}: ${attacker.card.name} atacou ${defender.card.name}.',
+      '${active.name}: ${maybeAttacker.card.name} atacou ${defender.card.name}.',
     );
     _checkGameOver();
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   void attackReflexo() {
@@ -455,38 +769,137 @@ class ReflexoDuelController extends ChangeNotifier {
         'Ataque direto bloqueado. Limpe o campo inimigo ou use Direto/Brecha.',
       );
       notifyListeners();
+      _scheduleBotIfNeeded();
       return;
     }
 
     var active = state.current;
     var opponent = state.opponent;
-    final damage = attacker.visibleAttack + active.attackBonus;
+
+    final trapResult = _triggerAttackTraps(
+      active,
+      opponent,
+      attacker,
+      attacksReflexo: true,
+    );
+    active = trapResult.active;
+    opponent = trapResult.opponent;
+    final maybeAttacker = active.field
+        .where((u) => u.instanceId == attacker.instanceId)
+        .firstOrNull;
+    if (maybeAttacker == null) {
+      _setPlayers(active, opponent);
+      _addLog(
+        '${attacker.card.name} foi destruído por armadilha antes do ataque.',
+      );
+      notifyListeners();
+      _scheduleBotIfNeeded();
+      return;
+    }
+
+    var damage = _attackDamageWithPressure(maybeAttacker, active);
+    final shieldTrap = opponent.traps
+        .where((c) => c.id == 'barreira_oculta')
+        .firstOrNull;
+    if (shieldTrap != null) {
+      final traps = [...opponent.traps]..remove(shieldTrap);
+      damage = max(0, damage - 6);
+      opponent = opponent.copyWith(
+        traps: traps,
+        discard: [...opponent.discard, shieldTrap],
+      );
+      _addLog('${opponent.name} revelou Barreira Oculta: -6 dano.');
+    }
+
     opponent = opponent.copyWith(life: max(0, opponent.life - damage));
     active = _replaceOrRemoveUnit(
       active,
-      attacker.copyWith(exhausted: true, canAttack: false),
+      maybeAttacker.copyWith(exhausted: true, canAttack: false),
     );
-    active = _consumeDirectChargeIfNeeded(active, attacker);
+    active = _consumeDirectChargeIfNeeded(active, maybeAttacker);
+    active = _afterDamageDealt(active, damage, maybeAttacker, direct: true);
 
-    if (attacker.hasAbility(ReflexoAbility.vinculo)) {
-      active = active.copyWith(
-        life: min(100, active.life + max(1, damage ~/ 2)),
-      );
-    }
-
-    _setPlayers(active, opponent);
-    state = state.copyWith(selectedUnitId: null);
-    _setAttackAnimation(
-      ReflexoAttackAnimation(
-        attackerId: attacker.instanceId,
+    _setPlayers(_maybeAwaken(active), opponent);
+    state = state.copyWith(
+      selectedUnitId: null,
+      lastAttackAnimation: ReflexoAttackAnimation(
+        attackerId: maybeAttacker.instanceId,
         targetPlayerId: opponent.id,
+        serial: _animationSerial++,
       ),
     );
     _addLog(
-      '${active.name}: ${attacker.card.name} causou $damage no Reflexo inimigo.',
+      '${active.name}: ${maybeAttacker.card.name} causou $damage no Reflexo inimigo.',
     );
     _checkGameOver();
     notifyListeners();
+    _scheduleBotIfNeeded();
+  }
+
+  int _attackDamageWithPressure(
+    ReflexoUnitInstance attacker,
+    ReflexoPlayerState player,
+  ) {
+    var damage = attacker.visibleAttack + player.attackBonus;
+    final pressure = state.pressureEvent;
+    if (pressure?.effect == ReflexoPressureEffect.firstAttackBonus &&
+        player.field.where((u) => u.exhausted).isEmpty) {
+      damage += pressure!.amount;
+    }
+    if (player.mainArchetype == ReflexoArchetype.sombra &&
+        attacker.hasAbility(ReflexoAbility.direto)) {
+      damage += player.archetypeAwakened ? 2 : 1;
+    }
+    return damage;
+  }
+
+  ({ReflexoPlayerState active, ReflexoPlayerState opponent})
+  _triggerAttackTraps(
+    ReflexoPlayerState active,
+    ReflexoPlayerState opponent,
+    ReflexoUnitInstance attacker, {
+    required bool attacksReflexo,
+  }) {
+    final trap = opponent.traps
+        .where((c) => c.id == 'armadilha_espelhada')
+        .firstOrNull;
+    if (trap == null) return (active: active, opponent: opponent);
+    final traps = [...opponent.traps]..remove(trap);
+    opponent = opponent.copyWith(
+      traps: traps,
+      discard: [...opponent.discard, trap],
+    );
+    final damaged = _damageUnit(attacker, 5);
+    active = _replaceOrRemoveUnit(active, damaged);
+    _addLog(
+      '${opponent.name} revelou Armadilha Espelhada: 5 dano no atacante.',
+    );
+    return (active: active, opponent: opponent);
+  }
+
+  ReflexoPlayerState _afterDamageDealt(
+    ReflexoPlayerState player,
+    int damage,
+    ReflexoUnitInstance attacker, {
+    bool direct = false,
+  }) {
+    var updated = player.copyWith(
+      damageDealt: player.damageDealt + max(0, damage),
+    );
+    if (direct) {
+      updated = updated.copyWith(
+        directDamageEvents: updated.directDamageEvents + 1,
+      );
+    }
+    if (attacker.hasAbility(ReflexoAbility.vinculo)) {
+      final bonus = updated.mainArchetype == ReflexoArchetype.curador ? 2 : 0;
+      final heal = max(1, damage ~/ 2) + bonus;
+      updated = updated.copyWith(
+        life: min(100, updated.life + heal),
+        healingDone: updated.healingDone + heal,
+      );
+    }
+    return updated;
   }
 
   ReflexoPlayerState _consumeDirectChargeIfNeeded(
@@ -494,7 +907,6 @@ class ReflexoDuelController extends ChangeNotifier {
     ReflexoUnitInstance attacker,
   ) {
     if (attacker.hasAbility(ReflexoAbility.direto)) return player;
-    if (player.field.length == 0) return player;
     if (!player.hasDirectCharge) return player;
     final buffs = [...player.buffs];
     for (var i = 0; i < buffs.length; i++) {
@@ -522,6 +934,7 @@ class ReflexoDuelController extends ChangeNotifier {
     if (!attacker.readyToAttack) {
       _addLog('${attacker.card.name} não pode atacar agora.');
       notifyListeners();
+      _scheduleBotIfNeeded();
       return false;
     }
     return true;
@@ -570,16 +983,29 @@ class ReflexoDuelController extends ChangeNotifier {
   void endTurn() {
     if (state.phase != ReflexoMatchPhase.playerTurn) return;
     var player = state.current;
-    final saved = (player.reserve + (player.energy < 0 ? 0 : player.energy))
-        .clamp(0, 10)
-        .toInt();
+    if (player.mainArchetype == ReflexoArchetype.curador &&
+        player.archetypeAwakened) {
+      player = player.copyWith(
+        life: min(100, player.life + 2),
+        healingDone: player.healingDone + 2,
+      );
+    }
+    final saved = (player.reserve + max(0, player.energy)).clamp(0, 10).toInt();
     player = player.copyWith(
       energy: 0,
       reserve: saved,
       turnsTaken: player.turnsTaken + 1,
       buffs: _tickBuffs(player.buffs),
     );
-    _setPlayer(player);
+
+    final pressure = state.pressureEvent;
+    if (pressure?.effect == ReflexoPressureEffect.emptyFieldDraw &&
+        player.field.isEmpty) {
+      player = _drawCards(player, pressure!.amount);
+      _addLog('${player.name} comprou 1 carta por Campo Instável.');
+    }
+
+    _setPlayer(_maybeAwaken(player));
     _addLog('${player.name} finalizou o turno. Reserva: $saved.');
 
     if (state.activePlayer == ReflexoPlayerId.one) {
@@ -588,6 +1014,7 @@ class ReflexoDuelController extends ChangeNotifier {
       _startNextRound();
     }
     notifyListeners();
+    _scheduleBotIfNeeded();
   }
 
   List<ReflexoActiveBuff> _tickBuffs(List<ReflexoActiveBuff> buffs) {
@@ -599,47 +1026,61 @@ class ReflexoDuelController extends ChangeNotifier {
         .toList();
   }
 
-  bool _isDestinyRound(int round) => round == 1 || (round - 1) % 3 == 0;
-
   void _startNextRound() {
     var players = {...state.players};
     for (final id in ReflexoPlayerId.values) {
-      players[id] = players[id]!.copyWith(selectedDestiny: null);
+      players[id] = players[id]!.copyWith(
+        selectedDestiny: null,
+        selectedTactic: null,
+      );
     }
     final nextRound = state.round + 1;
-    final hasDestiny = _isDestinyRound(nextRound);
-
-    state = state.copyWith(
-      round: nextRound,
-      phase: hasDestiny
-          ? ReflexoMatchPhase.destiny
-          : ReflexoMatchPhase.playerTurn,
-      activePlayer: ReflexoPlayerId.one,
-      players: players,
-      selectedUnitId: null,
-      destinyOptions: hasDestiny
-          ? _buildDestinyOptions(players, nextRound)
-          : const <ReflexoPlayerId, List<ReflexoDestinyOption>>{},
-    );
-
-    if (hasDestiny) {
-      _addLog('Rodada $nextRound começou. Fase de Destino ativada.');
-      return;
+    final kindIndex = (nextRound - 1) % 3;
+    if (kindIndex == 0) {
+      state = state.copyWith(
+        round: nextRound,
+        phase: ReflexoMatchPhase.destiny,
+        activePlayer: ReflexoPlayerId.one,
+        players: players,
+        selectedUnitId: null,
+        destinyOptions: _buildDestinyOptions(players, nextRound),
+        tacticOptions: const {},
+        pressureEvent: null,
+      );
+      _addLog('Rodada $nextRound: Destino.');
+    } else if (kindIndex == 1) {
+      state = state.copyWith(
+        round: nextRound,
+        phase: ReflexoMatchPhase.tactic,
+        activePlayer: ReflexoPlayerId.one,
+        players: players,
+        selectedUnitId: null,
+        destinyOptions: const {},
+        tacticOptions: _buildTacticOptions(players, nextRound),
+        pressureEvent: null,
+      );
+      _addLog('Rodada $nextRound: Tática.');
+    } else {
+      final pressure = ReflexoContent.pressureForRound(nextRound);
+      state = state.copyWith(
+        round: nextRound,
+        phase: ReflexoMatchPhase.pressure,
+        activePlayer: ReflexoPlayerId.one,
+        players: players,
+        selectedUnitId: null,
+        destinyOptions: const {},
+        tacticOptions: const {},
+        pressureEvent: pressure,
+      );
+      _addLog('Rodada $nextRound: Pressão — ${pressure.name}.');
     }
-
-    _addLog('Rodada $nextRound começou sem Destino.');
-    _startPlayerTurn(ReflexoPlayerId.one);
   }
 
-  void _setAttackAnimation(ReflexoAttackAnimation animation) {
-    state = state.copyWith(lastAttackAnimation: animation);
-    final captured = animation;
-    Future<void>.delayed(const Duration(milliseconds: 420), () {
-      if (state.lastAttackAnimation == captured) {
-        state = state.copyWith(lastAttackAnimation: null);
-        notifyListeners();
-      }
-    });
+  ReflexoPlayerState _maybeAwaken(ReflexoPlayerState player) {
+    if (player.archetypeAwakened) return player;
+    if (player.archetypeProgress < player.archetypeGoal) return player;
+    _addLog('${player.name} despertou ${player.mainArchetype.label}!');
+    return player.copyWith(archetypeAwakened: true);
   }
 
   void _checkGameOver() {
@@ -673,6 +1114,175 @@ class ReflexoDuelController extends ChangeNotifier {
   void _addLog(String message) {
     final timeline = [message, ...state.timeline];
     state = state.copyWith(timeline: timeline.take(12).toList());
+  }
+
+  void _scheduleBotIfNeeded() {
+    if (!vsBot || _botBusy) return;
+
+    final bot = state.player(ReflexoPlayerId.two);
+
+    final shouldAct =
+        (state.phase == ReflexoMatchPhase.destiny &&
+            (bot.selectedDestiny == null ||
+                bot.lastRollRound != state.round)) ||
+        (state.phase == ReflexoMatchPhase.tactic &&
+            bot.selectedTactic == null) ||
+        (state.phase == ReflexoMatchPhase.playerTurn &&
+            state.activePlayer == ReflexoPlayerId.two);
+
+    if (!shouldAct) return;
+
+    _botBusy = true;
+    Future<void>.delayed(const Duration(milliseconds: 450), () async {
+      try {
+        if (state.phase == ReflexoMatchPhase.destiny) {
+          await _runBotDestiny();
+        } else if (state.phase == ReflexoMatchPhase.tactic) {
+          await _runBotTactic();
+        } else if (state.phase == ReflexoMatchPhase.playerTurn &&
+            state.activePlayer == ReflexoPlayerId.two) {
+          await _runBotTurn();
+        }
+      } finally {
+        _botBusy = false;
+        notifyListeners();
+        _scheduleBotIfNeeded();
+      }
+    });
+  }
+
+  Future<void> _runBotDestiny() async {
+    var bot = state.player(ReflexoPlayerId.two);
+    if (bot.selectedDestiny == null) {
+      final options = state.destinyOptions[ReflexoPlayerId.two] ?? const [];
+      if (options.isNotEmpty) {
+        final choice = _bestBotDestiny(options, bot);
+        selectDestiny(ReflexoPlayerId.two, choice);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+
+    bot = state.player(ReflexoPlayerId.two);
+    if (state.phase == ReflexoMatchPhase.destiny &&
+        bot.lastRollRound != state.round) {
+      rollDestiny(ReflexoPlayerId.two);
+    }
+  }
+
+  ReflexoDestinyOption _bestBotDestiny(
+    List<ReflexoDestinyOption> options,
+    ReflexoPlayerState bot,
+  ) {
+    if (bot.life <= 45) {
+      final heal = options.where((o) => o.effect == ReflexoDestinyEffect.heal);
+      if (heal.isNotEmpty) return heal.first;
+    }
+
+    final playable = options.where((o) => o.requirement <= 12).toList();
+    if (playable.isNotEmpty) return playable.first;
+
+    return options.first;
+  }
+
+  Future<void> _runBotTactic() async {
+    final bot = state.player(ReflexoPlayerId.two);
+    if (bot.selectedTactic != null) return;
+
+    final options = state.tacticOptions[ReflexoPlayerId.two] ?? const [];
+    if (options.isEmpty) return;
+
+    ReflexoTacticOption choice = options.first;
+    if (bot.hand.length <= 2) {
+      final draw = options.where((o) => o.effect == ReflexoTacticEffect.draw);
+      if (draw.isNotEmpty) choice = draw.first;
+    } else if (bot.life <= 40) {
+      final heal = options.where((o) => o.effect == ReflexoTacticEffect.heal);
+      if (heal.isNotEmpty) choice = heal.first;
+    } else {
+      final economy = options.where(
+        (o) =>
+            o.effect == ReflexoTacticEffect.costReduction ||
+            o.effect == ReflexoTacticEffect.reserve,
+      );
+      if (economy.isNotEmpty) choice = economy.first;
+    }
+
+    selectTactic(ReflexoPlayerId.two, choice);
+  }
+
+  Future<void> _runBotTurn() async {
+    if (state.phase != ReflexoMatchPhase.playerTurn ||
+        state.activePlayer != ReflexoPlayerId.two) {
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    _botPlayBestCard();
+
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    _botAttackIfPossible();
+
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (state.phase == ReflexoMatchPhase.playerTurn &&
+        state.activePlayer == ReflexoPlayerId.two) {
+      endTurn();
+    }
+  }
+
+  void _botPlayBestCard() {
+    if (state.phase != ReflexoMatchPhase.playerTurn ||
+        state.activePlayer != ReflexoPlayerId.two) {
+      return;
+    }
+
+    final bot = state.current;
+    var bestIndex = -1;
+    var bestCost = -1;
+
+    for (var i = 0; i < bot.hand.length; i++) {
+      final card = bot.hand[i];
+      final cost = effectiveCost(bot, card);
+      final hasSpace = card.isUnit
+          ? bot.field.length < 5
+          : card.isTrap
+          ? bot.traps.length < 2
+          : true;
+
+      if (hasSpace && bot.energy >= cost && cost > bestCost) {
+        bestIndex = i;
+        bestCost = cost;
+      }
+    }
+
+    if (bestIndex >= 0) {
+      playCard(bestIndex);
+    }
+  }
+
+  void _botAttackIfPossible() {
+    if (state.phase != ReflexoMatchPhase.playerTurn ||
+        state.activePlayer != ReflexoPlayerId.two) {
+      return;
+    }
+
+    final attackers = state.current.field
+        .where((u) => u.readyToAttack)
+        .toList();
+    if (attackers.isEmpty) return;
+
+    attackers.sort((a, b) => b.visibleAttack.compareTo(a.visibleAttack));
+    final attacker = attackers.first;
+    selectUnit(attacker.instanceId);
+
+    final enemyUnits = state.opponent.field;
+    if (enemyUnits.isNotEmpty) {
+      final targets = [...enemyUnits]
+        ..sort((a, b) => a.health.compareTo(b.health));
+      attackUnit(targets.first.instanceId);
+      return;
+    }
+
+    attackReflexo();
   }
 }
 

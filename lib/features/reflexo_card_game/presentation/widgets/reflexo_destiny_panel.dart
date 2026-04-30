@@ -1,11 +1,4 @@
 // lib/features/reflexo_card_game/presentation/widgets/reflexo_destiny_panel.dart
-//
-// Painel da Fase de Destino do Reflexo Card Game.
-// Correção desta versão:
-// - Remove Spacer dentro dos cards de Destino, que quebrava layout em ListView.
-// - Usa altura fixa/segura para as opções de Destino.
-// - Mantém texto maior, direto e legível.
-// - Evita tela preta causada por RenderBox/RenderFlex sem tamanho.
 
 import 'package:flutter/material.dart';
 
@@ -31,40 +24,28 @@ class ReflexoDestinyPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final selected = player.selectedDestiny;
     final alreadyRolled = player.lastRollRound == round;
-
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xEA0B1020),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white12),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
-                  '${player.name} · Destino',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  '${player.name} · escolha seu Destino',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
               _DiceButton(
                 roll: player.lastRoll,
                 enabled: selected != null && !alreadyRolled,
@@ -73,84 +54,24 @@ class ReflexoDestinyPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          if (options.isEmpty)
-            Container(
-              height: 96,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white10),
-              ),
-              child: Text(
-                'Nenhum Destino disponível.',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.70),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: options.map((option) {
+              final isSelected = selected?.id == option.id;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: _DestinyOptionCard(
+                    option: option,
+                    selected: isSelected,
+                    disabled: alreadyRolled,
+                    onTap: () => onSelect(option),
+                  ),
                 ),
-              ),
-            )
-          else
-            SizedBox(
-              height: 126,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: options.take(3).map((option) {
-                  final isSelected = selected?.id == option.id;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: _DestinyOptionCard(
-                        option: option,
-                        selected: isSelected,
-                        disabled: alreadyRolled,
-                        onTap: () => onSelect(option),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          if (selected != null) ...[
-            const SizedBox(height: 8),
-            _SelectedStatusLine(player: player, selected: selected),
-          ],
+              );
+            }).toList(),
+          ),
         ],
-      ),
-    );
-  }
-}
-
-class _SelectedStatusLine extends StatelessWidget {
-  const _SelectedStatusLine({required this.player, required this.selected});
-
-  final ReflexoPlayerState player;
-  final ReflexoDestinyOption selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final roll = player.lastRoll;
-    final text = roll == null
-        ? 'Selecionado: ${selected.name}. Role o d20.'
-        : 'Rolagem: $roll · ${selected.requirement}+ necessário.';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Text(
-        text,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.76),
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
       ),
     );
   }
@@ -169,28 +90,21 @@ class _DestinyOptionCard extends StatelessWidget {
   final bool disabled;
   final VoidCallback onTap;
 
-  Color get _riskColor {
-    if (option.requirement >= 18) return const Color(0xFFA855F7);
-    if (option.requirement >= 10) return const Color(0xFFF59E0B);
-    return const Color(0xFF22C55E);
-  }
-
-  String get _riskLabel {
-    if (option.requirement >= 18) return 'Arriscado';
-    if (option.requirement >= 10) return 'Médio';
-    return 'Seguro';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final color = _riskColor;
-    return Material(
-      color: Colors.transparent,
+    final color = option.requirement >= 18
+        ? const Color(0xFFA855F7)
+        : option.requirement >= 10
+        ? const Color(0xFFF59E0B)
+        : const Color(0xFF22C55E);
+    return Tooltip(
+      message: option.fullText.isEmpty ? option.shortText : option.fullText,
       child: InkWell(
         onTap: disabled ? null : onTap,
         borderRadius: BorderRadius.circular(14),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
+          height: 126,
           padding: const EdgeInsets.all(9),
           decoration: BoxDecoration(
             color: color.withValues(alpha: selected ? 0.24 : 0.10),
@@ -201,28 +115,8 @@ class _DestinyOptionCard extends StatelessWidget {
             ),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome_rounded, size: 13, color: color),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      _riskLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
               Text(
                 option.name,
                 maxLines: 2,
@@ -230,24 +124,21 @@ class _DestinyOptionCard extends StatelessWidget {
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
-                  height: 1.05,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               Text(
                 option.shortText,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.94),
-                  fontSize: 15,
-                  height: 1.0,
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontSize: 14,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 5),
-              const Expanded(child: SizedBox.shrink()),
+              const Spacer(),
               Row(
                 children: [
                   Icon(Icons.casino_rounded, size: 14, color: color),
@@ -260,17 +151,16 @@ class _DestinyOptionCard extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(
+                  const Spacer(),
+                  Flexible(
                     child: Text(
                       option.durationLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.62),
                         fontSize: 9,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -297,35 +187,23 @@ class _DiceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasRoll = roll != null;
-    return Material(
-      color: Colors.transparent,
+    return Tooltip(
+      message:
+          'Rola o d20 deste jogador. O valor fica visível até a próxima rolagem.',
       child: InkWell(
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(999),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          width: hasRoll ? 66 : 58,
-          height: hasRoll ? 66 : 58,
+          width: roll == null ? 58 : 66,
+          height: roll == null ? 58 : 66,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: enabled
-                  ? const [
-                      Color(0xFF93C5FD),
-                      Color(0xFF2563EB),
-                      Color(0xFF111827),
-                    ]
-                  : const [
-                      Color(0xFF334155),
-                      Color(0xFF1E293B),
-                      Color(0xFF020617),
-                    ],
+            gradient: const RadialGradient(
+              colors: [Color(0xFF60A5FA), Color(0xFF1D4ED8), Color(0xFF111827)],
               radius: 0.95,
             ),
-            border: Border.all(
-              color: enabled ? Colors.white70 : Colors.white24,
-            ),
+            border: Border.all(color: Colors.white54),
             boxShadow: enabled
                 ? const [
                     BoxShadow(
@@ -338,7 +216,7 @@ class _DiceButton extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              hasRoll ? '$roll' : 'd20',
+              roll == null ? 'd20' : '$roll',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,

@@ -1,4 +1,6 @@
-// lib/features/reflexo_card_game/domain/reflexo_content.dart
+// ============================================================================
+// FILE: lib/features/reflexo_card_game/domain/reflexo_content.dart
+// ============================================================================
 
 import 'reflexo_models.dart';
 
@@ -127,20 +129,6 @@ class ReflexoContent {
       text: 'Melhora partidas longas com efeitos ligados ao dado.',
     ),
     ReflexoCardDefinition(
-      id: 'colosso_prismatico',
-      name: 'Colosso Prismático',
-      type: ReflexoCardType.unit,
-      cost: 10,
-      attack: 26,
-      health: 42,
-      shield: 6,
-      attribute: ReflexoAttribute.vigor,
-      secondaryAttribute: ReflexoAttribute.recurso,
-      archetype: ReflexoArchetype.guardiao,
-      abilities: [ReflexoAbility.guardiao, ReflexoAbility.barreira],
-      text: 'Carta pesada e impactante. Não vence sozinha, mas muda o campo.',
-    ),
-    ReflexoCardDefinition(
       id: 'furia_crescente',
       name: 'Fúria Crescente',
       type: ReflexoCardType.unit,
@@ -166,6 +154,82 @@ class ReflexoContent {
       abilities: [ReflexoAbility.guardiao],
       text: 'Defesa inicial para segurar o primeiro impacto.',
     ),
+    ReflexoCardDefinition(
+      id: 'colosso_prismatico',
+      name: 'Colosso Prismático',
+      type: ReflexoCardType.unit,
+      cost: 10,
+      attack: 26,
+      health: 42,
+      shield: 6,
+      attribute: ReflexoAttribute.vigor,
+      secondaryAttribute: ReflexoAttribute.recurso,
+      archetype: ReflexoArchetype.guardiao,
+      abilities: [ReflexoAbility.guardiao, ReflexoAbility.barreira],
+      text: 'Carta pesada e impactante. Não vence sozinha, mas muda o campo.',
+    ),
+    ReflexoCardDefinition(
+      id: 'raio_prismatico',
+      name: 'Raio Prismático',
+      type: ReflexoCardType.spell,
+      cost: 2,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.foco,
+      archetype: ReflexoArchetype.oraculo,
+      text: 'Causa 6 de dano à unidade inimiga com menor vida.',
+    ),
+    ReflexoCardDefinition(
+      id: 'forca_subita',
+      name: 'Força Súbita',
+      type: ReflexoCardType.spell,
+      cost: 2,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.instinto,
+      archetype: ReflexoArchetype.berserker,
+      text: 'Sua primeira unidade em campo recebe +3 ataque.',
+    ),
+    ReflexoCardDefinition(
+      id: 'reparo_rapido',
+      name: 'Reparo Rápido',
+      type: ReflexoCardType.spell,
+      cost: 2,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.recurso,
+      archetype: ReflexoArchetype.inventor,
+      text: 'Cura 8 de vida da sua unidade mais ferida.',
+    ),
+    ReflexoCardDefinition(
+      id: 'armadilha_espelhada',
+      name: 'Armadilha Espelhada',
+      type: ReflexoCardType.trap,
+      cost: 2,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.instinto,
+      archetype: ReflexoArchetype.sombra,
+      text:
+          'Fica virada. Quando o inimigo atacar, causa 5 de dano ao atacante.',
+    ),
+    ReflexoCardDefinition(
+      id: 'barreira_oculta',
+      name: 'Barreira Oculta',
+      type: ReflexoCardType.trap,
+      cost: 2,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.disciplina,
+      archetype: ReflexoArchetype.guardiao,
+      text:
+          'Fica virada. Quando seu Reflexo receber ataque direto, reduz 6 de dano.',
+    ),
   ];
 
   static List<ReflexoCardDefinition> buildDeck({required int seedOffset}) {
@@ -176,9 +240,8 @@ class ReflexoContent {
         if (deck.length >= 30) break;
       }
     }
-    final first = deck.sublist(0, seedOffset % deck.length);
-    final second = deck.sublist(seedOffset % deck.length);
-    return [...second, ...first];
+    final pivot = seedOffset % deck.length;
+    return [...deck.sublist(pivot), ...deck.sublist(0, pivot)];
   }
 
   static Map<ReflexoAttribute, int> attributesForPlayer(ReflexoPlayerId id) {
@@ -206,42 +269,22 @@ class ReflexoContent {
     required ReflexoPlayerState player,
     required int round,
   }) {
-    final main = player.mainArchetype;
-
-    const weakPool = <ReflexoDestinyOption>[
-      ReflexoDestinyOption(
-        id: 'energia_fagulha',
-        name: 'Fagulha de Energia',
+    final early = round < 4;
+    final midGame = round >= 4 && round < 7;
+    final options = <ReflexoDestinyOption>[
+      const ReflexoDestinyOption(
+        id: 'energia_rapida',
+        name: 'Pulso de Energia',
         shortText: '+1 energia',
         requirement: 5,
         effect: ReflexoDestinyEffect.energy,
         amount: 1,
         durationTurns: 1,
-        fullText: 'Ganha +1 energia no próximo turno deste jogador.',
+        fullText: 'Ganha +1 energia neste turno.',
       ),
-      ReflexoDestinyOption(
-        id: 'fio_lamina',
-        name: 'Fio da Lâmina',
-        shortText: '+1 ataque',
-        requirement: 7,
-        effect: ReflexoDestinyEffect.attackAll,
-        amount: 1,
-        durationTurns: 1,
-        fullText: 'Suas unidades recebem +1 ataque neste turno.',
-      ),
-      ReflexoDestinyOption(
-        id: 'pele_ferro',
-        name: 'Pele de Ferro',
-        shortText: '+2 escudo',
-        requirement: 6,
-        effect: ReflexoDestinyEffect.shieldAll,
-        amount: 2,
-        durationTurns: 1,
-        fullText: 'Suas próximas unidades entram com +2 escudo neste turno.',
-      ),
-      ReflexoDestinyOption(
-        id: 'olhar_tatico',
-        name: 'Olhar Tático',
+      const ReflexoDestinyOption(
+        id: 'compra_tatica',
+        name: 'Compra Tática',
         shortText: 'compra 1',
         requirement: 8,
         effect: ReflexoDestinyEffect.draw,
@@ -249,171 +292,179 @@ class ReflexoContent {
         durationTurns: 1,
         fullText: 'Compre 1 carta.',
       ),
-    ];
-
-    const midPool = <ReflexoDestinyOption>[
       ReflexoDestinyOption(
-        id: 'pulso_energia',
-        name: 'Pulso de Energia',
-        shortText: '+2 energia',
-        requirement: 9,
-        effect: ReflexoDestinyEffect.energy,
-        amount: 2,
-        durationTurns: 1,
-        fullText: 'Ganha +2 energia no próximo turno deste jogador.',
-      ),
-      ReflexoDestinyOption(
-        id: 'lamina_viva',
-        name: 'Lâmina Viva',
-        shortText: '+2 ataque',
-        requirement: 12,
+        id: 'ataque_medio',
+        name: early ? 'Afiar Lâmina' : 'Lâmina Viva',
+        shortText: early ? '+1 ataque' : '+2 ataque',
+        requirement: early ? 9 : 12,
         effect: ReflexoDestinyEffect.attackAll,
-        amount: 2,
+        amount: early ? 1 : 2,
         durationTurns: 1,
-        fullText: 'Suas unidades recebem +2 ataque neste turno.',
+        fullText: 'Suas unidades recebem bônus de ataque neste turno.',
       ),
       ReflexoDestinyOption(
         id: 'muralha_rapida',
-        name: 'Muralha Rápida',
-        shortText: '+3 escudo',
-        requirement: 10,
+        name: early ? 'Postura Firme' : 'Muralha Rápida',
+        shortText: early ? '+1 escudo' : '+3 escudo',
+        requirement: early ? 7 : 10,
         effect: ReflexoDestinyEffect.shieldAll,
-        amount: 3,
+        amount: early ? 1 : 3,
         durationTurns: 2,
-        fullText: 'Suas próximas unidades entram com +3 escudo por 2 turnos.',
+        fullText: 'Suas próximas unidades entram com mais escudo.',
       ),
-      ReflexoDestinyOption(
-        id: 'forja_leve',
-        name: 'Forja Leve',
-        shortText: '-1 custo',
-        requirement: 13,
-        effect: ReflexoDestinyEffect.costReduction,
-        amount: 1,
-        durationTurns: 1,
-        fullText: 'Suas cartas custam -1 neste turno.',
-      ),
-      ReflexoDestinyOption(
-        id: 'folego_reflexo',
-        name: 'Fôlego do Reflexo',
-        shortText: '+8 vida',
-        requirement: 10,
-        effect: ReflexoDestinyEffect.heal,
-        amount: 8,
-        durationTurns: 1,
-        fullText: 'Cura 8 pontos de vida do seu Reflexo.',
-      ),
+      if (!early)
+        const ReflexoDestinyOption(
+          id: 'forja_leve',
+          name: 'Forja Leve',
+          shortText: '-1 custo',
+          requirement: 14,
+          effect: ReflexoDestinyEffect.costReduction,
+          amount: 1,
+          durationTurns: 1,
+          fullText: 'Suas cartas custam -1 neste turno.',
+        ),
+      if (!early)
+        const ReflexoDestinyOption(
+          id: 'cura_reflexo',
+          name: 'Fôlego do Reflexo',
+          shortText: '+8 vida',
+          requirement: 10,
+          effect: ReflexoDestinyEffect.heal,
+          amount: 8,
+          durationTurns: 1,
+          fullText: 'Cura 8 pontos de vida do seu Reflexo.',
+        ),
+      if (!early && !midGame)
+        const ReflexoDestinyOption(
+          id: 'brecha_absoluta',
+          name: 'Brecha Absoluta',
+          shortText: '1 ataque direto',
+          requirement: 20,
+          effect: ReflexoDestinyEffect.directStrike,
+          amount: 1,
+          durationTurns: 1,
+          fullText: 'Uma unidade pode atacar o Reflexo inimigo diretamente.',
+        ),
     ];
 
-    const latePool = <ReflexoDestinyOption>[
-      ReflexoDestinyOption(
-        id: 'brecha_absoluta',
-        name: 'Brecha Absoluta',
-        shortText: '1 ataque direto',
-        requirement: 20,
-        effect: ReflexoDestinyEffect.directStrike,
-        amount: 1,
-        durationTurns: 1,
-        fullText:
-            'Uma unidade pode atacar o Reflexo inimigo diretamente neste turno.',
-      ),
-      ReflexoDestinyOption(
-        id: 'surto_prismatico',
-        name: 'Surto Prismático',
-        shortText: '+3 energia',
-        requirement: 16,
-        effect: ReflexoDestinyEffect.energy,
-        amount: 3,
-        durationTurns: 1,
-        fullText: 'Ganha +3 energia no próximo turno deste jogador.',
-      ),
-      ReflexoDestinyOption(
-        id: 'comando_total',
-        name: 'Comando Total',
-        shortText: '+3 ataque',
-        requirement: 17,
-        effect: ReflexoDestinyEffect.attackAll,
-        amount: 3,
-        durationTurns: 1,
-        fullText: 'Suas unidades recebem +3 ataque neste turno.',
-      ),
-      ReflexoDestinyOption(
-        id: 'economia_arcana',
-        name: 'Economia Arcana',
-        shortText: '-2 custo',
-        requirement: 18,
-        effect: ReflexoDestinyEffect.costReduction,
-        amount: 2,
-        durationTurns: 1,
-        fullText: 'Suas cartas custam -2 neste turno.',
-      ),
-    ];
-
-    final available = <ReflexoDestinyOption>[
-      ...weakPool,
-      if (round >= 4) ...midPool,
-      if (round >= 7) ...latePool,
-    ];
-
-    bool likes(ReflexoDestinyOption option) {
-      return (main == ReflexoArchetype.berserker &&
-              option.effect == ReflexoDestinyEffect.attackAll) ||
-          (main == ReflexoArchetype.guardiao &&
-              option.effect == ReflexoDestinyEffect.shieldAll) ||
-          (main == ReflexoArchetype.estrategista &&
-              option.effect == ReflexoDestinyEffect.draw) ||
-          (main == ReflexoArchetype.sombra &&
-              option.effect == ReflexoDestinyEffect.directStrike) ||
-          (main == ReflexoArchetype.curador &&
-              option.effect == ReflexoDestinyEffect.heal) ||
-          (main == ReflexoArchetype.inventor &&
-              option.effect == ReflexoDestinyEffect.costReduction);
-    }
-
-    final safe = available.where((e) => e.requirement <= 8).toList();
-    final mid = available
-        .where((e) => e.requirement > 8 && e.requirement < 16)
+    final safe = options.where((e) => e.requirement <= 8).toList();
+    final mid = options
+        .where((e) => e.requirement > 8 && e.requirement < 18)
         .toList();
-    final risky = available.where((e) => e.requirement >= 16).toList();
-    final preferred = available.where(likes).toList();
+    final risky = options.where((e) => e.requirement >= 18).toList();
 
-    ReflexoDestinyOption pick(List<ReflexoDestinyOption> options, int salt) {
-      final source = options.isEmpty ? available : options;
+    ReflexoDestinyOption pick(List<ReflexoDestinyOption> list, int salt) {
+      final source = list.isEmpty ? options : list;
       return source[(round + player.id.index + salt) % source.length];
     }
 
-    return [
-      preferred.isNotEmpty
-          ? preferred[(round + player.id.index) % preferred.length]
-          : pick(safe, 1),
-      pick(mid, 2),
-      pick(risky.isEmpty ? mid : risky, 3),
-    ];
+    return [pick(safe, 1), pick(mid, 2), pick(risky, 3)];
   }
 
-  static String archetypePassive(
-    ReflexoArchetype archetype, {
-    required bool main,
+  static List<ReflexoTacticOption> tacticOptionsFor({
+    required ReflexoPlayerState player,
+    required int round,
   }) {
-    final prefix = main ? 'Principal' : 'Secundário';
-    switch (archetype) {
+    final first = round.isEven
+        ? const ReflexoTacticOption(
+            id: 'reserva_tatica',
+            name: 'Guardar Fôlego',
+            shortText: '+2 reserva',
+            effect: ReflexoTacticEffect.reserve,
+            amount: 2,
+            fullText: 'Ganha +2 de reserva para preparar jogadas maiores.',
+          )
+        : const ReflexoTacticOption(
+            id: 'compra_tatica_plano',
+            name: 'Ler o Campo',
+            shortText: 'compra 1',
+            effect: ReflexoTacticEffect.draw,
+            amount: 1,
+            fullText: 'Compra 1 carta.',
+          );
+
+    ReflexoTacticOption second;
+    switch (player.mainArchetype) {
       case ReflexoArchetype.berserker:
-        return '$prefix: pressão ofensiva; Destinos de dano aparecem mais.';
+        second = const ReflexoTacticOption(
+          id: 'plano_agressivo',
+          name: 'Plano Agressivo',
+          shortText: '+2 ataque na 1ª unidade',
+          effect: ReflexoTacticEffect.firstUnitAttack,
+          amount: 2,
+          fullText: 'A próxima unidade que você jogar recebe +2 ataque.',
+        );
+        break;
       case ReflexoArchetype.guardiao:
-        return '$prefix: proteção; Destinos de escudo aparecem mais.';
-      case ReflexoArchetype.estrategista:
-        return '$prefix: consistência; compra e redução de custo aparecem mais.';
-      case ReflexoArchetype.oraculo:
-        return '$prefix: manipula o dado; mais efeitos de Destino.';
+        second = const ReflexoTacticOption(
+          id: 'plano_defensivo',
+          name: 'Plano Defensivo',
+          shortText: '+3 escudo na 1ª unidade',
+          effect: ReflexoTacticEffect.firstUnitShield,
+          amount: 3,
+          fullText: 'A próxima unidade que você jogar recebe +3 escudo.',
+        );
+        break;
       case ReflexoArchetype.curador:
-        return '$prefix: recuperação; cura e vínculo aparecem mais.';
-      case ReflexoArchetype.sombra:
-        return '$prefix: brechas; ataques diretos raros aparecem mais.';
-      case ReflexoArchetype.inventor:
-        return '$prefix: equipamentos e custo; valor por recurso.';
-      case ReflexoArchetype.comandante:
-        return '$prefix: campo cheio e buffs de aliados.';
-      case ReflexoArchetype.alquimista:
-        return '$prefix: transforma energia e cartas em vantagem.';
+        second = const ReflexoTacticOption(
+          id: 'plano_cura',
+          name: 'Respirar',
+          shortText: '+5 vida',
+          effect: ReflexoTacticEffect.heal,
+          amount: 5,
+          fullText: 'Cura 5 de vida do seu Reflexo.',
+        );
+        break;
+      case ReflexoArchetype.estrategista:
+      default:
+        second = const ReflexoTacticOption(
+          id: 'plano_economico',
+          name: 'Plano Econômico',
+          shortText: '-1 custo neste turno',
+          effect: ReflexoTacticEffect.costReduction,
+          amount: 1,
+          fullText: 'Suas cartas custam -1 neste turno.',
+        );
+    }
+
+    return [first, second];
+  }
+
+  static ReflexoPressureEvent pressureForRound(int round) {
+    final index = (round ~/ 3) % 4;
+    switch (index) {
+      case 0:
+        return const ReflexoPressureEvent(
+          id: 'pressao_ataque',
+          name: 'Pressão de Combate',
+          shortText: '1º ataque de cada jogador causa +2 dano.',
+          effect: ReflexoPressureEffect.firstAttackBonus,
+          amount: 2,
+        );
+      case 1:
+        return const ReflexoPressureEvent(
+          id: 'ritmo_forcado',
+          name: 'Ritmo Forçado',
+          shortText: '1ª carta de cada jogador custa -1.',
+          effect: ReflexoPressureEffect.firstCardDiscount,
+          amount: 1,
+        );
+      case 2:
+        return const ReflexoPressureEvent(
+          id: 'campo_instavel',
+          name: 'Campo Instável',
+          shortText: 'Quem terminar sem unidades compra 1 carta.',
+          effect: ReflexoPressureEffect.emptyFieldDraw,
+          amount: 1,
+        );
+      default:
+        return const ReflexoPressureEvent(
+          id: 'furia_baixa',
+          name: 'Fúria de Sobrevivência',
+          shortText: 'Unidades leves entram com +2 ataque.',
+          effect: ReflexoPressureEffect.lowLifeFury,
+          amount: 2,
+        );
     }
   }
 }
