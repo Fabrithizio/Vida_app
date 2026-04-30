@@ -23,7 +23,6 @@ import 'package:vida_app/features/areas/areas_store.dart';
 import 'package:vida_app/features/areas/presentation/areas_catalog.dart';
 import 'package:vida_app/features/areas/presentation/pages/area_detail_page.dart'
     as area_detail;
-import 'package:vida_app/features/areas/presentation/pages/areas_rpg_profile_page.dart';
 import 'package:vida_app/features/areas/presentation/pages/daily_checkin_sheet.dart';
 import 'package:vida_app/features/areas/presentation/pages/score_rules_sheet.dart';
 import 'package:vida_app/features/areas/presentation/widgets/areas_model_assets.dart';
@@ -31,6 +30,7 @@ import 'package:vida_app/features/device/device_usage_service.dart';
 import 'package:vida_app/features/device/usage_access_overlay.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas_tab_controller.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
+import 'package:vida_app/features/reflexo_card_game/presentation/pages/reflexo_game_lobby_page.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({
@@ -268,19 +268,8 @@ class _AreasTabState extends State<AreasTab> {
     );
   }
 
-  Future<void> _openRpgProfile() async {
-    final userName = (_resolvedName ?? await _nameFuture).trim();
-    final scores = _resolvedScores ?? await _scoreFuture;
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => AreasRpgProfilePage(
-          userName: userName.isEmpty ? 'Usuário' : userName,
-          areaScores: scores,
-        ),
-      ),
-    );
-  }
+  void _openAvatarEditor() =>
+      _showSoonMessage('Editor de avatar será ligado aqui em breve.');
 
   Future<void> _openScoreRules() async {
     await showModalBottomSheet(
@@ -308,6 +297,12 @@ class _AreasTabState extends State<AreasTab> {
         builder: (context) =>
             LifeJourneyPage(userName: userName, sex: sex, birthDate: birthDate),
       ),
+    );
+  }
+
+  Future<void> _openReflexoGameLobby() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const ReflexoGameLobbyPage()),
     );
   }
 
@@ -440,7 +435,7 @@ class _AreasTabState extends State<AreasTab> {
                       alertsService: widget.alertsService,
                       onOpenAlertRoute: widget.onOpenAlertRoute,
                       onCheckinTap: _openCheckin,
-                      onAvatarTap: _openRpgProfile,
+                      onAvatarTap: _openAvatarEditor,
                       onScoreRulesTap: _openScoreRules,
                       onAgeTimelineTap: _openLifeJourney,
                     ),
@@ -457,6 +452,18 @@ class _AreasTabState extends State<AreasTab> {
                         height: characterHeight,
                         fit: BoxFit.contain,
                       ),
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  left: 10,
+                  bottom: gridHeight + gridBottom + 18,
+                  child: SafeArea(
+                    top: false,
+                    right: false,
+                    child: _ReflexoDuelFloatingButton(
+                      onTap: _openReflexoGameLobby,
                     ),
                   ),
                 ),
@@ -602,7 +609,7 @@ class _TopHudCompact extends StatelessWidget {
                             ),
                           ),
                           child: const Icon(
-                            Icons.auto_awesome_rounded,
+                            Icons.edit_rounded,
                             color: Colors.white,
                             size: 9,
                           ),
@@ -857,6 +864,61 @@ class _MiniActionButton extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
         child: Icon(icon, color: Colors.white, size: 19),
+      ),
+    );
+  }
+}
+
+class _ReflexoDuelFloatingButton extends StatelessWidget {
+  const _ReflexoDuelFloatingButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Abrir Reflexo Card Game',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 136,
+          height: 58,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white24),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.casino_rounded, color: Colors.white, size: 21),
+              SizedBox(width: 8),
+              Text(
+                'Reflexo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
