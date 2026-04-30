@@ -24,7 +24,7 @@ class ReflexoCardTile extends StatelessWidget {
     return Opacity(
       opacity: opacity,
       child: InkWell(
-        onTap: enabled ? onTap : null,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         onLongPress: () => showReflexoCardDetails(context, card),
         child: Container(
@@ -46,52 +46,76 @@ class ReflexoCardTile extends StatelessWidget {
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Stack(
             children: [
-              Expanded(
-                child: _CardImageBox(
-                  imageAsset: card.imageAsset,
-                  icon: card.attribute.icon,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      card.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                      ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _CardImageBox(
+                      imageAsset: card.imageAsset,
+                      icon: card.attribute.icon,
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _StatPill(
-                          label: '$cost',
-                          color: const Color(0xFF60A5FA),
+                        Text(
+                          card.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                        const Spacer(),
-                        _StatPill(
-                          label: '${card.attack}',
-                          color: const Color(0xFFF97316),
-                        ),
-                        const SizedBox(width: 3),
-                        _StatPill(
-                          label: '${card.health}',
-                          color: const Color(0xFF22C55E),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            _StatPill(
+                              label: 'C $cost',
+                              color: const Color(0xFF60A5FA),
+                            ),
+                            const Spacer(),
+                            _StatPill(
+                              label: 'A ${card.attack}',
+                              color: const Color(0xFFF97316),
+                            ),
+                            const SizedBox(width: 3),
+                            _StatPill(
+                              label: 'V ${card.health}',
+                              color: const Color(0xFF22C55E),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+              if (!enabled)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.28),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'sem energia',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -105,16 +129,22 @@ class ReflexoUnitCard extends StatelessWidget {
     super.key,
     required this.unit,
     required this.selected,
+    this.isAttacker = false,
+    this.isTarget = false,
     required this.onTap,
   });
 
   final ReflexoUnitInstance unit;
   final bool selected;
+  final bool isAttacker;
+  final bool isTarget;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = selected
+    final borderColor = isTarget
+        ? const Color(0xFFEF4444)
+        : selected
         ? const Color(0xFF38BDF8)
         : unit.readyToAttack
         ? const Color(0xFF22C55E)
@@ -123,91 +153,99 @@ class ReflexoUnitCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       onLongPress: () => showReflexoUnitDetails(context, unit),
-      child: AnimatedContainer(
+      child: AnimatedScale(
         duration: const Duration(milliseconds: 180),
-        width: 68,
-        height: 88,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1B2542), Color(0xFF0A0F1D)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+        scale: isAttacker
+            ? 1.10
+            : isTarget
+            ? 0.94
+            : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: 68,
+          height: 88,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1B2542), Color(0xFF0A0F1D)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            border: Border.all(color: borderColor, width: selected ? 2 : 1),
+            boxShadow: selected
+                ? const [
+                    BoxShadow(
+                      color: Color(0x8838BDF8),
+                      blurRadius: 16,
+                      offset: Offset(0, 5),
+                    ),
+                  ]
+                : const [],
           ),
-          border: Border.all(color: borderColor, width: selected ? 2 : 1),
-          boxShadow: selected
-              ? const [
-                  BoxShadow(
-                    color: Color(0x8838BDF8),
-                    blurRadius: 16,
-                    offset: Offset(0, 5),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(5, 5, 5, 25),
+                  child: _CardImageBox(
+                    imageAsset: unit.card.imageAsset,
+                    icon: unit.card.attribute.icon,
                   ),
-                ]
-              : const [],
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(5, 5, 5, 25),
-                child: _CardImageBox(
-                  imageAsset: unit.card.imageAsset,
-                  icon: unit.card.attribute.icon,
                 ),
               ),
-            ),
-            Positioned(
-              top: 3,
-              left: 3,
-              child: _StatPill(
-                label: '${unit.visibleAttack}',
-                color: const Color(0xFFF97316),
-              ),
-            ),
-            Positioned(
-              top: 3,
-              right: 3,
-              child: _StatPill(
-                label: '${unit.health}',
-                color: const Color(0xFF22C55E),
-              ),
-            ),
-            if (unit.shield > 0)
               Positioned(
-                bottom: 21,
+                top: 3,
+                left: 3,
+                child: _StatPill(
+                  label: 'A ${unit.visibleAttack}',
+                  color: const Color(0xFFF97316),
+                ),
+              ),
+              Positioned(
+                top: 3,
                 right: 3,
                 child: _StatPill(
-                  label: '${unit.shield}',
-                  color: const Color(0xFF60A5FA),
+                  label: 'V ${unit.health}',
+                  color: const Color(0xFF22C55E),
                 ),
               ),
-            if (unit.hasBarrier)
-              const Positioned(
-                bottom: 21,
-                left: 4,
-                child: Icon(
-                  Icons.shield_rounded,
-                  color: Color(0xFF93C5FD),
-                  size: 14,
+              if (unit.shield > 0)
+                Positioned(
+                  bottom: 21,
+                  right: 3,
+                  child: _StatPill(
+                    label: 'E ${unit.shield}',
+                    color: const Color(0xFF60A5FA),
+                  ),
+                ),
+              if (unit.hasBarrier)
+                const Positioned(
+                  bottom: 21,
+                  left: 4,
+                  child: Icon(
+                    Icons.shield_rounded,
+                    color: Color(0xFF93C5FD),
+                    size: 14,
+                  ),
+                ),
+              Positioned(
+                left: 5,
+                right: 5,
+                bottom: 4,
+                child: Text(
+                  unit.card.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: unit.readyToAttack ? Colors.white : Colors.white60,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
-            Positioned(
-              left: 5,
-              right: 5,
-              bottom: 4,
-              child: Text(
-                unit.card.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: unit.readyToAttack ? Colors.white : Colors.white60,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

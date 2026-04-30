@@ -54,14 +54,15 @@ class ReflexoDuelHud extends StatelessWidget {
               _HudPill(
                 icon: Icons.bolt_rounded,
                 label: '${player.energy}',
-                color: const Color(0xFFF59E0B),
-                tooltip: 'Energia disponível neste turno para jogar cartas.',
+                color: const Color(0xFF60A5FA),
+                tooltip:
+                    'Energia disponível neste turno para jogar cartas. A cor azul também aparece no custo das cartas.',
               ),
               const SizedBox(width: 5),
               _HudPill(
                 icon: Icons.inventory_2_rounded,
                 label: '${player.reserve}',
-                color: const Color(0xFF38BDF8),
+                color: const Color(0xFF93C5FD),
                 tooltip:
                     'Reserva: energia guardada de turnos anteriores. Limite normal: 10.',
               ),

@@ -1,5 +1,6 @@
 // lib/features/reflexo_card_game/application/reflexo_duel_controller.dart
 
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -52,8 +53,8 @@ class ReflexoDuelController extends ChangeNotifier {
       players: players,
       destinyOptions: _buildDestinyOptions(players, 1),
       timeline: const [
-        'Rodada 1 começou.',
-        'Cada jogador escolhe um Destino e rola o próprio d20.',
+        'Rodada 1 começou com Fase de Destino.',
+        'Destinos aparecem a cada 3 rodadas: 1, 4, 7...',
       ],
     );
     notifyListeners();
@@ -173,7 +174,6 @@ class ReflexoDuelController extends ChangeNotifier {
     switch (destiny.effect) {
       case ReflexoDestinyEffect.energy:
         return player.copyWith(
-          energy: (player.energy + destiny.amount).clamp(0, 12),
           buffs: [...player.buffs, _buffFromDestiny(destiny)],
         );
       case ReflexoDestinyEffect.attackAll:
@@ -210,7 +210,18 @@ class ReflexoDuelController extends ChangeNotifier {
     if (destiny.effect == ReflexoDestinyEffect.energy &&
         destiny.requirement <= 8) {
       _addLog('${player.name} recebeu efeito fraco: +1 energia.');
-      return player.copyWith(energy: min(10, player.energy + 1));
+      return player.copyWith(
+        buffs: [
+          ...player.buffs,
+          const ReflexoActiveBuff(
+            id: 'falha_energia_fraca',
+            name: 'Efeito fraco',
+            summary: '+1 energia',
+            energyBonus: 1,
+            turnsRemaining: 1,
+          ),
+        ],
+      );
     }
     return player;
   }
@@ -400,10 +411,8 @@ class ReflexoDuelController extends ChangeNotifier {
     var opponent = state.opponent;
 
     final attackerDamage = attacker.visibleAttack + active.attackBonus;
-    final defenderDamage = defender.hasAbility(ReflexoAbility.precisao)
-        ? 0
-        : defender.visibleAttack;
     final precision = attacker.hasAbility(ReflexoAbility.precisao);
+    final defenderDamage = precision ? 0 : defender.visibleAttack;
 
     final updatedDefender = _damageUnit(defender, attackerDamage);
     final updatedAttacker = precision
@@ -423,9 +432,9 @@ class ReflexoDuelController extends ChangeNotifier {
     }
 
     _setPlayers(active, opponent);
-    state = state.copyWith(
-      selectedUnitId: null,
-      lastAttackAnimation: ReflexoAttackAnimation(
+    state = state.copyWith(selectedUnitId: null);
+    _setAttackAnimation(
+      ReflexoAttackAnimation(
         attackerId: attacker.instanceId,
         targetUnitId: defenderId,
       ),
@@ -466,9 +475,9 @@ class ReflexoDuelController extends ChangeNotifier {
     }
 
     _setPlayers(active, opponent);
-    state = state.copyWith(
-      selectedUnitId: null,
-      lastAttackAnimation: ReflexoAttackAnimation(
+    state = state.copyWith(selectedUnitId: null);
+    _setAttackAnimation(
+      ReflexoAttackAnimation(
         attackerId: attacker.instanceId,
         targetPlayerId: opponent.id,
       ),
@@ -590,21 +599,47 @@ class ReflexoDuelController extends ChangeNotifier {
         .toList();
   }
 
+  bool _isDestinyRound(int round) => round == 1 || (round - 1) % 3 == 0;
+
   void _startNextRound() {
     var players = {...state.players};
     for (final id in ReflexoPlayerId.values) {
       players[id] = players[id]!.copyWith(selectedDestiny: null);
     }
     final nextRound = state.round + 1;
+    final hasDestiny = _isDestinyRound(nextRound);
+
     state = state.copyWith(
       round: nextRound,
-      phase: ReflexoMatchPhase.destiny,
+      phase: hasDestiny
+          ? ReflexoMatchPhase.destiny
+          : ReflexoMatchPhase.playerTurn,
       activePlayer: ReflexoPlayerId.one,
       players: players,
       selectedUnitId: null,
-      destinyOptions: _buildDestinyOptions(players, nextRound),
+      destinyOptions: hasDestiny
+          ? _buildDestinyOptions(players, nextRound)
+          : const <ReflexoPlayerId, List<ReflexoDestinyOption>>{},
     );
-    _addLog('Rodada $nextRound começou. Nova Fase de Destino.');
+
+    if (hasDestiny) {
+      _addLog('Rodada $nextRound começou. Fase de Destino ativada.');
+      return;
+    }
+
+    _addLog('Rodada $nextRound começou sem Destino.');
+    _startPlayerTurn(ReflexoPlayerId.one);
+  }
+
+  void _setAttackAnimation(ReflexoAttackAnimation animation) {
+    state = state.copyWith(lastAttackAnimation: animation);
+    final captured = animation;
+    Future<void>.delayed(const Duration(milliseconds: 420), () {
+      if (state.lastAttackAnimation == captured) {
+        state = state.copyWith(lastAttackAnimation: null);
+        notifyListeners();
+      }
+    });
   }
 
   void _checkGameOver() {

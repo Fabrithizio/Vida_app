@@ -207,59 +207,93 @@ class ReflexoContent {
     required int round,
   }) {
     final main = player.mainArchetype;
-    final pool = <ReflexoDestinyOption>[
-      const ReflexoDestinyOption(
-        id: 'energia_rapida',
-        name: 'Pulso de Energia',
-        shortText: '+2 energia',
-        requirement: 6,
+
+    const weakPool = <ReflexoDestinyOption>[
+      ReflexoDestinyOption(
+        id: 'energia_fagulha',
+        name: 'Fagulha de Energia',
+        shortText: '+1 energia',
+        requirement: 5,
         effect: ReflexoDestinyEffect.energy,
-        amount: 2,
-        durationTurns: 1,
-        fullText: 'Ganha +2 energia neste turno.',
-      ),
-      const ReflexoDestinyOption(
-        id: 'ataque_medio',
-        name: 'Lâmina Viva',
-        shortText: '+2 dano nas unidades',
-        requirement: 12,
-        effect: ReflexoDestinyEffect.attackAll,
-        amount: 2,
-        durationTurns: 1,
-        fullText: 'Suas unidades recebem +2 ataque neste turno.',
-      ),
-      const ReflexoDestinyOption(
-        id: 'brecha_absoluta',
-        name: 'Brecha Absoluta',
-        shortText: '1 ataque direto',
-        requirement: 20,
-        effect: ReflexoDestinyEffect.directStrike,
         amount: 1,
         durationTurns: 1,
-        fullText: 'Uma unidade pode atacar o Reflexo inimigo diretamente.',
+        fullText: 'Ganha +1 energia no próximo turno deste jogador.',
       ),
-      const ReflexoDestinyOption(
-        id: 'muralha_rapida',
-        name: 'Muralha Rápida',
-        shortText: '+3 escudo no campo',
-        requirement: 9,
+      ReflexoDestinyOption(
+        id: 'fio_lamina',
+        name: 'Fio da Lâmina',
+        shortText: '+1 ataque',
+        requirement: 7,
+        effect: ReflexoDestinyEffect.attackAll,
+        amount: 1,
+        durationTurns: 1,
+        fullText: 'Suas unidades recebem +1 ataque neste turno.',
+      ),
+      ReflexoDestinyOption(
+        id: 'pele_ferro',
+        name: 'Pele de Ferro',
+        shortText: '+2 escudo',
+        requirement: 6,
         effect: ReflexoDestinyEffect.shieldAll,
-        amount: 3,
-        durationTurns: 2,
-        fullText: 'Suas unidades atuais recebem +3 escudo.',
+        amount: 2,
+        durationTurns: 1,
+        fullText: 'Suas próximas unidades entram com +2 escudo neste turno.',
       ),
-      const ReflexoDestinyOption(
-        id: 'compra_tatica',
-        name: 'Compra Tática',
-        shortText: 'compra 1 carta',
+      ReflexoDestinyOption(
+        id: 'olhar_tatico',
+        name: 'Olhar Tático',
+        shortText: 'compra 1',
         requirement: 8,
         effect: ReflexoDestinyEffect.draw,
         amount: 1,
         durationTurns: 1,
         fullText: 'Compre 1 carta.',
       ),
-      const ReflexoDestinyOption(
-        id: 'cura_reflexo',
+    ];
+
+    const midPool = <ReflexoDestinyOption>[
+      ReflexoDestinyOption(
+        id: 'pulso_energia',
+        name: 'Pulso de Energia',
+        shortText: '+2 energia',
+        requirement: 9,
+        effect: ReflexoDestinyEffect.energy,
+        amount: 2,
+        durationTurns: 1,
+        fullText: 'Ganha +2 energia no próximo turno deste jogador.',
+      ),
+      ReflexoDestinyOption(
+        id: 'lamina_viva',
+        name: 'Lâmina Viva',
+        shortText: '+2 ataque',
+        requirement: 12,
+        effect: ReflexoDestinyEffect.attackAll,
+        amount: 2,
+        durationTurns: 1,
+        fullText: 'Suas unidades recebem +2 ataque neste turno.',
+      ),
+      ReflexoDestinyOption(
+        id: 'muralha_rapida',
+        name: 'Muralha Rápida',
+        shortText: '+3 escudo',
+        requirement: 10,
+        effect: ReflexoDestinyEffect.shieldAll,
+        amount: 3,
+        durationTurns: 2,
+        fullText: 'Suas próximas unidades entram com +3 escudo por 2 turnos.',
+      ),
+      ReflexoDestinyOption(
+        id: 'forja_leve',
+        name: 'Forja Leve',
+        shortText: '-1 custo',
+        requirement: 13,
+        effect: ReflexoDestinyEffect.costReduction,
+        amount: 1,
+        durationTurns: 1,
+        fullText: 'Suas cartas custam -1 neste turno.',
+      ),
+      ReflexoDestinyOption(
+        id: 'folego_reflexo',
         name: 'Fôlego do Reflexo',
         shortText: '+8 vida',
         requirement: 10,
@@ -268,54 +302,83 @@ class ReflexoContent {
         durationTurns: 1,
         fullText: 'Cura 8 pontos de vida do seu Reflexo.',
       ),
-      const ReflexoDestinyOption(
-        id: 'forja_leve',
-        name: 'Forja Leve',
-        shortText: '-1 custo neste turno',
-        requirement: 14,
-        effect: ReflexoDestinyEffect.costReduction,
+    ];
+
+    const latePool = <ReflexoDestinyOption>[
+      ReflexoDestinyOption(
+        id: 'brecha_absoluta',
+        name: 'Brecha Absoluta',
+        shortText: '1 ataque direto',
+        requirement: 20,
+        effect: ReflexoDestinyEffect.directStrike,
         amount: 1,
         durationTurns: 1,
-        fullText: 'Suas cartas custam -1 neste turno.',
+        fullText:
+            'Uma unidade pode atacar o Reflexo inimigo diretamente neste turno.',
+      ),
+      ReflexoDestinyOption(
+        id: 'surto_prismatico',
+        name: 'Surto Prismático',
+        shortText: '+3 energia',
+        requirement: 16,
+        effect: ReflexoDestinyEffect.energy,
+        amount: 3,
+        durationTurns: 1,
+        fullText: 'Ganha +3 energia no próximo turno deste jogador.',
+      ),
+      ReflexoDestinyOption(
+        id: 'comando_total',
+        name: 'Comando Total',
+        shortText: '+3 ataque',
+        requirement: 17,
+        effect: ReflexoDestinyEffect.attackAll,
+        amount: 3,
+        durationTurns: 1,
+        fullText: 'Suas unidades recebem +3 ataque neste turno.',
+      ),
+      ReflexoDestinyOption(
+        id: 'economia_arcana',
+        name: 'Economia Arcana',
+        shortText: '-2 custo',
+        requirement: 18,
+        effect: ReflexoDestinyEffect.costReduction,
+        amount: 2,
+        durationTurns: 1,
+        fullText: 'Suas cartas custam -2 neste turno.',
       ),
     ];
 
-    final preferred = <ReflexoDestinyOption>[];
-    for (final option in pool) {
-      if (main == ReflexoArchetype.berserker &&
-          option.effect == ReflexoDestinyEffect.attackAll) {
-        preferred.add(option);
-      }
-      if (main == ReflexoArchetype.guardiao &&
-          option.effect == ReflexoDestinyEffect.shieldAll) {
-        preferred.add(option);
-      }
-      if (main == ReflexoArchetype.estrategista &&
-          option.effect == ReflexoDestinyEffect.draw) {
-        preferred.add(option);
-      }
-      if (main == ReflexoArchetype.sombra &&
-          option.effect == ReflexoDestinyEffect.directStrike) {
-        preferred.add(option);
-      }
-      if (main == ReflexoArchetype.curador &&
-          option.effect == ReflexoDestinyEffect.heal) {
-        preferred.add(option);
-      }
-      if (main == ReflexoArchetype.inventor &&
-          option.effect == ReflexoDestinyEffect.costReduction) {
-        preferred.add(option);
-      }
+    final available = <ReflexoDestinyOption>[
+      ...weakPool,
+      if (round >= 4) ...midPool,
+      if (round >= 7) ...latePool,
+    ];
+
+    bool likes(ReflexoDestinyOption option) {
+      return (main == ReflexoArchetype.berserker &&
+              option.effect == ReflexoDestinyEffect.attackAll) ||
+          (main == ReflexoArchetype.guardiao &&
+              option.effect == ReflexoDestinyEffect.shieldAll) ||
+          (main == ReflexoArchetype.estrategista &&
+              option.effect == ReflexoDestinyEffect.draw) ||
+          (main == ReflexoArchetype.sombra &&
+              option.effect == ReflexoDestinyEffect.directStrike) ||
+          (main == ReflexoArchetype.curador &&
+              option.effect == ReflexoDestinyEffect.heal) ||
+          (main == ReflexoArchetype.inventor &&
+              option.effect == ReflexoDestinyEffect.costReduction);
     }
 
-    final safe = pool.where((e) => e.requirement <= 8).toList();
-    final mid = pool
-        .where((e) => e.requirement > 8 && e.requirement < 18)
+    final safe = available.where((e) => e.requirement <= 8).toList();
+    final mid = available
+        .where((e) => e.requirement > 8 && e.requirement < 16)
         .toList();
-    final risky = pool.where((e) => e.requirement >= 18).toList();
+    final risky = available.where((e) => e.requirement >= 16).toList();
+    final preferred = available.where(likes).toList();
 
     ReflexoDestinyOption pick(List<ReflexoDestinyOption> options, int salt) {
-      return options[(round + player.id.index + salt) % options.length];
+      final source = options.isEmpty ? available : options;
+      return source[(round + player.id.index + salt) % source.length];
     }
 
     return [
@@ -323,7 +386,7 @@ class ReflexoContent {
           ? preferred[(round + player.id.index) % preferred.length]
           : pick(safe, 1),
       pick(mid, 2),
-      pick(risky, 3),
+      pick(risky.isEmpty ? mid : risky, 3),
     ];
   }
 
