@@ -9,9 +9,16 @@ import '../widgets/reflexo_destiny_panel.dart';
 import '../widgets/reflexo_duel_hud.dart';
 
 class ReflexoDuelPage extends StatefulWidget {
-  const ReflexoDuelPage({super.key, this.vsBot = false});
+  const ReflexoDuelPage({
+    super.key,
+    this.vsBot = false,
+    this.playerDeckPresetId = 'berserker',
+    this.opponentDeckPresetId = 'estrategista',
+  });
 
   final bool vsBot;
+  final String playerDeckPresetId;
+  final String opponentDeckPresetId;
 
   @override
   State<ReflexoDuelPage> createState() => _ReflexoDuelPageState();
@@ -23,7 +30,11 @@ class _ReflexoDuelPageState extends State<ReflexoDuelPage> {
   @override
   void initState() {
     super.initState();
-    controller = ReflexoDuelController(vsBot: widget.vsBot);
+    controller = ReflexoDuelController(
+      vsBot: widget.vsBot,
+      playerDeckPresetId: widget.playerDeckPresetId,
+      opponentDeckPresetId: widget.opponentDeckPresetId,
+    );
   }
 
   @override
@@ -472,11 +483,19 @@ class _DuelPhaseBody extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 5),
-          child: ReflexoDuelHud(
-            player: playerTwo,
-            active:
-                state.activePlayer == ReflexoPlayerId.two &&
-                state.phase == ReflexoMatchPhase.playerTurn,
+          child: _DirectReflexoTarget(
+            enabled:
+                state.phase == ReflexoMatchPhase.playerTurn &&
+                state.activePlayer == ReflexoPlayerId.one &&
+                state.selectedUnitIds.isNotEmpty,
+            message: 'Toque aqui para atacar diretamente o Reflexo inimigo.',
+            onTap: controller.attackReflexo,
+            child: ReflexoDuelHud(
+              player: playerTwo,
+              active:
+                  state.activePlayer == ReflexoPlayerId.two &&
+                  state.phase == ReflexoMatchPhase.playerTurn,
+            ),
           ),
         ),
         Padding(
@@ -489,21 +508,166 @@ class _DuelPhaseBody extends StatelessWidget {
             pressureEvent: state.pressureEvent,
           ),
         ),
+        if (_shouldShowEventBanner(state.timeline))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+            child: _EventBanner(message: state.timeline.first),
+          ),
         const SizedBox(height: 6),
         Expanded(
           child: _BattleBoard(controller: controller, state: state),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 5, 10, 8),
-          child: ReflexoDuelHud(
-            player: playerOne,
-            active:
-                state.activePlayer == ReflexoPlayerId.one &&
-                state.phase == ReflexoMatchPhase.playerTurn,
+          child: _DirectReflexoTarget(
+            enabled:
+                state.phase == ReflexoMatchPhase.playerTurn &&
+                state.activePlayer == ReflexoPlayerId.two &&
+                state.selectedUnitIds.isNotEmpty,
+            message: 'Toque aqui para atacar diretamente o Reflexo inimigo.',
+            onTap: controller.attackReflexo,
+            child: ReflexoDuelHud(
+              player: playerOne,
+              active:
+                  state.activePlayer == ReflexoPlayerId.one &&
+                  state.phase == ReflexoMatchPhase.playerTurn,
+            ),
           ),
         ),
         _HandBar(controller: controller, state: state),
       ],
+    );
+  }
+}
+
+class _DirectReflexoTarget extends StatelessWidget {
+  const _DirectReflexoTarget({
+    required this.enabled,
+    required this.message,
+    required this.onTap,
+    required this.child,
+  });
+
+  final bool enabled;
+  final String message;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: enabled ? message : 'Reflexo do jogador.',
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          children: [
+            child,
+            if (enabled)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: const Color(0xFFFBBF24),
+                        width: 2,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x55FBBF24), blurRadius: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            if (enabled)
+              Positioned(
+                right: 10,
+                top: 8,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFBBF24),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      'TOQUE PARA ATACAR',
+                      style: TextStyle(
+                        color: Color(0xFF111827),
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+bool _shouldShowEventBanner(List<String> logs) {
+  if (logs.isEmpty) return false;
+  final text = logs.first.toLowerCase();
+  return text.contains('revelou') ||
+      text.contains('usou') ||
+      text.contains('despertou') ||
+      text.contains('perfuração') ||
+      text.contains('ataque combinado');
+}
+
+class _EventBanner extends StatelessWidget {
+  const _EventBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFF312E81).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFA78BFA).withValues(alpha: 0.55),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.auto_awesome_rounded,
+            color: Color(0xFFFBBF24),
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -526,24 +690,30 @@ class _BattleBoard extends StatelessWidget {
           const SizedBox(height: 3),
           _FieldRow(
             player: p2,
+            activePlayer: state.activePlayer,
             reversed: true,
-            selectedUnitId: state.selectedUnitId,
+            selectedUnitIds: state.selectedUnitIds,
             animation: state.lastAttackAnimation,
+            canAttackTarget: controller.canSelectedAttackUnit,
             onUnitTap: (unit) => _handleUnitTap(context, unit),
           ),
           const SizedBox(height: 8),
           Expanded(
             child: _CenterActionZone(
               state: state,
-              onAttackReflexo: controller.attackReflexo,
+              selectedAttackTotal: controller.selectedAttackTotal,
+              selectedHasPrecision: controller.selectedAttackHasPrecision,
+              onClearSelection: controller.clearSelection,
               onEndTurn: controller.endTurn,
             ),
           ),
           const SizedBox(height: 8),
           _FieldRow(
             player: p1,
-            selectedUnitId: state.selectedUnitId,
+            activePlayer: state.activePlayer,
+            selectedUnitIds: state.selectedUnitIds,
             animation: state.lastAttackAnimation,
+            canAttackTarget: controller.canSelectedAttackUnit,
             onUnitTap: (unit) => _handleUnitTap(context, unit),
           ),
           const SizedBox(height: 3),
@@ -562,7 +732,7 @@ class _BattleBoard extends StatelessWidget {
       controller.selectUnit(unit.instanceId);
       return;
     }
-    if (state.selectedUnitId != null &&
+    if (state.selectedUnitIds.isNotEmpty &&
         unit.owner == state.activePlayer.opponent) {
       controller.attackUnit(unit.instanceId);
       return;
@@ -574,15 +744,19 @@ class _BattleBoard extends StatelessWidget {
 class _FieldRow extends StatelessWidget {
   const _FieldRow({
     required this.player,
-    required this.selectedUnitId,
+    required this.activePlayer,
+    required this.selectedUnitIds,
     required this.onUnitTap,
+    required this.canAttackTarget,
     this.animation,
     this.reversed = false,
   });
 
   final ReflexoPlayerState player;
-  final String? selectedUnitId;
+  final ReflexoPlayerId activePlayer;
+  final List<String> selectedUnitIds;
   final ValueChanged<ReflexoUnitInstance> onUnitTap;
+  final bool Function(ReflexoUnitInstance unit) canAttackTarget;
   final ReflexoAttackAnimation? animation;
   final bool reversed;
 
@@ -592,12 +766,17 @@ class _FieldRow extends StatelessWidget {
     for (var i = 0; i < 5; i++) {
       if (i < player.field.length) {
         final unit = player.field[i];
+        final isOpponentTarget =
+            selectedUnitIds.isNotEmpty && unit.owner == activePlayer.opponent;
+        final canTarget = isOpponentTarget && canAttackTarget(unit);
         slots.add(
           ReflexoUnitCard(
             unit: unit,
-            selected: selectedUnitId == unit.instanceId,
+            selected: selectedUnitIds.contains(unit.instanceId),
             isAttacking: animation?.attackerId == unit.instanceId,
             isTargeted: animation?.targetUnitId == unit.instanceId,
+            targetable: canTarget,
+            blockedTarget: isOpponentTarget && !canTarget,
             onTap: () => onUnitTap(unit),
           ),
         );
@@ -616,18 +795,23 @@ class _FieldRow extends StatelessWidget {
 class _CenterActionZone extends StatelessWidget {
   const _CenterActionZone({
     required this.state,
-    required this.onAttackReflexo,
+    required this.selectedAttackTotal,
+    required this.selectedHasPrecision,
+    required this.onClearSelection,
     required this.onEndTurn,
   });
 
   final ReflexoGameState state;
-  final VoidCallback onAttackReflexo;
+  final int selectedAttackTotal;
+  final bool selectedHasPrecision;
+  final VoidCallback onClearSelection;
   final VoidCallback onEndTurn;
 
   @override
   Widget build(BuildContext context) {
     final current = state.current;
-    final selected = state.selectedUnitId != null;
+    final selectedCount = state.selectedUnitIds.length;
+    final selected = selectedCount > 0;
     final canAct = state.phase == ReflexoMatchPhase.playerTurn;
 
     return Container(
@@ -657,11 +841,42 @@ class _CenterActionZone extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
+                    if (selected)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFF0EA5E9,
+                          ).withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.42),
+                          ),
+                        ),
+                        child: Text(
+                          selectedCount > 1
+                              ? 'Ataque combinado: $selectedAttackTotal · $selectedCount unidades'
+                              : 'Ataque selecionado: $selectedAttackTotal',
+                          style: const TextStyle(
+                            color: Color(0xFFBAE6FD),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 5),
                     Text(
                       selected
-                          ? 'Escolha um alvo inimigo ou ataque o Reflexo.'
-                          : 'Toque em uma unidade sua para selecionar.',
+                          ? selectedHasPrecision
+                                ? 'Alvos destacados podem ser atacados. Precisão ignora comparação de ataque.'
+                                : 'Alvos verdes podem ser atacados. Toque no HUD inimigo para ataque direto.'
+                          : 'Toque em uma ou mais unidades suas para selecionar atacantes.',
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -677,19 +892,19 @@ class _CenterActionZone extends StatelessWidget {
                       spacing: 8,
                       runSpacing: 6,
                       children: [
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
                             visualDensity: VisualDensity.compact,
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white24),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 8,
                             ),
                           ),
-                          onPressed: canAct && selected
-                              ? onAttackReflexo
-                              : null,
-                          icon: const Icon(Icons.gps_fixed_rounded, size: 18),
-                          label: const Text('Atacar Reflexo'),
+                          onPressed: selected ? onClearSelection : null,
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text('Limpar seleção'),
                         ),
                         FilledButton.icon(
                           style: FilledButton.styleFrom(

@@ -132,6 +132,36 @@ class ReflexoCardTile extends StatelessWidget {
                 ],
               ),
             ),
+            if (card.isHeavy)
+              Positioned(
+                right: 14,
+                top: 8,
+                child: Tooltip(
+                  message:
+                      'Pesada: forte, mas vulnerável a ataque combinado e feitiços anti-tanque.',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFBBF24).withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: const Color(0xFFFBBF24).withValues(alpha: 0.55),
+                      ),
+                    ),
+                    child: const Text(
+                      'P',
+                      style: TextStyle(
+                        color: Color(0xFFFBBF24),
+                        fontSize: 8,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (!enabled)
               Positioned(
                 left: 8,
@@ -184,6 +214,8 @@ class ReflexoUnitCard extends StatelessWidget {
     required this.onTap,
     this.isAttacking = false,
     this.isTargeted = false,
+    this.targetable = false,
+    this.blockedTarget = false,
   });
 
   final ReflexoUnitInstance unit;
@@ -191,11 +223,17 @@ class ReflexoUnitCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool isAttacking;
   final bool isTargeted;
+  final bool targetable;
+  final bool blockedTarget;
 
   @override
   Widget build(BuildContext context) {
     final borderColor = selected
         ? const Color(0xFF38BDF8)
+        : targetable
+        ? const Color(0xFF22C55E)
+        : blockedTarget
+        ? const Color(0xFFEF4444)
         : isTargeted
         ? const Color(0xFFEF4444)
         : isAttacking
@@ -222,9 +260,16 @@ class ReflexoUnitCard extends StatelessWidget {
           ),
           border: Border.all(
             color: borderColor,
-            width: selected || isTargeted ? 2 : 1,
+            width: selected || isTargeted || targetable || blockedTarget
+                ? 2
+                : 1,
           ),
-          boxShadow: selected || isAttacking || isTargeted
+          boxShadow:
+              selected ||
+                  isAttacking ||
+                  isTargeted ||
+                  targetable ||
+                  blockedTarget
               ? [
                   BoxShadow(
                     color: borderColor.withValues(alpha: 0.55),
@@ -271,6 +316,36 @@ class ReflexoUnitCard extends StatelessWidget {
                   color: const Color(0xFF60A5FA),
                 ),
               ),
+            if (unit.isHeavy)
+              Positioned(
+                bottom: 21,
+                left: unit.hasBarrier ? 20 : 4,
+                child: Tooltip(
+                  message:
+                      'Unidade pesada: ataque combinado e feitiços anti-tanque são boas respostas.',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFBBF24).withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(
+                        color: const Color(0xFFFBBF24).withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: const Text(
+                      'P',
+                      style: TextStyle(
+                        color: Color(0xFFFBBF24),
+                        fontSize: 8,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (unit.hasBarrier)
               const Positioned(
                 bottom: 21,
@@ -279,6 +354,45 @@ class ReflexoUnitCard extends StatelessWidget {
                   Icons.shield_rounded,
                   color: Color(0xFF93C5FD),
                   size: 14,
+                ),
+              ),
+            if (targetable || blockedTarget)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color:
+                          (targetable
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFFEF4444))
+                              .withValues(alpha: 0.10),
+                    ),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 24),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: targetable
+                              ? const Color(0xFF166534)
+                              : const Color(0xFF7F1D1D),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          targetable ? 'ALVO' : 'FORTE',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             Positioned(
@@ -524,6 +638,10 @@ class _CardDetailsSheet extends StatelessWidget {
           _DetailLine('Ataque', '${card.attack}'),
           _DetailLine('Vida', '${card.health}'),
           _DetailLine('Escudo', '${card.shield}'),
+          if (card.isHeavy)
+            const _DetailParagraph(
+              'Pesada: pode ser derrubada por ataque combinado e sofre mais contra feitiços anti-tanque.',
+            ),
         ],
         _DetailLine('Atributo', card.attribute.label),
         _DetailLine('Arquétipo', card.archetype.label),
@@ -566,6 +684,10 @@ class _UnitDetailsSheet extends StatelessWidget {
         _DetailLine('Vida atual', '${unit.health}/${unit.maxHealth}'),
         _DetailLine('Escudo', '${unit.shield}'),
         _DetailLine('Pode atacar', unit.readyToAttack ? 'Sim' : 'Não'),
+        if (unit.isHeavy)
+          const _DetailParagraph(
+            'Pesada: exige resposta coordenada. Some ataques de várias unidades ou use anti-tanque.',
+          ),
         _DetailLine('Atributo', unit.card.attribute.label),
         if (unit.card.abilities.isNotEmpty)
           ...unit.card.abilities.map(

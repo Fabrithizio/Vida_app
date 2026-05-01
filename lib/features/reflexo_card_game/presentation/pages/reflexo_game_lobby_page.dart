@@ -1,4 +1,6 @@
-// lib/features/reflexo_card_game/presentation/pages/reflexo_game_lobby_page.dart
+// ============================================================================
+// FILE: lib/features/reflexo_card_game/presentation/pages/reflexo_game_lobby_page.dart
+// ============================================================================
 
 import 'package:flutter/material.dart';
 
@@ -7,8 +9,18 @@ import '../../domain/reflexo_models.dart';
 import 'reflexo_deck_page.dart';
 import 'reflexo_duel_page.dart';
 
-class ReflexoGameLobbyPage extends StatelessWidget {
+class ReflexoGameLobbyPage extends StatefulWidget {
   const ReflexoGameLobbyPage({super.key});
+
+  @override
+  State<ReflexoGameLobbyPage> createState() => _ReflexoGameLobbyPageState();
+}
+
+class _ReflexoGameLobbyPageState extends State<ReflexoGameLobbyPage> {
+  String _selectedPresetId = ReflexoContent.deckPresets.first.id;
+
+  ReflexoDeckPreset get _preset =>
+      ReflexoContent.deckPresetById(_selectedPresetId);
 
   @override
   Widget build(BuildContext context) {
@@ -65,21 +77,31 @@ class ReflexoGameLobbyPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Use cartas, Destinos, Tática, Pressão e d20 para vencer o Reflexo inimigo. Esta versão foca em deixar o jogo realmente jogável antes do Wi-Fi.',
+                    'Escolha um deck, use cartas, Destinos, Tática, Pressão e d20 para vencer o Reflexo inimigo.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.72),
                       height: 1.35,
                     ),
                   ),
                   const SizedBox(height: 16),
+                  _DeckPresetPicker(
+                    selectedId: _selectedPresetId,
+                    onChanged: (id) => setState(() => _selectedPresetId = id),
+                  ),
+                  const SizedBox(height: 12),
+                  _DeckPreviewPanel(presetId: _selectedPresetId),
+                  const SizedBox(height: 16),
                   _LobbyButton(
                     icon: Icons.smart_toy_rounded,
                     title: 'Jogar contra Bot',
-                    subtitle:
-                        'Modo ideal para testar sozinho e sentir o ritmo.',
+                    subtitle: 'Seu deck: ${_preset.name}. Bot usa Controle.',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const ReflexoDuelPage(vsBot: true),
+                        builder: (_) => ReflexoDuelPage(
+                          vsBot: true,
+                          playerDeckPresetId: _selectedPresetId,
+                          opponentDeckPresetId: 'estrategista',
+                        ),
                       ),
                     ),
                   ),
@@ -87,10 +109,14 @@ class ReflexoGameLobbyPage extends StatelessWidget {
                   _LobbyButton(
                     icon: Icons.group_rounded,
                     title: 'Jogar local 2 jogadores',
-                    subtitle: 'Dois jogadores no mesmo aparelho por enquanto.',
+                    subtitle:
+                        'Jogador 1 usa ${_preset.name}. Jogador 2 usa Controle.',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const ReflexoDuelPage(),
+                        builder: (_) => ReflexoDuelPage(
+                          playerDeckPresetId: _selectedPresetId,
+                          opponentDeckPresetId: 'estrategista',
+                        ),
                       ),
                     ),
                   ),
@@ -117,7 +143,7 @@ class ReflexoGameLobbyPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            _LobbyAttributesPanel(player: preview),
+            _LobbyAttributesPanel(player: preview, preset: _preset),
           ],
         ),
       ),
@@ -131,22 +157,238 @@ class ReflexoGameLobbyPage extends StatelessWidget {
       life: 100,
       energy: 0,
       reserve: 0,
-      deck: ReflexoContent.buildDeck(seedOffset: 0),
+      deck: ReflexoContent.buildDeck(
+        seedOffset: 0,
+        presetId: _selectedPresetId,
+      ),
       hand: const [],
       field: const [],
       discard: const [],
       buffs: const [],
       attributes: ReflexoContent.attributesForPlayer(ReflexoPlayerId.one),
-      mainArchetype: ReflexoArchetype.berserker,
-      secondaryArchetype: ReflexoArchetype.guardiao,
+      mainArchetype: _preset.archetype,
+      secondaryArchetype: null,
+    );
+  }
+}
+
+class _DeckPresetPicker extends StatelessWidget {
+  const _DeckPresetPicker({required this.selectedId, required this.onChanged});
+
+  final String selectedId;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = ReflexoContent.deckPresetById(selectedId);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Deck inicial',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: selectedId,
+            dropdownColor: const Color(0xFF0B1020),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: const Color(0xFF111827),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Colors.white12),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Colors.white12),
+              ),
+            ),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+            items: ReflexoContent.deckPresets
+                .map(
+                  (preset) => DropdownMenuItem<String>(
+                    value: preset.id,
+                    child: Text(preset.name),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onChanged(value);
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            selected.description,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 12,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeckPreviewPanel extends StatelessWidget {
+  const _DeckPreviewPanel({required this.presetId});
+
+  final String presetId;
+
+  @override
+  Widget build(BuildContext context) {
+    final deck = ReflexoContent.buildDeck(seedOffset: 0, presetId: presetId);
+    final units = deck.where((card) => card.isUnit).length;
+    final spells = deck.where((card) => card.isSpell).length;
+    final traps = deck.where((card) => card.isTrap).length;
+    final uniqueCards = <String, ReflexoCardDefinition>{};
+    for (final card in deck) {
+      uniqueCards.putIfAbsent(card.id, () => card);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Prévia do deck',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              _DeckCountChip(
+                label: 'UN',
+                value: units,
+                color: const Color(0xFF60A5FA),
+              ),
+              const SizedBox(width: 6),
+              _DeckCountChip(
+                label: 'MAG',
+                value: spells,
+                color: const Color(0xFFA78BFA),
+              ),
+              const SizedBox(width: 6),
+              _DeckCountChip(
+                label: 'ARM',
+                value: traps,
+                color: const Color(0xFFF472B6),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: uniqueCards.values.take(12).map((card) {
+              final color = card.isUnit
+                  ? const Color(0xFF60A5FA)
+                  : card.isSpell
+                  ? const Color(0xFFA78BFA)
+                  : const Color(0xFFF472B6);
+              return Tooltip(
+                message: card.text.isEmpty ? card.name : card.text,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: color.withValues(alpha: 0.32)),
+                  ),
+                  child: Text(
+                    card.name,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'O deck já está selecionado. Depois vamos liberar edição manual carta por carta.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.58),
+              fontSize: 11,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeckCountChip extends StatelessWidget {
+  const _DeckCountChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.34)),
+      ),
+      child: Text(
+        '$label $value',
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
     );
   }
 }
 
 class _LobbyAttributesPanel extends StatelessWidget {
-  const _LobbyAttributesPanel({required this.player});
+  const _LobbyAttributesPanel({required this.player, required this.preset});
 
   final ReflexoPlayerState player;
+  final ReflexoDeckPreset preset;
 
   @override
   Widget build(BuildContext context) {
@@ -174,12 +416,7 @@ class _LobbyAttributesPanel extends StatelessWidget {
                   ),
                   border: Border.all(color: Colors.white24),
                 ),
-                child: Icon(
-                  player.mainArchetype == ReflexoArchetype.berserker
-                      ? Icons.local_fire_department_rounded
-                      : Icons.auto_awesome_rounded,
-                  color: Colors.white,
-                ),
+                child: Icon(player.mainArchetype.icon, color: Colors.white),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -187,7 +424,7 @@ class _LobbyAttributesPanel extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      player.name,
+                      preset.name,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 17,

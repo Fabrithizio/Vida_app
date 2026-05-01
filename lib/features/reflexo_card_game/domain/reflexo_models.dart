@@ -332,6 +332,24 @@ class ReflexoCardDefinition {
   bool get isSpell => type == ReflexoCardType.spell;
   bool get isTrap => type == ReflexoCardType.trap;
   bool get isEquipment => type == ReflexoCardType.equipment;
+  bool get isHeavy => isUnit && (health >= 20 || shield >= 4 || cost >= 7);
+}
+
+@immutable
+class ReflexoDeckPreset {
+  const ReflexoDeckPreset({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.archetype,
+    required this.priorityCardIds,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+  final ReflexoArchetype archetype;
+  final List<String> priorityCardIds;
 }
 
 @immutable
@@ -517,6 +535,7 @@ class ReflexoUnitInstance {
 
   bool get alive => health > 0;
   bool get readyToAttack => canAttack && !exhausted && attack > 0;
+  bool get isHeavy => card.isHeavy || maxHealth >= 22 || shield >= 4;
   bool hasAbility(ReflexoAbility ability) => card.abilities.contains(ability);
 
   int get bonusAttack =>
@@ -778,6 +797,7 @@ class ReflexoGameState {
     this.tacticOptions = const {},
     this.pressureEvent,
     this.selectedUnitId,
+    this.selectedUnitIds = const [],
     this.winner,
     this.lastAttackAnimation,
   });
@@ -791,6 +811,7 @@ class ReflexoGameState {
   final Map<ReflexoPlayerId, List<ReflexoTacticOption>> tacticOptions;
   final ReflexoPressureEvent? pressureEvent;
   final String? selectedUnitId;
+  final List<String> selectedUnitIds;
   final ReflexoPlayerId? winner;
   final ReflexoAttackAnimation? lastAttackAnimation;
 
@@ -808,6 +829,7 @@ class ReflexoGameState {
     Map<ReflexoPlayerId, List<ReflexoTacticOption>>? tacticOptions,
     Object? pressureEvent = _sentinel,
     Object? selectedUnitId = _sentinel,
+    List<String>? selectedUnitIds,
     Object? winner = _sentinel,
     Object? lastAttackAnimation = _sentinel,
   }) {
@@ -825,6 +847,7 @@ class ReflexoGameState {
       selectedUnitId: selectedUnitId == _sentinel
           ? this.selectedUnitId
           : selectedUnitId as String?,
+      selectedUnitIds: selectedUnitIds ?? this.selectedUnitIds,
       winner: winner == _sentinel ? this.winner : winner as ReflexoPlayerId?,
       lastAttackAnimation: lastAttackAnimation == _sentinel
           ? this.lastAttackAnimation
