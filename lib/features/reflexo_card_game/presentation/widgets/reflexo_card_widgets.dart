@@ -494,10 +494,29 @@ class _CardImageBox extends StatelessWidget {
     if (asset != null && asset.trim().isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(9),
-        child: Image.asset(
-          asset,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _fallback(),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              asset,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _fallback(),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0x88000000),
+                    Color(0x00000000),
+                    Color(0xAA000000),
+                  ],
+                  stops: [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -533,12 +552,19 @@ class _StatPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 20),
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      constraints: const BoxConstraints(minWidth: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
+        color: const Color(0xD910172A),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.45)),
+        border: Border.all(color: color.withValues(alpha: 0.85), width: 1.1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x99000000),
+            blurRadius: 6,
+            offset: Offset(0, 1),
+          ),
+        ],
       ),
       child: Text(
         label,
@@ -547,6 +573,7 @@ class _StatPill extends StatelessWidget {
           color: color,
           fontSize: 10,
           fontWeight: FontWeight.w900,
+          shadows: const [Shadow(color: Color(0xFF000000), blurRadius: 3)],
         ),
       ),
     );

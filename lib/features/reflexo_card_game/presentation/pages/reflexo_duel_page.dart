@@ -452,7 +452,7 @@ class _TacticPanel extends StatelessWidget {
             '${player.name} · escolha um plano',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 15,
+              fontSize: 17,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -613,30 +613,37 @@ class _BattleBoard extends StatelessWidget {
     final p2 = state.player(ReflexoPlayerId.two);
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 64),
-      child: Column(
+      child: Stack(
         children: [
-          ReflexoTrapSlot(trapCount: p2.traps.length),
-          const SizedBox(height: 3),
-          _FieldRow(
-            player: p2,
-            reversed: true,
-            state: state,
-            controller: controller,
-            onUnitTap: (unit) => _handleUnitTap(context, unit),
+          Column(
+            children: [
+              ReflexoTrapSlot(trapCount: p2.traps.length),
+              const SizedBox(height: 3),
+              _FieldRow(
+                player: p2,
+                reversed: true,
+                state: state,
+                controller: controller,
+                onUnitTap: (unit) => _handleUnitTap(context, unit),
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: _CenterActionZone(state: state, controller: controller),
+              ),
+              const SizedBox(height: 6),
+              _FieldRow(
+                player: p1,
+                state: state,
+                controller: controller,
+                onUnitTap: (unit) => _handleUnitTap(context, unit),
+              ),
+              const SizedBox(height: 3),
+              ReflexoTrapSlot(trapCount: p1.traps.length),
+            ],
           ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: _CenterActionZone(state: state, controller: controller),
+          Positioned.fill(
+            child: IgnorePointer(child: _AttackMotionOverlay(state: state)),
           ),
-          const SizedBox(height: 6),
-          _FieldRow(
-            player: p1,
-            state: state,
-            controller: controller,
-            onUnitTap: (unit) => _handleUnitTap(context, unit),
-          ),
-          const SizedBox(height: 3),
-          ReflexoTrapSlot(trapCount: p1.traps.length),
         ],
       ),
     );
@@ -720,66 +727,160 @@ class _CenterActionZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final current = state.current;
     final selectedCount = state.selectedUnitIds.length;
     final selectedPower = controller.selectedAttackPower();
-    final canAct = state.phase == ReflexoMatchPhase.playerTurn;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: const Color(0x770B1020),
+        color: const Color(0x550B1020),
         border: Border.all(color: Colors.white12),
       ),
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              canAct ? 'Turno de ${current.name}' : 'Aguardando',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            selectedCount > 0
+                ? 'Ataque combinado: $selectedPower · $selectedCount unidade(s)'
+                : 'Selecione tropas e toque no alvo',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.82),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
             ),
-            const SizedBox(height: 4),
-            Text(
-              selectedCount > 0
-                  ? 'Ataque combinado: $selectedPower · $selectedCount unidade(s)'
-                  : 'Toque em uma ou mais unidades suas para atacar.',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.72),
-                fontSize: 11,
-                height: 1.18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            if (selectedCount > 0)
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  foregroundColor: Colors.white.withValues(alpha: 0.86),
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
-                ),
-                onPressed: controller.clearSelection,
-                icon: const Icon(Icons.close_rounded, size: 18),
-                label: const Text('Limpar seleção'),
-              ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _AttackMotionOverlay extends StatelessWidget {
+  const _AttackMotionOverlay({required this.state});
+
+  final ReflexoGameState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final anim = state.lastAttackAnimation;
+    if (anim == null) return const SizedBox.shrink();
+
+    ReflexoPlayerId? attackerOwner;
+    int attackerIndex = 2;
+    for (final player in state.players.values) {
+      final idx = player.field.indexWhere(
+        (u) => u.instanceId == anim.attackerId,
+      );
+      if (idx != -1) {
+        attackerOwner = player.id;
+        attackerIndex = idx;
+        break;
+      }
+    }
+    final attackFromTop = attackerOwner == ReflexoPlayerId.two;
+
+    ReflexoPlayerId? targetOwner;
+    int targetIndex = 2;
+    if (anim.targetUnitId != null) {
+      for (final player in state.players.values) {
+        final idx = player.field.indexWhere(
+          (u) => u.instanceId == anim.targetUnitId,
+        );
+        if (idx != -1) {
+          targetOwner = player.id;
+          targetIndex = idx;
+          break;
+        }
+      }
+    }
+
+    Offset slot(int index, bool top) {
+      final clamped = index.clamp(0, 4).toDouble();
+      final x = 0.11 + (0.195 * clamped);
+      final y = top ? 0.17 : 0.79;
+      return Offset(x, y);
+    }
+
+    final start = slot(attackerIndex, attackFromTop);
+    final inferredTargetOwner = targetOwner ?? attackerOwner?.opponent;
+    final end = anim.targetUnitId != null
+        ? slot(targetIndex, inferredTargetOwner == ReflexoPlayerId.two)
+        : Offset(0.50, attackFromTop ? 0.96 : 0.03);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return TweenAnimationBuilder<double>(
+          key: ValueKey(anim.serial),
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, _) {
+            final current = Offset.lerp(start, end, value)!;
+            final x = current.dx * constraints.maxWidth;
+            final y = current.dy * constraints.maxHeight;
+            final endX = end.dx * constraints.maxWidth;
+            final endY = end.dy * constraints.maxHeight;
+            return Stack(
+              children: [
+                if (value < 0.96)
+                  Positioned(
+                    left: x - 22,
+                    top: y - 22,
+                    child: Transform.rotate(
+                      angle: (end.dx - start.dx) * 0.9,
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const RadialGradient(
+                            colors: [
+                              Color(0xFFFFFFFF),
+                              Color(0xFFFBBF24),
+                              Color(0xFFF97316),
+                            ],
+                            radius: 0.85,
+                          ),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0xFFFFC107), blurRadius: 22),
+                            BoxShadow(color: Color(0xFFFF5722), blurRadius: 36),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.bolt_rounded,
+                            color: Color(0xFF7C2D12),
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: endX - 28,
+                  top: endY - 28,
+                  child: Opacity(
+                    opacity: value < 0.6
+                        ? 0
+                        : (((value - 0.6) / 0.4).clamp(0.0, 1.0)).toDouble(),
+                    child: Transform.scale(
+                      scale: 0.7 + (value * 0.5),
+                      child: const Icon(
+                        Icons.bolt_rounded,
+                        color: Color(0xFFFBBF24),
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -826,7 +927,8 @@ class _FloatingTurnBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.82),
-                      fontSize: 11,
+                      fontSize: 12,
+                      height: 1.2,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
