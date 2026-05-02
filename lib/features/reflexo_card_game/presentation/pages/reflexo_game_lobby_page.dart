@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../application/reflexo_deck_service.dart';
 import '../../domain/reflexo_content.dart';
 import '../../domain/reflexo_models.dart';
 import 'reflexo_deck_page.dart';
@@ -17,14 +18,52 @@ class ReflexoGameLobbyPage extends StatefulWidget {
 }
 
 class _ReflexoGameLobbyPageState extends State<ReflexoGameLobbyPage> {
-  String _selectedPresetId = ReflexoContent.deckPresets.first.id;
+  ReflexoDeckTemplate _template = ReflexoContent.defaultDeck;
+  List<String> _deckIds = ReflexoContent.defaultDeck.cardIds;
+  bool _loading = true;
 
-  ReflexoDeckPreset get _preset =>
-      ReflexoContent.deckPresetById(_selectedPresetId);
+  @override
+  void initState() {
+    super.initState();
+    _loadDeck();
+  }
+
+  Future<void> _loadDeck() async {
+    final template = await ReflexoDeckService.loadTemplate();
+    final ids = await ReflexoDeckService.loadDeckIds();
+    if (!mounted) return;
+    setState(() {
+      _template = template;
+      _deckIds = ids;
+      _loading = false;
+    });
+  }
+
+  Future<void> _selectTemplate(ReflexoDeckTemplate template) async {
+    await ReflexoDeckService.saveTemplate(template);
+    if (!mounted) return;
+    setState(() {
+      _template = template;
+      _deckIds = template.cardIds;
+    });
+  }
+
+  void _openDuel({required bool vsBot}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReflexoDuelPage(
+          vsBot: vsBot,
+          playerDeckIds: _deckIds,
+          playerArchetype: _template.archetype,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final preview = _previewPlayer();
+    final validation = ReflexoContent.validateDeckIds(_deckIds);
+    final cards = ReflexoContent.cardsFromIds(_deckIds);
     return Scaffold(
       backgroundColor: const Color(0xFF060915),
       body: SafeArea(
@@ -77,318 +116,85 @@ class _ReflexoGameLobbyPageState extends State<ReflexoGameLobbyPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Escolha um deck, use cartas, Destinos, Tática, Pressão e d20 para vencer o Reflexo inimigo.',
+                    'Agora com artes, som e deck editável com regras para manter a jogabilidade justa.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.72),
                       height: 1.35,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _DeckPresetPicker(
-                    selectedId: _selectedPresetId,
-                    onChanged: (id) => setState(() => _selectedPresetId = id),
-                  ),
-                  const SizedBox(height: 12),
-                  _DeckPreviewPanel(presetId: _selectedPresetId),
-                  const SizedBox(height: 16),
                   _LobbyButton(
                     icon: Icons.smart_toy_rounded,
                     title: 'Jogar contra Bot',
-                    subtitle: 'Seu deck: ${_preset.name}. Bot usa Controle.',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ReflexoDuelPage(
-                          vsBot: true,
-                          playerDeckPresetId: _selectedPresetId,
-                          opponentDeckPresetId: 'estrategista',
-                        ),
-                      ),
-                    ),
+                    subtitle: 'Testa seu deck contra o Bot Estrategista.',
+                    onTap: validation.isValid
+                        ? () => _openDuel(vsBot: true)
+                        : null,
                   ),
                   const SizedBox(height: 10),
                   _LobbyButton(
-                    icon: Icons.group_rounded,
+                    icon: Icons.sports_esports_rounded,
                     title: 'Jogar local 2 jogadores',
-                    subtitle:
-                        'Jogador 1 usa ${_preset.name}. Jogador 2 usa Controle.',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ReflexoDuelPage(
-                          playerDeckPresetId: _selectedPresetId,
-                          opponentDeckPresetId: 'estrategista',
-                        ),
-                      ),
-                    ),
+                    subtitle: 'Dois jogadores no mesmo aparelho.',
+                    onTap: validation.isValid
+                        ? () => _openDuel(vsBot: false)
+                        : null,
                   ),
                   const SizedBox(height: 10),
                   _LobbyButton(
                     icon: Icons.style_rounded,
-                    title: 'Organizar Deck',
-                    subtitle: 'Ver todas as cartas disponíveis.',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ReflexoDeckPage(),
-                      ),
-                    ),
+                    title: 'Montar Deck',
+                    subtitle:
+                        'Editar cartas com limite de unidades, feitiços e armadilhas.',
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ReflexoDeckPage(),
+                        ),
+                      );
+                      await _loadDeck();
+                    },
                   ),
                   const SizedBox(height: 10),
                   _LobbyButton(
                     icon: Icons.wifi_rounded,
                     title: 'Criar sala Wi-Fi',
-                    subtitle: 'Preparado para a próxima etapa.',
+                    subtitle: 'Preparado para etapa futura.',
                     disabled: true,
-                    onTap: () {},
+                    onTap: null,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            _LobbyAttributesPanel(player: preview, preset: _preset),
+            _DeckPreviewCard(
+              loading: _loading,
+              template: _template,
+              validation: validation,
+              cards: cards,
+              onTemplateSelect: _selectTemplate,
+            ),
           ],
         ),
       ),
     );
   }
-
-  ReflexoPlayerState _previewPlayer() {
-    return ReflexoPlayerState(
-      id: ReflexoPlayerId.one,
-      name: 'Seu Reflexo',
-      life: 100,
-      energy: 0,
-      reserve: 0,
-      deck: ReflexoContent.buildDeck(
-        seedOffset: 0,
-        presetId: _selectedPresetId,
-      ),
-      hand: const [],
-      field: const [],
-      discard: const [],
-      buffs: const [],
-      attributes: ReflexoContent.attributesForPlayer(ReflexoPlayerId.one),
-      mainArchetype: _preset.archetype,
-      secondaryArchetype: null,
-    );
-  }
 }
 
-class _DeckPresetPicker extends StatelessWidget {
-  const _DeckPresetPicker({required this.selectedId, required this.onChanged});
-
-  final String selectedId;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = ReflexoContent.deckPresetById(selectedId);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Deck inicial',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: selectedId,
-            dropdownColor: const Color(0xFF0B1020),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: const Color(0xFF111827),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Colors.white12),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Colors.white12),
-              ),
-            ),
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
-            items: ReflexoContent.deckPresets
-                .map(
-                  (preset) => DropdownMenuItem<String>(
-                    value: preset.id,
-                    child: Text(preset.name),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value != null) onChanged(value);
-            },
-          ),
-          const SizedBox(height: 8),
-          Text(
-            selected.description,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
-              fontSize: 12,
-              height: 1.25,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DeckPreviewPanel extends StatelessWidget {
-  const _DeckPreviewPanel({required this.presetId});
-
-  final String presetId;
-
-  @override
-  Widget build(BuildContext context) {
-    final deck = ReflexoContent.buildDeck(seedOffset: 0, presetId: presetId);
-    final units = deck.where((card) => card.isUnit).length;
-    final spells = deck.where((card) => card.isSpell).length;
-    final traps = deck.where((card) => card.isTrap).length;
-    final uniqueCards = <String, ReflexoCardDefinition>{};
-    for (final card in deck) {
-      uniqueCards.putIfAbsent(card.id, () => card);
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.045),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Prévia do deck',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              _DeckCountChip(
-                label: 'UN',
-                value: units,
-                color: const Color(0xFF60A5FA),
-              ),
-              const SizedBox(width: 6),
-              _DeckCountChip(
-                label: 'MAG',
-                value: spells,
-                color: const Color(0xFFA78BFA),
-              ),
-              const SizedBox(width: 6),
-              _DeckCountChip(
-                label: 'ARM',
-                value: traps,
-                color: const Color(0xFFF472B6),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: uniqueCards.values.take(12).map((card) {
-              final color = card.isUnit
-                  ? const Color(0xFF60A5FA)
-                  : card.isSpell
-                  ? const Color(0xFFA78BFA)
-                  : const Color(0xFFF472B6);
-              return Tooltip(
-                message: card.text.isEmpty ? card.name : card.text,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: color.withValues(alpha: 0.32)),
-                  ),
-                  child: Text(
-                    card.name,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'O deck já está selecionado. Depois vamos liberar edição manual carta por carta.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.58),
-              fontSize: 11,
-              height: 1.25,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DeckCountChip extends StatelessWidget {
-  const _DeckCountChip({
-    required this.label,
-    required this.value,
-    required this.color,
+class _DeckPreviewCard extends StatelessWidget {
+  const _DeckPreviewCard({
+    required this.loading,
+    required this.template,
+    required this.validation,
+    required this.cards,
+    required this.onTemplateSelect,
   });
 
-  final String label;
-  final int value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.34)),
-      ),
-      child: Text(
-        '$label $value',
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _LobbyAttributesPanel extends StatelessWidget {
-  const _LobbyAttributesPanel({required this.player, required this.preset});
-
-  final ReflexoPlayerState player;
-  final ReflexoDeckPreset preset;
+  final bool loading;
+  final ReflexoDeckTemplate template;
+  final ReflexoDeckValidation validation;
+  final List<ReflexoCardDefinition> cards;
+  final ValueChanged<ReflexoDeckTemplate> onTemplateSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -399,116 +205,210 @@ class _LobbyAttributesPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.white12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Icon(player.mainArchetype.icon, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text(
-                      preset.name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
+                        ),
                       ),
+                      child: Icon(template.archetype.icon, color: Colors.white),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${player.mainArchetype.label} · ${player.mainArchetype.shortDescription}',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.70),
-                        fontSize: 12,
-                        height: 1.25,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            template.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${template.archetype.label} · ${template.description}',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.70),
+                              fontSize: 12,
+                              height: 1.25,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Atributos do Reflexo',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.86),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          ...ReflexoAttribute.values.map((attribute) {
-            final value = player.attributes[attribute] ?? 0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Icon(
-                    attribute.icon,
-                    color: const Color(0xFF93C5FD),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 82,
-                    child: Text(
-                      attribute.label,
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _CounterChip(
+                      label: 'Total',
+                      value: validation.totalCount,
+                      color: const Color(0xFF60A5FA),
+                    ),
+                    _CounterChip(
+                      label: 'Unidades',
+                      value: validation.unitCount,
+                      color: const Color(0xFF22C55E),
+                    ),
+                    _CounterChip(
+                      label: 'Feitiços',
+                      value: validation.spellCount,
+                      color: const Color(0xFFA78BFA),
+                    ),
+                    _CounterChip(
+                      label: 'Armadilhas',
+                      value: validation.trapCount,
+                      color: const Color(0xFFF472B6),
+                    ),
+                    _CounterChip(
+                      label: 'Pesadas',
+                      value: validation.heavyCount,
+                      color: const Color(0xFFFBBF24),
+                    ),
+                  ],
+                ),
+                if (!validation.isValid) ...[
+                  const SizedBox(height: 10),
+                  ...validation.messages.map(
+                    (m) => Text(
+                      '• $m',
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFFFCA5A5),
                         fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        minHeight: 7,
-                        value: (value / 100).clamp(0.0, 1.0),
-                        backgroundColor: Colors.white.withValues(alpha: 0.08),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF60A5FA),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 28,
-                    child: Text(
-                      '$value',
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
                       ),
                     ),
                   ),
                 ],
+                const SizedBox(height: 14),
+                const Text(
+                  'Decks rápidos',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ReflexoContent.starterDecks.map((deck) {
+                    final selected = deck.id == template.id;
+                    return ChoiceChip(
+                      selected: selected,
+                      label: Text(deck.name),
+                      onSelected: (_) => onTemplateSelect(deck),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: 116,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: cards
+                        .take(10)
+                        .map((card) => _MiniCard(card: card))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _MiniCard extends StatelessWidget {
+  const _MiniCard({required this.card});
+  final ReflexoCardDefinition card;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 82,
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white12),
+        color: Colors.white.withValues(alpha: 0.04),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(14),
               ),
-            );
-          }),
+              child: card.imageAsset == null
+                  ? Icon(card.attribute.icon, color: Colors.white54)
+                  : Image.asset(
+                      card.imageAsset!,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          Icon(card.attribute.icon, color: Colors.white54),
+                    ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(5),
+            child: Text(
+              card.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _CounterChip extends StatelessWidget {
+  const _CounterChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w900,
+          fontSize: 11,
+        ),
       ),
     );
   }
@@ -526,15 +426,16 @@ class _LobbyButton extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool disabled;
 
   @override
   Widget build(BuildContext context) {
+    final blocked = disabled || onTap == null;
     return Opacity(
-      opacity: disabled ? 0.48 : 1,
+      opacity: blocked ? 0.48 : 1,
       child: InkWell(
-        onTap: disabled ? null : onTap,
+        onTap: blocked ? null : onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
           padding: const EdgeInsets.all(14),

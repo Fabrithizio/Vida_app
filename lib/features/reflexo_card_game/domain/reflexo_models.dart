@@ -1,11 +1,5 @@
 // ============================================================================
 // FILE: lib/features/reflexo_card_game/domain/reflexo_models.dart
-//
-// O que faz:
-// - Define todos os modelos do Reflexo Card Game.
-// - Mantém as fases Destino, Tática, Pressão e Combate.
-// - Define arquétipos com passiva base, despertar e progresso.
-// - Define cartas, armadilhas, buffs, unidades, jogadores e estado da partida.
 // ============================================================================
 
 import 'dart:math';
@@ -67,6 +61,42 @@ enum ReflexoPressureEffect {
   firstCardDiscount,
   emptyFieldDraw,
   lowLifeFury,
+}
+
+enum ReflexoSoundCue {
+  playCard,
+  rollDice,
+  attack,
+  directAttack,
+  destroyCard,
+  trapReveal,
+  victory,
+  defeat,
+}
+
+enum ReflexoDeckValidationStatus { valid, invalid }
+
+@immutable
+class ReflexoDeckValidation {
+  const ReflexoDeckValidation({
+    required this.status,
+    required this.messages,
+    required this.unitCount,
+    required this.spellCount,
+    required this.trapCount,
+    required this.heavyCount,
+    required this.totalCount,
+  });
+
+  final ReflexoDeckValidationStatus status;
+  final List<String> messages;
+  final int unitCount;
+  final int spellCount;
+  final int trapCount;
+  final int heavyCount;
+  final int totalCount;
+
+  bool get isValid => status == ReflexoDeckValidationStatus.valid;
 }
 
 extension ReflexoPlayerIdX on ReflexoPlayerId {
@@ -332,24 +362,32 @@ class ReflexoCardDefinition {
   bool get isSpell => type == ReflexoCardType.spell;
   bool get isTrap => type == ReflexoCardType.trap;
   bool get isEquipment => type == ReflexoCardType.equipment;
-  bool get isHeavy => isUnit && (health >= 20 || shield >= 4 || cost >= 7);
+  bool get isHeavy => isUnit && (cost >= 6 || health >= 24 || shield >= 5);
+
+  int get level {
+    if (cost <= 2) return 1;
+    if (cost <= 4) return 2;
+    if (cost <= 6) return 3;
+    if (cost <= 8) return 4;
+    return 5;
+  }
 }
 
 @immutable
-class ReflexoDeckPreset {
-  const ReflexoDeckPreset({
+class ReflexoDeckTemplate {
+  const ReflexoDeckTemplate({
     required this.id,
     required this.name,
     required this.description,
     required this.archetype,
-    required this.priorityCardIds,
+    required this.cardIds,
   });
 
   final String id;
   final String name;
   final String description;
   final ReflexoArchetype archetype;
-  final List<String> priorityCardIds;
+  final List<String> cardIds;
 }
 
 @immutable
@@ -535,7 +573,7 @@ class ReflexoUnitInstance {
 
   bool get alive => health > 0;
   bool get readyToAttack => canAttack && !exhausted && attack > 0;
-  bool get isHeavy => card.isHeavy || maxHealth >= 22 || shield >= 4;
+  bool get isHeavy => card.isHeavy || maxHealth >= 24 || shield >= 5;
   bool hasAbility(ReflexoAbility ability) => card.abilities.contains(ability);
 
   int get bonusAttack =>
@@ -796,10 +834,12 @@ class ReflexoGameState {
     required this.destinyOptions,
     this.tacticOptions = const {},
     this.pressureEvent,
-    this.selectedUnitId,
     this.selectedUnitIds = const [],
     this.winner,
     this.lastAttackAnimation,
+    this.lastBanner,
+    this.lastSoundCue,
+    this.eventSerial = 0,
   });
 
   final int round;
@@ -810,10 +850,12 @@ class ReflexoGameState {
   final Map<ReflexoPlayerId, List<ReflexoDestinyOption>> destinyOptions;
   final Map<ReflexoPlayerId, List<ReflexoTacticOption>> tacticOptions;
   final ReflexoPressureEvent? pressureEvent;
-  final String? selectedUnitId;
   final List<String> selectedUnitIds;
   final ReflexoPlayerId? winner;
   final ReflexoAttackAnimation? lastAttackAnimation;
+  final String? lastBanner;
+  final ReflexoSoundCue? lastSoundCue;
+  final int eventSerial;
 
   ReflexoPlayerState player(ReflexoPlayerId id) => players[id]!;
   ReflexoPlayerState get current => player(activePlayer);
@@ -828,10 +870,12 @@ class ReflexoGameState {
     Map<ReflexoPlayerId, List<ReflexoDestinyOption>>? destinyOptions,
     Map<ReflexoPlayerId, List<ReflexoTacticOption>>? tacticOptions,
     Object? pressureEvent = _sentinel,
-    Object? selectedUnitId = _sentinel,
     List<String>? selectedUnitIds,
     Object? winner = _sentinel,
     Object? lastAttackAnimation = _sentinel,
+    Object? lastBanner = _sentinel,
+    Object? lastSoundCue = _sentinel,
+    int? eventSerial,
   }) {
     return ReflexoGameState(
       round: round ?? this.round,
@@ -844,14 +888,18 @@ class ReflexoGameState {
       pressureEvent: pressureEvent == _sentinel
           ? this.pressureEvent
           : pressureEvent as ReflexoPressureEvent?,
-      selectedUnitId: selectedUnitId == _sentinel
-          ? this.selectedUnitId
-          : selectedUnitId as String?,
       selectedUnitIds: selectedUnitIds ?? this.selectedUnitIds,
       winner: winner == _sentinel ? this.winner : winner as ReflexoPlayerId?,
       lastAttackAnimation: lastAttackAnimation == _sentinel
           ? this.lastAttackAnimation
           : lastAttackAnimation as ReflexoAttackAnimation?,
+      lastBanner: lastBanner == _sentinel
+          ? this.lastBanner
+          : lastBanner as String?,
+      lastSoundCue: lastSoundCue == _sentinel
+          ? this.lastSoundCue
+          : lastSoundCue as ReflexoSoundCue?,
+      eventSerial: eventSerial ?? this.eventSerial,
     );
   }
 }

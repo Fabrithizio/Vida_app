@@ -1,8 +1,10 @@
-// lib/features/reflexo_card_game/presentation/pages/reflexo_duel_page.dart
+// ============================================================================
+// FILE: lib/features/reflexo_card_game/presentation/pages/reflexo_duel_page.dart
+// ============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:vida_app/features/reflexo_card_game/application/reflexo_duel_controller.dart';
 
+import '../../application/reflexo_duel_controller.dart';
 import '../../domain/reflexo_models.dart';
 import '../widgets/reflexo_card_widgets.dart';
 import '../widgets/reflexo_destiny_panel.dart';
@@ -12,13 +14,13 @@ class ReflexoDuelPage extends StatefulWidget {
   const ReflexoDuelPage({
     super.key,
     this.vsBot = false,
-    this.playerDeckPresetId = 'berserker',
-    this.opponentDeckPresetId = 'estrategista',
+    this.playerDeckIds,
+    this.playerArchetype,
   });
 
   final bool vsBot;
-  final String playerDeckPresetId;
-  final String opponentDeckPresetId;
+  final List<String>? playerDeckIds;
+  final ReflexoArchetype? playerArchetype;
 
   @override
   State<ReflexoDuelPage> createState() => _ReflexoDuelPageState();
@@ -26,21 +28,69 @@ class ReflexoDuelPage extends StatefulWidget {
 
 class _ReflexoDuelPageState extends State<ReflexoDuelPage> {
   late final ReflexoDuelController controller;
+  int _lastBannerSerial = -1;
 
   @override
   void initState() {
     super.initState();
     controller = ReflexoDuelController(
       vsBot: widget.vsBot,
-      playerDeckPresetId: widget.playerDeckPresetId,
-      opponentDeckPresetId: widget.opponentDeckPresetId,
+      playerDeckIds: widget.playerDeckIds,
+      playerArchetype: widget.playerArchetype,
     );
+    controller.addListener(_showBannerIfNeeded);
   }
 
   @override
   void dispose() {
+    controller.removeListener(_showBannerIfNeeded);
     controller.dispose();
     super.dispose();
+  }
+
+  void _showBannerIfNeeded() {
+    final state = controller.state;
+    final banner = state.lastBanner;
+    if (!mounted || banner == null || state.eventSerial == _lastBannerSerial) {
+      return;
+    }
+    _lastBannerSerial = state.eventSerial;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(banner),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1200),
+      ),
+    );
+  }
+
+  Future<void> _rollAndRevealDestiny(ReflexoPlayerId playerId) async {
+    final round = controller.state.round;
+    controller.rollDestiny(playerId);
+    if (!mounted) return;
+    final player = controller.state.player(playerId);
+    if (player.lastRollRound != round || player.lastRoll == null) return;
+
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dado',
+      barrierColor: Colors.black.withValues(alpha: 0.62),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (_, __, ___) => _DiceRevealDialog(player: player),
+      transitionBuilder: (_, animation, __, child) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutBack,
+            ),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -83,10 +133,17 @@ class _ReflexoDuelPageState extends State<ReflexoDuelPage> {
                 Positioned.fill(
                   child: switch (state.phase) {
                     ReflexoMatchPhase.destiny => _DestinyPhaseBody(
-                      controller: controller,
                       state: state,
                       playerOne: p1,
                       playerTwo: p2,
+                      onSelectOne: (option) =>
+                          controller.selectDestiny(ReflexoPlayerId.one, option),
+                      onSelectTwo: (option) =>
+                          controller.selectDestiny(ReflexoPlayerId.two, option),
+                      onRollOne: () =>
+                          _rollAndRevealDestiny(ReflexoPlayerId.one),
+                      onRollTwo: () =>
+                          _rollAndRevealDestiny(ReflexoPlayerId.two),
                     ),
                     ReflexoMatchPhase.tactic => _TacticPhaseBody(
                       controller: controller,
@@ -125,16 +182,22 @@ class _ReflexoDuelPageState extends State<ReflexoDuelPage> {
 
 class _DestinyPhaseBody extends StatelessWidget {
   const _DestinyPhaseBody({
-    required this.controller,
     required this.state,
     required this.playerOne,
     required this.playerTwo,
+    required this.onSelectOne,
+    required this.onSelectTwo,
+    required this.onRollOne,
+    required this.onRollTwo,
   });
 
-  final ReflexoDuelController controller;
   final ReflexoGameState state;
   final ReflexoPlayerState playerOne;
   final ReflexoPlayerState playerTwo;
+  final ValueChanged<ReflexoDestinyOption> onSelectOne;
+  final ValueChanged<ReflexoDestinyOption> onSelectTwo;
+  final VoidCallback onRollOne;
+  final VoidCallback onRollTwo;
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +229,7 @@ class _DestinyPhaseBody extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Cada jogador escolhe 1 buff e rola seu próprio d20. Quando os dois rolarem, o combate começa.',
+                'Escolha um buff, role seu d20 e veja o resultado na hora. Depois os dois entram em combate.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.72),
@@ -179,18 +242,16 @@ class _DestinyPhaseBody extends StatelessWidget {
                 player: playerOne,
                 round: state.round,
                 options: state.destinyOptions[ReflexoPlayerId.one] ?? const [],
-                onSelect: (option) =>
-                    controller.selectDestiny(ReflexoPlayerId.one, option),
-                onRoll: () => controller.rollDestiny(ReflexoPlayerId.one),
+                onSelect: onSelectOne,
+                onRoll: onRollOne,
               ),
               const SizedBox(height: 12),
               ReflexoDestinyPanel(
                 player: playerTwo,
                 round: state.round,
                 options: state.destinyOptions[ReflexoPlayerId.two] ?? const [],
-                onSelect: (option) =>
-                    controller.selectDestiny(ReflexoPlayerId.two, option),
-                onRoll: () => controller.rollDestiny(ReflexoPlayerId.two),
+                onSelect: onSelectTwo,
+                onRoll: onRollTwo,
               ),
             ],
           ),
@@ -245,7 +306,7 @@ class _TacticPhaseBody extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Escolha um plano pequeno para cada jogador. Sem dado. Sem enrolação de pergaminho.',
+                'Escolha um plano curto para cada jogador. Sem dado.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.72),
@@ -479,23 +540,20 @@ class _DuelPhaseBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selected = state.selectedUnitIds.isNotEmpty;
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 5),
-          child: _DirectReflexoTarget(
-            enabled:
-                state.phase == ReflexoMatchPhase.playerTurn &&
-                state.activePlayer == ReflexoPlayerId.one &&
-                state.selectedUnitIds.isNotEmpty,
-            message: 'Toque aqui para atacar diretamente o Reflexo inimigo.',
-            onTap: controller.attackReflexo,
-            child: ReflexoDuelHud(
-              player: playerTwo,
-              active:
-                  state.activePlayer == ReflexoPlayerId.two &&
-                  state.phase == ReflexoMatchPhase.playerTurn,
-            ),
+          child: ReflexoDuelHud(
+            player: playerTwo,
+            active:
+                state.activePlayer == ReflexoPlayerId.two &&
+                state.phase == ReflexoMatchPhase.playerTurn,
+            attackHint: selected && state.activePlayer == ReflexoPlayerId.one,
+            onTap: selected && state.activePlayer == ReflexoPlayerId.one
+                ? controller.attackReflexo
+                : null,
           ),
         ),
         Padding(
@@ -508,166 +566,37 @@ class _DuelPhaseBody extends StatelessWidget {
             pressureEvent: state.pressureEvent,
           ),
         ),
-        if (_shouldShowEventBanner(state.timeline))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
-            child: _EventBanner(message: state.timeline.first),
-          ),
         const SizedBox(height: 6),
         Expanded(
-          child: _BattleBoard(controller: controller, state: state),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: _BattleBoard(controller: controller, state: state),
+              ),
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 6,
+                child: _FloatingTurnBar(state: state, controller: controller),
+              ),
+            ],
+          ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 5, 10, 8),
-          child: _DirectReflexoTarget(
-            enabled:
-                state.phase == ReflexoMatchPhase.playerTurn &&
-                state.activePlayer == ReflexoPlayerId.two &&
-                state.selectedUnitIds.isNotEmpty,
-            message: 'Toque aqui para atacar diretamente o Reflexo inimigo.',
-            onTap: controller.attackReflexo,
-            child: ReflexoDuelHud(
-              player: playerOne,
-              active:
-                  state.activePlayer == ReflexoPlayerId.one &&
-                  state.phase == ReflexoMatchPhase.playerTurn,
-            ),
+          padding: const EdgeInsets.fromLTRB(10, 3, 10, 6),
+          child: ReflexoDuelHud(
+            player: playerOne,
+            active:
+                state.activePlayer == ReflexoPlayerId.one &&
+                state.phase == ReflexoMatchPhase.playerTurn,
+            attackHint: selected && state.activePlayer == ReflexoPlayerId.two,
+            onTap: selected && state.activePlayer == ReflexoPlayerId.two
+                ? controller.attackReflexo
+                : null,
           ),
         ),
         _HandBar(controller: controller, state: state),
       ],
-    );
-  }
-}
-
-class _DirectReflexoTarget extends StatelessWidget {
-  const _DirectReflexoTarget({
-    required this.enabled,
-    required this.message,
-    required this.onTap,
-    required this.child,
-  });
-
-  final bool enabled;
-  final String message;
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: enabled ? message : 'Reflexo do jogador.',
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(18),
-        child: Stack(
-          children: [
-            child,
-            if (enabled)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: const Color(0xFFFBBF24),
-                        width: 2,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x55FBBF24), blurRadius: 18),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            if (enabled)
-              Positioned(
-                right: 10,
-                top: 8,
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFBBF24),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'TOQUE PARA ATACAR',
-                      style: TextStyle(
-                        color: Color(0xFF111827),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-bool _shouldShowEventBanner(List<String> logs) {
-  if (logs.isEmpty) return false;
-  final text = logs.first.toLowerCase();
-  return text.contains('revelou') ||
-      text.contains('usou') ||
-      text.contains('despertou') ||
-      text.contains('perfuração') ||
-      text.contains('ataque combinado');
-}
-
-class _EventBanner extends StatelessWidget {
-  const _EventBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFF312E81).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFA78BFA).withValues(alpha: 0.55),
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 14,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.auto_awesome_rounded,
-            color: Color(0xFFFBBF24),
-            size: 18,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -683,37 +612,27 @@ class _BattleBoard extends StatelessWidget {
     final p1 = state.player(ReflexoPlayerId.one);
     final p2 = state.player(ReflexoPlayerId.two);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 64),
       child: Column(
         children: [
           ReflexoTrapSlot(trapCount: p2.traps.length),
           const SizedBox(height: 3),
           _FieldRow(
             player: p2,
-            activePlayer: state.activePlayer,
             reversed: true,
-            selectedUnitIds: state.selectedUnitIds,
-            animation: state.lastAttackAnimation,
-            canAttackTarget: controller.canSelectedAttackUnit,
+            state: state,
+            controller: controller,
             onUnitTap: (unit) => _handleUnitTap(context, unit),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Expanded(
-            child: _CenterActionZone(
-              state: state,
-              selectedAttackTotal: controller.selectedAttackTotal,
-              selectedHasPrecision: controller.selectedAttackHasPrecision,
-              onClearSelection: controller.clearSelection,
-              onEndTurn: controller.endTurn,
-            ),
+            child: _CenterActionZone(state: state, controller: controller),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           _FieldRow(
             player: p1,
-            activePlayer: state.activePlayer,
-            selectedUnitIds: state.selectedUnitIds,
-            animation: state.lastAttackAnimation,
-            canAttackTarget: controller.canSelectedAttackUnit,
+            state: state,
+            controller: controller,
             onUnitTap: (unit) => _handleUnitTap(context, unit),
           ),
           const SizedBox(height: 3),
@@ -729,7 +648,7 @@ class _BattleBoard extends StatelessWidget {
       return;
     }
     if (unit.owner == state.activePlayer) {
-      controller.selectUnit(unit.instanceId);
+      controller.toggleUnitSelection(unit.instanceId);
       return;
     }
     if (state.selectedUnitIds.isNotEmpty &&
@@ -744,39 +663,40 @@ class _BattleBoard extends StatelessWidget {
 class _FieldRow extends StatelessWidget {
   const _FieldRow({
     required this.player,
-    required this.activePlayer,
-    required this.selectedUnitIds,
+    required this.state,
+    required this.controller,
     required this.onUnitTap,
-    required this.canAttackTarget,
-    this.animation,
     this.reversed = false,
   });
 
   final ReflexoPlayerState player;
-  final ReflexoPlayerId activePlayer;
-  final List<String> selectedUnitIds;
+  final ReflexoGameState state;
+  final ReflexoDuelController controller;
   final ValueChanged<ReflexoUnitInstance> onUnitTap;
-  final bool Function(ReflexoUnitInstance unit) canAttackTarget;
-  final ReflexoAttackAnimation? animation;
   final bool reversed;
 
   @override
   Widget build(BuildContext context) {
     final slots = <Widget>[];
+    final selectedIds = state.selectedUnitIds.toSet();
     for (var i = 0; i < 5; i++) {
       if (i < player.field.length) {
         final unit = player.field[i];
-        final isOpponentTarget =
-            selectedUnitIds.isNotEmpty && unit.owner == activePlayer.opponent;
-        final canTarget = isOpponentTarget && canAttackTarget(unit);
+        final isEnemyTarget =
+            state.selectedUnitIds.isNotEmpty &&
+            unit.owner == state.activePlayer.opponent;
         slots.add(
           ReflexoUnitCard(
             unit: unit,
-            selected: selectedUnitIds.contains(unit.instanceId),
-            isAttacking: animation?.attackerId == unit.instanceId,
-            isTargeted: animation?.targetUnitId == unit.instanceId,
-            targetable: canTarget,
-            blockedTarget: isOpponentTarget && !canTarget,
+            selected: selectedIds.contains(unit.instanceId),
+            isAttacking:
+                state.lastAttackAnimation?.attackerId == unit.instanceId,
+            isTargeted:
+                state.lastAttackAnimation?.targetUnitId == unit.instanceId,
+            canBeTargeted:
+                isEnemyTarget && controller.canSelectedAttackTarget(unit),
+            tooStrong:
+                isEnemyTarget && !controller.canSelectedAttackTarget(unit),
             onTap: () => onUnitTap(unit),
           ),
         );
@@ -793,25 +713,16 @@ class _FieldRow extends StatelessWidget {
 }
 
 class _CenterActionZone extends StatelessWidget {
-  const _CenterActionZone({
-    required this.state,
-    required this.selectedAttackTotal,
-    required this.selectedHasPrecision,
-    required this.onClearSelection,
-    required this.onEndTurn,
-  });
+  const _CenterActionZone({required this.state, required this.controller});
 
   final ReflexoGameState state;
-  final int selectedAttackTotal;
-  final bool selectedHasPrecision;
-  final VoidCallback onClearSelection;
-  final VoidCallback onEndTurn;
+  final ReflexoDuelController controller;
 
   @override
   Widget build(BuildContext context) {
     final current = state.current;
     final selectedCount = state.selectedUnitIds.length;
-    final selected = selectedCount > 0;
+    final selectedPower = controller.selectedAttackPower();
     final canAct = state.phase == ReflexoMatchPhase.playerTurn;
 
     return Container(
@@ -822,110 +733,138 @@ class _CenterActionZone extends StatelessWidget {
         color: const Color(0x770B1020),
         border: Border.all(color: Colors.white12),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            physics: const ClampingScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      canAct ? 'Turno de ${current.name}' : 'Aguardando',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              canAct ? 'Turno de ${current.name}' : 'Aguardando',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              selectedCount > 0
+                  ? 'Ataque combinado: $selectedPower · $selectedCount unidade(s)'
+                  : 'Toque em uma ou mais unidades suas para atacar.',
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 11,
+                height: 1.18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (selectedCount > 0)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  foregroundColor: Colors.white.withValues(alpha: 0.86),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+                ),
+                onPressed: controller.clearSelection,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Limpar seleção'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingTurnBar extends StatelessWidget {
+  const _FloatingTurnBar({required this.state, required this.controller});
+
+  final ReflexoGameState state;
+  final ReflexoDuelController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedCount = state.selectedUnitIds.length;
+    final selectedPower = controller.selectedAttackPower();
+    final canAct = state.phase == ReflexoMatchPhase.playerTurn;
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xF00B1020),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white12),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    selectedCount > 0
+                        ? 'Ataque: $selectedPower com $selectedCount unidade(s)'
+                        : 'Selecione tropas e toque no alvo ou no avatar inimigo',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(height: 5),
-                    if (selected)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(
-                            0xFF0EA5E9,
-                          ).withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: const Color(
-                              0xFF38BDF8,
-                            ).withValues(alpha: 0.42),
-                          ),
-                        ),
-                        child: Text(
-                          selectedCount > 1
-                              ? 'Ataque combinado: $selectedAttackTotal · $selectedCount unidades'
-                              : 'Ataque selecionado: $selectedAttackTotal',
-                          style: const TextStyle(
-                            color: Color(0xFFBAE6FD),
-                            fontSize: 12,
+                  ),
+                  if (selectedCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: InkWell(
+                        onTap: controller.clearSelection,
+                        child: const Text(
+                          'Limpar seleção',
+                          style: TextStyle(
+                            color: Color(0xFF93C5FD),
+                            fontSize: 11,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
-                    const SizedBox(height: 5),
-                    Text(
-                      selected
-                          ? selectedHasPrecision
-                                ? 'Alvos destacados podem ser atacados. Precisão ignora comparação de ataque.'
-                                : 'Alvos verdes podem ser atacados. Toque no HUD inimigo para ataque direto.'
-                          : 'Toque em uma ou mais unidades suas para selecionar atacantes.',
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.68),
-                        fontSize: 11,
-                        height: 1.18,
-                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: Colors.white24),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                          ),
-                          onPressed: selected ? onClearSelection : null,
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          label: const Text('Limpar seleção'),
-                        ),
-                        FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                          ),
-                          onPressed: canAct ? onEndTurn : null,
-                          icon: const Icon(Icons.skip_next_rounded, size: 18),
-                          label: const Text('Fim do turno'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
-          );
-        },
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: canAct ? controller.endTurn : null,
+              icon: const Icon(Icons.skip_next_rounded, size: 18),
+              label: const Text('Fim do turno'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -940,12 +879,12 @@ class _HandBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.phase != ReflexoMatchPhase.playerTurn) {
-      return const SizedBox(height: 112);
+      return const SizedBox(height: 108);
     }
     final player = state.current;
     return Container(
-      height: 112,
-      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      height: 108,
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 8),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: player.hand.length,
@@ -961,9 +900,151 @@ class _HandBar extends StatelessWidget {
             card: card,
             cost: cost,
             enabled: player.energy >= cost && hasSpace,
+            compact: true,
             onTap: () => controller.playCard(index),
           );
         },
+      ),
+    );
+  }
+}
+
+class _DiceRevealDialog extends StatefulWidget {
+  const _DiceRevealDialog({required this.player});
+
+  final ReflexoPlayerState player;
+
+  @override
+  State<_DiceRevealDialog> createState() => _DiceRevealDialogState();
+}
+
+class _DiceRevealDialogState extends State<_DiceRevealDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final destiny = widget.player.selectedDestiny;
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 270,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0B1020),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white24),
+            boxShadow: const [
+              BoxShadow(color: Color(0x99000000), blurRadius: 24),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                destiny?.name ?? 'Resultado',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 16),
+              AnimatedBuilder(
+                animation: _controller,
+                builder: (_, __) {
+                  final t = Curves.easeOutBack.transform(_controller.value);
+                  final angle = (1 - _controller.value) * 7.5;
+                  return Transform.rotate(
+                    angle: angle,
+                    child: Transform.translate(
+                      offset: Offset(0, (1 - t) * -35),
+                      child: Transform.scale(
+                        scale: 0.7 + (t * 0.3),
+                        child: Container(
+                          width: 108,
+                          height: 108,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(26),
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF60A5FA),
+                                Color(0xFF1D4ED8),
+                                Color(0xFF0F172A),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            border: Border.all(color: Colors.white54, width: 2),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x883B82F6),
+                                blurRadius: 24,
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${widget.player.lastRoll ?? 0}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 42,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Você rolou ${widget.player.lastRoll ?? '-'} no d20',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.84),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (destiny != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Buff escolhido: ${destiny.shortText}',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontSize: 12,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Continuar'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

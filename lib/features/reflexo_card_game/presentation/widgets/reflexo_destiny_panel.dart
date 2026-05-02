@@ -1,4 +1,6 @@
-// lib/features/reflexo_card_game/presentation/widgets/reflexo_destiny_panel.dart
+// ============================================================================
+// FILE: lib/features/reflexo_card_game/presentation/widgets/reflexo_destiny_panel.dart
+// ============================================================================
 
 import 'package:flutter/material.dart';
 
@@ -23,7 +25,7 @@ class ReflexoDestinyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = player.selectedDestiny;
-    final alreadyRolled = player.lastRollRound == round;
+    final rolled = player.lastRollRound == round;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -38,7 +40,7 @@ class ReflexoDestinyPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${player.name} · escolha seu Destino',
+                  '${player.name} · Destino',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -46,186 +48,165 @@ class ReflexoDestinyPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              _DiceButton(
-                roll: player.lastRoll,
-                enabled: selected != null && !alreadyRolled,
-                onTap: onRoll,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.18),
+                  border: Border.all(
+                    color: const Color(0xFF60A5FA).withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  player.lastRoll == null ? 'd20' : 'd20: ${player.lastRoll}',
+                  style: const TextStyle(
+                    color: Color(0xFFBFDBFE),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: options.map((option) {
               final isSelected = selected?.id == option.id;
+              final palette = _paletteFor(option.requirement);
               return Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: _DestinyOptionCard(
-                    option: option,
-                    selected: isSelected,
-                    disabled: alreadyRolled,
-                    onTap: () => onSelect(option),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Tooltip(
+                    message: option.fullText.isEmpty
+                        ? option.shortText
+                        : option.fullText,
+                    child: InkWell(
+                      onTap: rolled ? null : () => onSelect(option),
+                      borderRadius: BorderRadius.circular(16),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        height: 114,
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: palette.background.withValues(
+                            alpha: isSelected ? 0.36 : 0.14,
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? palette.border : Colors.white12,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: palette.border.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                palette.label,
+                                style: TextStyle(
+                                  color: palette.border,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              option.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              option.shortText,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: palette.text,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              'Precisa: ${option.requirement}+',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.62),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               );
             }).toList(),
           ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: selected != null && !rolled ? onRoll : null,
+            icon: const Icon(Icons.casino_rounded),
+            label: Text(rolled ? 'Dado rolado' : 'Rolar d20'),
+          ),
         ],
       ),
     );
   }
-}
 
-class _DestinyOptionCard extends StatelessWidget {
-  const _DestinyOptionCard({
-    required this.option,
-    required this.selected,
-    required this.disabled,
-    required this.onTap,
-  });
-
-  final ReflexoDestinyOption option;
-  final bool selected;
-  final bool disabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = option.requirement >= 18
-        ? const Color(0xFFA855F7)
-        : option.requirement >= 10
-        ? const Color(0xFFF59E0B)
-        : const Color(0xFF22C55E);
-    return Tooltip(
-      message: option.fullText.isEmpty ? option.shortText : option.fullText,
-      child: InkWell(
-        onTap: disabled ? null : onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          height: 126,
-          padding: const EdgeInsets.all(9),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: selected ? 0.24 : 0.10),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected ? color : color.withValues(alpha: 0.38),
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                option.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                option.shortText,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Icon(Icons.casino_rounded, size: 14, color: color),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${option.requirement}+',
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const Spacer(),
-                  Flexible(
-                    child: Text(
-                      option.durationLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.62),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+  _DestinyPalette _paletteFor(int requirement) {
+    if (requirement <= 7) {
+      return const _DestinyPalette(
+        background: Color(0xFF14532D),
+        border: Color(0xFF4ADE80),
+        text: Color(0xFFBBF7D0),
+        label: 'COMUM',
+      );
+    }
+    if (requirement <= 12) {
+      return const _DestinyPalette(
+        background: Color(0xFF4C1D95),
+        border: Color(0xFFC084FC),
+        text: Color(0xFFE9D5FF),
+        label: 'RARO',
+      );
+    }
+    return const _DestinyPalette(
+      background: Color(0xFF78350F),
+      border: Color(0xFFFBBF24),
+      text: Color(0xFFFDE68A),
+      label: 'ÉPICO',
     );
   }
 }
 
-class _DiceButton extends StatelessWidget {
-  const _DiceButton({
-    required this.roll,
-    required this.enabled,
-    required this.onTap,
+class _DestinyPalette {
+  const _DestinyPalette({
+    required this.background,
+    required this.border,
+    required this.text,
+    required this.label,
   });
 
-  final int? roll;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message:
-          'Rola o d20 deste jogador. O valor fica visível até a próxima rolagem.',
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(999),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: roll == null ? 58 : 66,
-          height: roll == null ? 58 : 66,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const RadialGradient(
-              colors: [Color(0xFF60A5FA), Color(0xFF1D4ED8), Color(0xFF111827)],
-              radius: 0.95,
-            ),
-            border: Border.all(color: Colors.white54),
-            boxShadow: enabled
-                ? const [
-                    BoxShadow(
-                      color: Color(0xAA2563EB),
-                      blurRadius: 22,
-                      offset: Offset(0, 8),
-                    ),
-                  ]
-                : const [],
-          ),
-          child: Center(
-            child: Text(
-              roll == null ? 'd20' : '$roll',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  final Color background;
+  final Color border;
+  final Color text;
+  final String label;
 }

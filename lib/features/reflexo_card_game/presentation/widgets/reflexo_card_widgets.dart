@@ -13,12 +13,14 @@ class ReflexoCardTile extends StatelessWidget {
     required this.cost,
     required this.onTap,
     this.enabled = true,
+    this.compact = false,
   });
 
   final ReflexoCardDefinition card;
   final int cost;
   final VoidCallback onTap;
   final bool enabled;
+  final bool compact;
 
   Color get _typeColor {
     switch (card.type) {
@@ -58,7 +60,7 @@ class ReflexoCardTile extends StatelessWidget {
         child: Stack(
           children: [
             Container(
-              width: 106,
+              width: compact ? 82 : 108,
               margin: const EdgeInsets.only(right: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
@@ -87,7 +89,12 @@ class ReflexoCardTile extends StatelessWidget {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
+                    padding: EdgeInsets.fromLTRB(
+                      compact ? 6 : 8,
+                      compact ? 4 : 5,
+                      compact ? 6 : 8,
+                      compact ? 5 : 6,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -95,36 +102,43 @@ class ReflexoCardTile extends StatelessWidget {
                           card.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: compact ? 9 : 11,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            _StatPill(
-                              label: '$cost',
-                              color: const Color(0xFF60A5FA),
-                            ),
-                            const Spacer(),
-                            if (card.isUnit) ...[
+                        SizedBox(height: compact ? 2 : 4),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               _StatPill(
-                                label: '${card.attack}',
-                                color: const Color(0xFFF97316),
+                                label: '$cost',
+                                color: const Color(0xFF60A5FA),
                               ),
                               const SizedBox(width: 3),
-                              _StatPill(
-                                label: '${card.health}',
-                                color: const Color(0xFF22C55E),
-                              ),
-                            ] else
-                              _StatPill(
-                                label: _typeLabel(card.type),
-                                color: _typeColor,
-                              ),
-                          ],
+                              _LevelPill(level: card.level),
+                              const SizedBox(width: 8),
+                              if (card.isUnit) ...[
+                                _StatPill(
+                                  label: '${card.attack}',
+                                  color: const Color(0xFFF97316),
+                                ),
+                                const SizedBox(width: 3),
+                                _StatPill(
+                                  label: '${card.health}',
+                                  color: const Color(0xFF22C55E),
+                                ),
+                              ] else
+                                _StatPill(
+                                  label: _typeLabel(card.type),
+                                  color: _typeColor,
+                                ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -134,33 +148,9 @@ class ReflexoCardTile extends StatelessWidget {
             ),
             if (card.isHeavy)
               Positioned(
-                right: 14,
-                top: 8,
-                child: Tooltip(
-                  message:
-                      'Pesada: forte, mas vulnerável a ataque combinado e feitiços anti-tanque.',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFBBF24).withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: const Color(0xFFFBBF24).withValues(alpha: 0.55),
-                      ),
-                    ),
-                    child: const Text(
-                      'P',
-                      style: TextStyle(
-                        color: Color(0xFFFBBF24),
-                        fontSize: 8,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
+                top: 7,
+                right: 15,
+                child: _Badge(text: 'P', color: const Color(0xFFFBBF24)),
               ),
             if (!enabled)
               Positioned(
@@ -180,7 +170,7 @@ class ReflexoCardTile extends StatelessWidget {
                     'sem energia',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 8,
+                      fontSize: 7,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -214,8 +204,8 @@ class ReflexoUnitCard extends StatelessWidget {
     required this.onTap,
     this.isAttacking = false,
     this.isTargeted = false,
-    this.targetable = false,
-    this.blockedTarget = false,
+    this.canBeTargeted = false,
+    this.tooStrong = false,
   });
 
   final ReflexoUnitInstance unit;
@@ -223,17 +213,17 @@ class ReflexoUnitCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool isAttacking;
   final bool isTargeted;
-  final bool targetable;
-  final bool blockedTarget;
+  final bool canBeTargeted;
+  final bool tooStrong;
 
   @override
   Widget build(BuildContext context) {
     final borderColor = selected
         ? const Color(0xFF38BDF8)
-        : targetable
+        : canBeTargeted
         ? const Color(0xFF22C55E)
-        : blockedTarget
-        ? const Color(0xFFEF4444)
+        : tooStrong
+        ? const Color(0xFFF97316)
         : isTargeted
         ? const Color(0xFFEF4444)
         : isAttacking
@@ -260,16 +250,9 @@ class ReflexoUnitCard extends StatelessWidget {
           ),
           border: Border.all(
             color: borderColor,
-            width: selected || isTargeted || targetable || blockedTarget
-                ? 2
-                : 1,
+            width: selected || isTargeted || canBeTargeted ? 2 : 1,
           ),
-          boxShadow:
-              selected ||
-                  isAttacking ||
-                  isTargeted ||
-                  targetable ||
-                  blockedTarget
+          boxShadow: selected || isAttacking || isTargeted || canBeTargeted
               ? [
                   BoxShadow(
                     color: borderColor.withValues(alpha: 0.55),
@@ -316,36 +299,6 @@ class ReflexoUnitCard extends StatelessWidget {
                   color: const Color(0xFF60A5FA),
                 ),
               ),
-            if (unit.isHeavy)
-              Positioned(
-                bottom: 21,
-                left: unit.hasBarrier ? 20 : 4,
-                child: Tooltip(
-                  message:
-                      'Unidade pesada: ataque combinado e feitiços anti-tanque são boas respostas.',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFBBF24).withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(99),
-                      border: Border.all(
-                        color: const Color(0xFFFBBF24).withValues(alpha: 0.45),
-                      ),
-                    ),
-                    child: const Text(
-                      'P',
-                      style: TextStyle(
-                        color: Color(0xFFFBBF24),
-                        fontSize: 8,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             if (unit.hasBarrier)
               const Positioned(
                 bottom: 21,
@@ -356,41 +309,34 @@ class ReflexoUnitCard extends StatelessWidget {
                   size: 14,
                 ),
               ),
-            if (targetable || blockedTarget)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color:
-                          (targetable
-                                  ? const Color(0xFF22C55E)
-                                  : const Color(0xFFEF4444))
-                              .withValues(alpha: 0.10),
-                    ),
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: Container(
-                        margin: const EdgeInsets.only(top: 24),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: targetable
-                              ? const Color(0xFF166534)
-                              : const Color(0xFF7F1D1D),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          targetable ? 'ALVO' : 'FORTE',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
+            if (unit.isHeavy)
+              const Positioned(
+                top: 22,
+                left: 4,
+                child: _Badge(text: 'P', color: Color(0xFFFBBF24)),
+              ),
+            if (canBeTargeted || tooStrong)
+              Positioned(
+                top: 35,
+                left: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  decoration: BoxDecoration(
+                    color:
+                        (canBeTargeted
+                                ? const Color(0xFF22C55E)
+                                : const Color(0xFFF97316))
+                            .withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    canBeTargeted ? 'ALVO' : 'FORTE',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
@@ -607,6 +553,69 @@ class _StatPill extends StatelessWidget {
   }
 }
 
+class _LevelPill extends StatelessWidget {
+  const _LevelPill({required this.level});
+  final int level;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Nível $level: indica o peso/custo geral da carta.',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFBBF24).withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: const Color(0xFFFBBF24).withValues(alpha: 0.35),
+          ),
+        ),
+        child: Text(
+          'N$level',
+          style: const TextStyle(
+            color: Color(0xFFFBBF24),
+            fontSize: 8,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({required this.text, required this.color});
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message:
+          'Carta pesada: forte, mas vulnerável a ataque combinado e anti-tanque.',
+      child: Container(
+        width: 18,
+        height: 18,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white54),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 void showReflexoCardDetails(BuildContext context, ReflexoCardDefinition card) {
   showModalBottomSheet(
     context: context,
@@ -631,22 +640,22 @@ class _CardDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailsShell(
       title: card.name,
+      imageAsset: card.imageAsset,
       children: [
         _DetailLine('Tipo', _typeName(card.type)),
+        _DetailLine('Nível', '${card.level}'),
         _DetailLine('Custo', '${card.cost}'),
         if (card.isUnit) ...[
           _DetailLine('Ataque', '${card.attack}'),
           _DetailLine('Vida', '${card.health}'),
           _DetailLine('Escudo', '${card.shield}'),
-          if (card.isHeavy)
-            const _DetailParagraph(
-              'Pesada: pode ser derrubada por ataque combinado e sofre mais contra feitiços anti-tanque.',
-            ),
         ],
         _DetailLine('Atributo', card.attribute.label),
         _DetailLine('Arquétipo', card.archetype.label),
-        if (card.secondaryAttribute != null)
-          _DetailLine('Secundário', card.secondaryAttribute!.label),
+        if (card.isHeavy)
+          const _DetailParagraph(
+            'Pesada: pode dominar o campo, mas sofre contra ataque combinado e cartas anti-tanque.',
+          ),
         if (card.abilities.isNotEmpty)
           _DetailLine(
             'Habilidades',
@@ -679,24 +688,20 @@ class _UnitDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DetailsShell(
       title: unit.card.name,
+      imageAsset: unit.card.imageAsset,
       children: [
         _DetailLine('Ataque atual', '${unit.visibleAttack}'),
         _DetailLine('Vida atual', '${unit.health}/${unit.maxHealth}'),
         _DetailLine('Escudo', '${unit.shield}'),
         _DetailLine('Pode atacar', unit.readyToAttack ? 'Sim' : 'Não'),
+        _DetailLine('Atributo', unit.card.attribute.label),
         if (unit.isHeavy)
           const _DetailParagraph(
-            'Pesada: exige resposta coordenada. Some ataques de várias unidades ou use anti-tanque.',
+            'Pesada: ataque combinado é o melhor jeito de derrubar esta carta.',
           ),
-        _DetailLine('Atributo', unit.card.attribute.label),
         if (unit.card.abilities.isNotEmpty)
           ...unit.card.abilities.map(
             (a) => _DetailParagraph('${a.label}: ${a.description}'),
-          ),
-        if (unit.temporaryBuffs.isNotEmpty)
-          _DetailLine(
-            'Buffs',
-            unit.temporaryBuffs.map((e) => e.summary).join(', '),
           ),
       ],
     );
@@ -704,8 +709,13 @@ class _UnitDetailsSheet extends StatelessWidget {
 }
 
 class _DetailsShell extends StatelessWidget {
-  const _DetailsShell({required this.title, required this.children});
+  const _DetailsShell({
+    required this.title,
+    required this.children,
+    this.imageAsset,
+  });
   final String title;
+  final String? imageAsset;
   final List<Widget> children;
 
   @override
@@ -723,13 +733,31 @@ class _DetailsShell extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
+            Row(
+              children: [
+                if (imageAsset != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      imageAsset!,
+                      width: 58,
+                      height: 76,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(width: 0),
+                    ),
+                  ),
+                if (imageAsset != null) const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             ...children,

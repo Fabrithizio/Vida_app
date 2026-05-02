@@ -1,4 +1,6 @@
-// lib/features/reflexo_card_game/presentation/widgets/reflexo_duel_hud.dart
+// ============================================================================
+// FILE: lib/features/reflexo_card_game/presentation/widgets/reflexo_duel_hud.dart
+// ============================================================================
 
 import 'package:flutter/material.dart';
 
@@ -6,178 +8,221 @@ import '../../domain/reflexo_models.dart';
 import 'reflexo_card_widgets.dart';
 
 class ReflexoDuelHud extends StatelessWidget {
-  const ReflexoDuelHud({super.key, required this.player, required this.active});
+  const ReflexoDuelHud({
+    super.key,
+    required this.player,
+    required this.active,
+    this.onTap,
+    this.attackHint = false,
+  });
 
   final ReflexoPlayerState player;
   final bool active;
+  final VoidCallback? onTap;
+  final bool attackHint;
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? const Color(0xFF38BDF8) : Colors.white24;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xE60B1020),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color, width: active ? 1.6 : 1),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Tooltip(
-                message:
-                    '${player.name}: ${player.mainArchetype.label}. ${player.mainArchetype.basePassive}',
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: player.archetypeAwakened
-                          ? const [Color(0xFFFBBF24), Color(0xFFA855F7)]
-                          : const [Color(0xFF2563EB), Color(0xFF111827)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    border: Border.all(color: Colors.white30),
+    final color = attackHint
+        ? const Color(0xFFFBBF24)
+        : active
+        ? const Color(0xFF38BDF8)
+        : Colors.white24;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xE60B1020),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: color,
+            width: active || attackHint ? 1.8 : 1,
+          ),
+          boxShadow: attackHint
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.32),
+                    blurRadius: 18,
                   ),
-                  child: Icon(
-                    player.mainArchetype.icon,
-                    color: Colors.white,
-                    size: 24,
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Tooltip(
+                  message:
+                      '${player.name}: ${player.mainArchetype.label}. ${player.mainArchetype.basePassive}',
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: player.archetypeAwakened
+                            ? const [Color(0xFFFBBF24), Color(0xFFA855F7)]
+                            : const [Color(0xFF2563EB), Color(0xFF111827)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(
+                        color: attackHint
+                            ? const Color(0xFFFBBF24)
+                            : Colors.white30,
+                      ),
+                    ),
+                    child: Icon(
+                      player.mainArchetype.icon,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            player.mainArchetype.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              player.mainArchetype.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
                           ),
-                        ),
-                        if (player.archetypeAwakened) ...[
-                          const SizedBox(width: 6),
-                          const Icon(
-                            Icons.bolt_rounded,
-                            color: Color(0xFFFBBF24),
-                            size: 15,
-                          ),
+                          if (player.archetypeAwakened) ...[
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.bolt_rounded,
+                              color: Color(0xFFFBBF24),
+                              size: 15,
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        minHeight: 5,
-                        value: player.archetypeAwakened
-                            ? 1
-                            : player.archetypeProgressRatio,
-                        backgroundColor: Colors.white.withValues(alpha: 0.08),
-                        color: player.archetypeAwakened
-                            ? const Color(0xFFFBBF24)
-                            : const Color(0xFF60A5FA),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      player.archetypeAwakened
-                          ? 'Desperto: ${player.mainArchetype.awakenedPassive}'
-                          : '${player.archetypeProgress}/${player.archetypeGoal} · ${player.mainArchetype.awakenCondition}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.64),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          minHeight: 5,
+                          value: player.archetypeAwakened
+                              ? 1
+                              : player.archetypeProgressRatio,
+                          backgroundColor: Colors.white.withValues(alpha: 0.08),
+                          color: player.archetypeAwakened
+                              ? const Color(0xFFFBBF24)
+                              : const Color(0xFF60A5FA),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 3),
+                      Text(
+                        player.archetypeAwakened
+                            ? 'Desperto: ${player.mainArchetype.awakenedPassive}'
+                            : '${player.archetypeProgress}/${player.archetypeGoal} · ${player.mainArchetype.awakenCondition}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.64),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message:
-                    'Última rolagem de d20 deste jogador. Fica visível até a próxima rolagem.',
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const RadialGradient(
-                      colors: [
-                        Color(0xFF60A5FA),
-                        Color(0xFF1D4ED8),
-                        Color(0xFF111827),
-                      ],
-                      radius: 0.95,
+                const SizedBox(width: 8),
+                Tooltip(
+                  message:
+                      'Última rolagem de d20 deste jogador. Fica visível até a próxima rolagem.',
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const RadialGradient(
+                        colors: [
+                          Color(0xFF60A5FA),
+                          Color(0xFF1D4ED8),
+                          Color(0xFF111827),
+                        ],
+                        radius: 0.95,
+                      ),
+                      border: Border.all(color: Colors.white38),
                     ),
-                    border: Border.all(color: Colors.white38),
-                  ),
-                  child: Center(
-                    child: Text(
-                      player.lastRoll == null ? 'd20' : '${player.lastRoll}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
+                    child: Center(
+                      child: Text(
+                        player.lastRoll == null ? 'd20' : '${player.lastRoll}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _HudPill(
+                  icon: Icons.favorite_rounded,
+                  label: '${player.life}',
+                  color: const Color(0xFF22C55E),
+                  help: 'Vida do Reflexo. Se chegar a 0, perde.',
+                ),
+                _HudPill(
+                  icon: Icons.bolt_rounded,
+                  label: '${player.energy}',
+                  color: const Color(0xFF60A5FA),
+                  help: 'Energia atual para jogar cartas neste turno.',
+                ),
+                _HudPill(
+                  icon: Icons.inventory_2_rounded,
+                  label: '${player.reserve}',
+                  color: const Color(0xFF93C5FD),
+                  help: 'Reserva guardada para turnos futuros. Limite 10.',
+                ),
+                _HudPill(
+                  icon: Icons.style_rounded,
+                  label: '${player.hand.length}',
+                  color: const Color(0xFFA78BFA),
+                  help: 'Cartas na mão.',
+                ),
+                const SizedBox(width: 4),
+                ReflexoTrapSlot(trapCount: player.traps.length),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ReflexoBuffChips(buffs: player.buffs),
+            ),
+            if (attackHint) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'Toque aqui para atacar o Reflexo diretamente',
+                style: TextStyle(
+                  color: Color(0xFFFBBF24),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _HudPill(
-                icon: Icons.favorite_rounded,
-                label: '${player.life}',
-                color: const Color(0xFF22C55E),
-                help: 'Vida do Reflexo. Se chegar a 0, perde.',
-              ),
-              _HudPill(
-                icon: Icons.bolt_rounded,
-                label: '${player.energy}',
-                color: const Color(0xFF60A5FA),
-                help: 'Energia atual para jogar cartas neste turno.',
-              ),
-              _HudPill(
-                icon: Icons.inventory_2_rounded,
-                label: '${player.reserve}',
-                color: const Color(0xFF93C5FD),
-                help: 'Reserva guardada para turnos futuros. Limite 10.',
-              ),
-              _HudPill(
-                icon: Icons.style_rounded,
-                label: '${player.hand.length}',
-                color: const Color(0xFFA78BFA),
-                help: 'Cartas na mão.',
-              ),
-              const SizedBox(width: 4),
-              ReflexoTrapSlot(trapCount: player.traps.length),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ReflexoBuffChips(buffs: player.buffs),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

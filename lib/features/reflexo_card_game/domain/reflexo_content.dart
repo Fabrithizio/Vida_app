@@ -9,7 +9,141 @@ import 'reflexo_models.dart';
 class ReflexoContent {
   const ReflexoContent._();
 
+  static const int deckSize = 30;
+  static const int minUnits = 18;
+  static const int maxSpells = 8;
+  static const int maxTraps = 6;
+  static const int maxCopies = 2;
+  static const int maxHeavyCards = 4;
+
   static const List<ReflexoCardDefinition> allCards = [
+    ReflexoCardDefinition(
+      id: 'astra',
+      name: 'Astra',
+      type: ReflexoCardType.unit,
+      cost: 2,
+      attack: 7,
+      health: 13,
+      shield: 0,
+      attribute: ReflexoAttribute.instinto,
+      archetype: ReflexoArchetype.berserker,
+      abilities: [ReflexoAbility.investida],
+      imageAsset: 'assets/images/reflexo/cards/Astra.png',
+      text: 'Atacante inicial veloz. Entra pressionando o campo.',
+    ),
+    ReflexoCardDefinition(
+      id: 'lumina',
+      name: 'Lumina',
+      type: ReflexoCardType.unit,
+      cost: 3,
+      attack: 8,
+      health: 16,
+      shield: 1,
+      attribute: ReflexoAttribute.influencia,
+      archetype: ReflexoArchetype.curador,
+      abilities: [ReflexoAbility.vinculo],
+      imageAsset: 'assets/images/reflexo/cards/Lumina.png',
+      text: 'Cura seu Reflexo ao causar dano.',
+    ),
+    ReflexoCardDefinition(
+      id: 'eris',
+      name: 'Eris',
+      type: ReflexoCardType.unit,
+      cost: 3,
+      attack: 6,
+      health: 17,
+      shield: 3,
+      attribute: ReflexoAttribute.disciplina,
+      archetype: ReflexoArchetype.guardiao,
+      abilities: [ReflexoAbility.guardiao],
+      imageAsset: 'assets/images/reflexo/cards/Eris.png',
+      text: 'Unidade defensiva para segurar pressão inicial.',
+    ),
+    ReflexoCardDefinition(
+      id: 'lin',
+      name: 'Lin',
+      type: ReflexoCardType.unit,
+      cost: 2,
+      attack: 5,
+      health: 14,
+      shield: 2,
+      attribute: ReflexoAttribute.foco,
+      archetype: ReflexoArchetype.estrategista,
+      abilities: [ReflexoAbility.precisao],
+      imageAsset: 'assets/images/reflexo/cards/Lin.png',
+      text: 'Pequena, precisa e ótima para eliminar alvos frágeis.',
+    ),
+    ReflexoCardDefinition(
+      id: 'mia',
+      name: 'Mia',
+      type: ReflexoCardType.unit,
+      cost: 4,
+      attack: 10,
+      health: 16,
+      shield: 0,
+      attribute: ReflexoAttribute.instinto,
+      archetype: ReflexoArchetype.sombra,
+      abilities: [ReflexoAbility.direto],
+      imageAsset: 'assets/images/reflexo/cards/mia.png',
+      text: 'Pode atacar o Reflexo diretamente, mas exige proteção.',
+    ),
+    ReflexoCardDefinition(
+      id: 'zion',
+      name: 'Zion',
+      type: ReflexoCardType.unit,
+      cost: 5,
+      attack: 13,
+      health: 22,
+      shield: 2,
+      attribute: ReflexoAttribute.recurso,
+      archetype: ReflexoArchetype.inventor,
+      abilities: [ReflexoAbility.barreira],
+      imageAsset: 'assets/images/reflexo/cards/Zion.png',
+      text: 'Ignora o primeiro dano recebido.',
+    ),
+    ReflexoCardDefinition(
+      id: 'valerius',
+      name: 'Valerius',
+      type: ReflexoCardType.unit,
+      cost: 6,
+      attack: 15,
+      health: 25,
+      shield: 3,
+      attribute: ReflexoAttribute.foco,
+      archetype: ReflexoArchetype.oraculo,
+      abilities: [ReflexoAbility.eco],
+      imageAsset: 'assets/images/reflexo/cards/Valerius.png',
+      text: 'Unidade pesada de controle. Forte, mas vulnerável a anti-tanque.',
+    ),
+    ReflexoCardDefinition(
+      id: 'mago_anciao',
+      name: 'Mago Ancião',
+      type: ReflexoCardType.unit,
+      cost: 7,
+      attack: 17,
+      health: 28,
+      shield: 2,
+      attribute: ReflexoAttribute.foco,
+      archetype: ReflexoArchetype.oraculo,
+      abilities: [ReflexoAbility.precisao],
+      imageAsset: 'assets/images/reflexo/cards/Mago_ancião.png',
+      text:
+          'Pesado e preciso. Controla o campo sem tomar contra-ataque em empate.',
+    ),
+    ReflexoCardDefinition(
+      id: 'lia_noa',
+      name: 'Lia & Noa',
+      type: ReflexoCardType.unit,
+      cost: 5,
+      attack: 11,
+      health: 21,
+      shield: 1,
+      attribute: ReflexoAttribute.influencia,
+      archetype: ReflexoArchetype.comandante,
+      abilities: [ReflexoAbility.eco],
+      imageAsset: 'assets/images/reflexo/cards/Lia & Noa.png',
+      text: 'Boa em decks com campo cheio. Ajuda o plano de Comandante.',
+    ),
     ReflexoCardDefinition(
       id: 'sentinela_ferro',
       name: 'Sentinela de Ferro',
@@ -51,32 +185,6 @@ class ReflexoContent {
       text: 'Pode atacar o Reflexo diretamente, mas tem dano baixo.',
     ),
     ReflexoCardDefinition(
-      id: 'monge_vinculo',
-      name: 'Monge do Vínculo',
-      type: ReflexoCardType.unit,
-      cost: 3,
-      attack: 7,
-      health: 16,
-      shield: 1,
-      attribute: ReflexoAttribute.influencia,
-      archetype: ReflexoArchetype.curador,
-      abilities: [ReflexoAbility.vinculo],
-      text: 'Cura seu Reflexo quando causa dano.',
-    ),
-    ReflexoCardDefinition(
-      id: 'tatico_cristal',
-      name: 'Tático de Cristal',
-      type: ReflexoCardType.unit,
-      cost: 4,
-      attack: 7,
-      health: 15,
-      shield: 2,
-      attribute: ReflexoAttribute.foco,
-      archetype: ReflexoArchetype.estrategista,
-      abilities: [ReflexoAbility.precisao],
-      text: 'Ataca unidades sem receber contra-ataque.',
-    ),
-    ReflexoCardDefinition(
       id: 'golem_reserva',
       name: 'Golem da Reserva',
       type: ReflexoCardType.unit,
@@ -88,47 +196,6 @@ class ReflexoContent {
       archetype: ReflexoArchetype.inventor,
       abilities: [ReflexoAbility.barreira],
       text: 'Ignora o primeiro dano recebido.',
-    ),
-    ReflexoCardDefinition(
-      id: 'porta_bandeira',
-      name: 'Porta-Bandeira',
-      type: ReflexoCardType.unit,
-      cost: 4,
-      attack: 8,
-      health: 18,
-      shield: 1,
-      attribute: ReflexoAttribute.influencia,
-      archetype: ReflexoArchetype.comandante,
-      abilities: [ReflexoAbility.eco],
-      text: 'Unidade de sinergia. Boa para sustentar campo.',
-    ),
-    ReflexoCardDefinition(
-      id: 'transmutador',
-      name: 'Transmutador',
-      type: ReflexoCardType.unit,
-      cost: 5,
-      attack: 10,
-      health: 20,
-      shield: 2,
-      attribute: ReflexoAttribute.recurso,
-      secondaryAttribute: ReflexoAttribute.foco,
-      archetype: ReflexoArchetype.alquimista,
-      abilities: [ReflexoAbility.eco],
-      text: 'Transforma vantagem de recurso em presença de campo.',
-    ),
-    ReflexoCardDefinition(
-      id: 'oraculo_d20',
-      name: 'Oráculo do D20',
-      type: ReflexoCardType.unit,
-      cost: 6,
-      attack: 11,
-      health: 19,
-      shield: 2,
-      attribute: ReflexoAttribute.instinto,
-      secondaryAttribute: ReflexoAttribute.disciplina,
-      archetype: ReflexoArchetype.oraculo,
-      abilities: [ReflexoAbility.eco],
-      text: 'Melhora partidas longas com efeitos ligados ao dado.',
     ),
     ReflexoCardDefinition(
       id: 'furia_crescente',
@@ -144,35 +211,23 @@ class ReflexoContent {
       text: 'Ganha força quando sobrevive dano.',
     ),
     ReflexoCardDefinition(
-      id: 'escudeira_serena',
-      name: 'Escudeira Serena',
-      type: ReflexoCardType.unit,
-      cost: 2,
-      attack: 5,
-      health: 14,
-      shield: 5,
-      attribute: ReflexoAttribute.disciplina,
-      archetype: ReflexoArchetype.guardiao,
-      abilities: [ReflexoAbility.guardiao],
-      text: 'Defesa inicial para segurar o primeiro impacto.',
-    ),
-    ReflexoCardDefinition(
       id: 'colosso_prismatico',
       name: 'Colosso Prismático',
       type: ReflexoCardType.unit,
-      cost: 10,
-      attack: 24,
+      cost: 9,
+      attack: 23,
       health: 38,
-      shield: 6,
+      shield: 5,
       attribute: ReflexoAttribute.vigor,
       secondaryAttribute: ReflexoAttribute.recurso,
       archetype: ReflexoArchetype.guardiao,
       abilities: [ReflexoAbility.guardiao, ReflexoAbility.barreira],
-      text: 'Carta pesada e impactante. Não vence sozinha, mas muda o campo.',
+      text:
+          'Carta pesada e impactante. Sofre contra ataque combinado e anti-tanque.',
     ),
     ReflexoCardDefinition(
-      id: 'raio_prismatico',
-      name: 'Raio Prismático',
+      id: 'dano_instantaneo',
+      name: 'Dano Instantâneo',
       type: ReflexoCardType.spell,
       cost: 2,
       attack: 0,
@@ -180,7 +235,21 @@ class ReflexoContent {
       shield: 0,
       attribute: ReflexoAttribute.foco,
       archetype: ReflexoArchetype.oraculo,
+      imageAsset: 'assets/images/reflexo/cards/dano.png',
       text: 'Causa 6 de dano à unidade inimiga com menor vida.',
+    ),
+    ReflexoCardDefinition(
+      id: 'ponte_magica',
+      name: 'Ponte Mágica',
+      type: ReflexoCardType.spell,
+      cost: 3,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.recurso,
+      archetype: ReflexoArchetype.alquimista,
+      imageAsset: 'assets/images/reflexo/cards/Ponte_magico.png',
+      text: 'Compre 1 carta e ganhe +1 reserva.',
     ),
     ReflexoCardDefinition(
       id: 'forca_subita',
@@ -207,20 +276,6 @@ class ReflexoContent {
       text: 'Cura 8 de vida da sua unidade mais ferida.',
     ),
     ReflexoCardDefinition(
-      id: 'armadilha_espelhada',
-      name: 'Armadilha Espelhada',
-      type: ReflexoCardType.trap,
-      cost: 2,
-      attack: 0,
-      health: 0,
-      shield: 0,
-      attribute: ReflexoAttribute.instinto,
-      archetype: ReflexoArchetype.sombra,
-      text:
-          'Fica virada. Quando o inimigo atacar, causa 5 de dano ao atacante.',
-    ),
-
-    ReflexoCardDefinition(
       id: 'quebra_armadura',
       name: 'Quebra-Armadura',
       type: ReflexoCardType.spell,
@@ -237,13 +292,13 @@ class ReflexoContent {
       id: 'ruptura_colosso',
       name: 'Ruptura de Colosso',
       type: ReflexoCardType.spell,
-      cost: 3,
+      cost: 4,
       attack: 0,
       health: 0,
       shield: 0,
       attribute: ReflexoAttribute.foco,
       archetype: ReflexoArchetype.estrategista,
-      text: 'Causa 16 dano à unidade pesada inimiga com mais vida.',
+      text: 'Causa 14 dano a uma unidade pesada inimiga.',
     ),
     ReflexoCardDefinition(
       id: 'selamento_pesado',
@@ -253,102 +308,23 @@ class ReflexoContent {
       attack: 0,
       health: 0,
       shield: 0,
-      attribute: ReflexoAttribute.foco,
+      attribute: ReflexoAttribute.disciplina,
       archetype: ReflexoArchetype.oraculo,
       text:
-          'A unidade inimiga com maior ataque fica exausta e não ataca neste turno.',
+          'A unidade inimiga de maior ataque não pode atacar no próximo turno.',
     ),
     ReflexoCardDefinition(
-      id: 'draco_cintilante',
-      name: 'Draco Cintilante',
-      type: ReflexoCardType.unit,
-      cost: 6,
-      attack: 15,
-      health: 18,
-      shield: 1,
-      attribute: ReflexoAttribute.instinto,
-      archetype: ReflexoArchetype.berserker,
-      abilities: [ReflexoAbility.investida],
-      text: 'Pressão média. Entra atacando e ajuda a quebrar defesas.',
-    ),
-    ReflexoCardDefinition(
-      id: 'sabotadora_velada',
-      name: 'Sabotadora Velada',
-      type: ReflexoCardType.unit,
-      cost: 3,
-      attack: 9,
-      health: 9,
-      shield: 0,
-      attribute: ReflexoAttribute.foco,
-      archetype: ReflexoArchetype.sombra,
-      abilities: [ReflexoAbility.precisao],
-      text:
-          'Pequena, precisa e ótima para eliminar alvos frágeis sem sofrer dano.',
-    ),
-    ReflexoCardDefinition(
-      id: 'bastiao_vivo',
-      name: 'Bastião Vivo',
-      type: ReflexoCardType.unit,
-      cost: 5,
-      attack: 9,
-      health: 24,
-      shield: 5,
-      attribute: ReflexoAttribute.vigor,
-      archetype: ReflexoArchetype.guardiao,
-      abilities: [ReflexoAbility.guardiao],
-      text:
-          'Unidade pesada defensiva. Forte, mas vulnerável a feitiços anti-tanque.',
-    ),
-    ReflexoCardDefinition(
-      id: 'canhoneiro_arcano',
-      name: 'Canhoneiro Arcano',
-      type: ReflexoCardType.unit,
-      cost: 4,
-      attack: 14,
-      health: 8,
-      shield: 0,
-      attribute: ReflexoAttribute.recurso,
-      archetype: ReflexoArchetype.inventor,
-      text: 'Muito ataque e pouca vida. Excelente em ataque combinado.',
-    ),
-    ReflexoCardDefinition(
-      id: 'medica_de_campo',
-      name: 'Médica de Campo',
-      type: ReflexoCardType.unit,
-      cost: 3,
-      attack: 4,
-      health: 17,
-      shield: 1,
-      attribute: ReflexoAttribute.influencia,
-      archetype: ReflexoArchetype.curador,
-      abilities: [ReflexoAbility.vinculo],
-      text: 'Sustenta o Reflexo e ajuda a manter presença no campo.',
-    ),
-    ReflexoCardDefinition(
-      id: 'rede_de_contencao',
-      name: 'Rede de Contenção',
+      id: 'armadilha_espelhada',
+      name: 'Armadilha Espelhada',
       type: ReflexoCardType.trap,
       cost: 2,
       attack: 0,
       health: 0,
       shield: 0,
-      attribute: ReflexoAttribute.disciplina,
-      archetype: ReflexoArchetype.estrategista,
-      text:
-          'Fica virada. Quando uma unidade pesada atacar, ela é exausta antes do dano.',
-    ),
-    ReflexoCardDefinition(
-      id: 'mina_de_fragmentos',
-      name: 'Mina de Fragmentos',
-      type: ReflexoCardType.trap,
-      cost: 3,
-      attack: 0,
-      health: 0,
-      shield: 0,
       attribute: ReflexoAttribute.instinto,
       archetype: ReflexoArchetype.sombra,
       text:
-          'Fica virada. Quando o inimigo atacar com 2+ unidades, causa 4 dano em cada atacante.',
+          'Fica virada. Quando o inimigo atacar, causa 5 de dano ao atacante.',
     ),
     ReflexoCardDefinition(
       id: 'barreira_oculta',
@@ -363,123 +339,213 @@ class ReflexoContent {
       text:
           'Fica virada. Quando seu Reflexo receber ataque direto, reduz 6 de dano.',
     ),
-  ];
-
-  static const List<ReflexoDeckPreset> deckPresets = [
-    ReflexoDeckPreset(
-      id: 'berserker',
-      name: 'Berserker Agressivo',
-      description:
-          'Mais unidades de ataque alto, pressão rápida e feitiços de dano.',
-      archetype: ReflexoArchetype.berserker,
-      priorityCardIds: [
-        'lamina_impulso',
-        'draco_cintilante',
-        'furia_crescente',
-        'canhoneiro_arcano',
-        'forca_subita',
-        'ruptura_colosso',
-      ],
-    ),
-    ReflexoDeckPreset(
-      id: 'guardiao',
-      name: 'Guardião Resistente',
-      description:
-          'Campo defensivo, escudo, armadilhas e respostas contra unidades grandes.',
-      archetype: ReflexoArchetype.guardiao,
-      priorityCardIds: [
-        'sentinela_ferro',
-        'escudeira_serena',
-        'bastiao_vivo',
-        'golem_reserva',
-        'barreira_oculta',
-        'quebra_armadura',
-      ],
-    ),
-    ReflexoDeckPreset(
-      id: 'estrategista',
-      name: 'Estrategista Controle',
-      description:
-          'Compra, precisão, armadilhas e remoções para controlar o campo.',
+    ReflexoCardDefinition(
+      id: 'rede_contencao',
+      name: 'Rede de Contenção',
+      type: ReflexoCardType.trap,
+      cost: 3,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.foco,
       archetype: ReflexoArchetype.estrategista,
-      priorityCardIds: [
-        'tatico_cristal',
-        'sabotadora_velada',
-        'porta_bandeira',
-        'raio_prismatico',
+      text: 'Fica virada. Quando uma unidade pesada atacar, ela recebe 8 dano.',
+    ),
+    ReflexoCardDefinition(
+      id: 'mina_fragmentos',
+      name: 'Mina de Fragmentos',
+      type: ReflexoCardType.trap,
+      cost: 2,
+      attack: 0,
+      health: 0,
+      shield: 0,
+      attribute: ReflexoAttribute.recurso,
+      archetype: ReflexoArchetype.inventor,
+      text:
+          'Fica virada. Quando o inimigo jogar a segunda carta no turno, causa 4 dano ao Reflexo inimigo.',
+    ),
+  ];
+
+  static final Map<String, ReflexoCardDefinition> byId = {
+    for (final card in allCards) card.id: card,
+  };
+
+  static const List<ReflexoDeckTemplate> starterDecks = [
+    ReflexoDeckTemplate(
+      id: 'berserker_agressivo',
+      name: 'Berserker Agressivo',
+      description: 'Pressão rápida, ataque alto e poucas paredes.',
+      archetype: ReflexoArchetype.berserker,
+      cardIds: [
+        'astra',
+        'astra',
+        'lamina_impulso',
+        'lamina_impulso',
+        'furia_crescente',
+        'furia_crescente',
+        'mia',
+        'mia',
+        'lin',
+        'lin',
+        'lumina',
+        'lumina',
+        'eris',
+        'eris',
+        'zion',
+        'zion',
+        'sentinela_ferro',
+        'sentinela_ferro',
+        'forca_subita',
+        'forca_subita',
+        'dano_instantaneo',
+        'dano_instantaneo',
+        'ponte_magica',
+        'quebra_armadura',
+        'armadilha_espelhada',
+        'armadilha_espelhada',
+        'barreira_oculta',
+        'rede_contencao',
+        'mina_fragmentos',
+        'mina_fragmentos',
+      ],
+    ),
+    ReflexoDeckTemplate(
+      id: 'guardiao_resistente',
+      name: 'Guardião Resistente',
+      description: 'Escudos, unidades pesadas e respostas anti-tanque.',
+      archetype: ReflexoArchetype.guardiao,
+      cardIds: [
+        'eris',
+        'eris',
+        'sentinela_ferro',
+        'sentinela_ferro',
+        'golem_reserva',
+        'golem_reserva',
+        'zion',
+        'zion',
+        'valerius',
+        'valerius',
+        'colosso_prismatico',
+        'colosso_prismatico',
+        'lumina',
+        'lumina',
+        'lin',
+        'lin',
+        'lia_noa',
+        'lia_noa',
+        'quebra_armadura',
+        'quebra_armadura',
+        'reparo_rapido',
+        'reparo_rapido',
+        'ponte_magica',
         'selamento_pesado',
-        'rede_de_contencao',
+        'barreira_oculta',
+        'barreira_oculta',
+        'rede_contencao',
+        'rede_contencao',
+        'armadilha_espelhada',
+        'mina_fragmentos',
+      ],
+    ),
+    ReflexoDeckTemplate(
+      id: 'estrategista_controle',
+      name: 'Estrategista Controle',
+      description: 'Compra, precisão, magia e controle de unidades grandes.',
+      archetype: ReflexoArchetype.estrategista,
+      cardIds: [
+        'lin',
+        'lin',
+        'lia_noa',
+        'lia_noa',
+        'mago_anciao',
+        'mago_anciao',
+        'valerius',
+        'valerius',
+        'lumina',
+        'lumina',
+        'mia',
+        'mia',
+        'astra',
+        'astra',
+        'eris',
+        'eris',
+        'zion',
+        'zion',
+        'dano_instantaneo',
+        'dano_instantaneo',
+        'ponte_magica',
+        'ponte_magica',
+        'ruptura_colosso',
+        'ruptura_colosso',
+        'selamento_pesado',
+        'quebra_armadura',
+        'rede_contencao',
+        'rede_contencao',
+        'barreira_oculta',
+        'mina_fragmentos',
       ],
     ),
   ];
 
-  static ReflexoDeckPreset deckPresetById(String? id) {
-    return deckPresets.firstWhere(
-      (preset) => preset.id == id,
-      orElse: () => deckPresets.first,
-    );
+  static ReflexoDeckTemplate get defaultDeck => starterDecks.first;
+
+  static List<ReflexoCardDefinition> cardsFromIds(List<String> ids) {
+    return ids
+        .map((id) => byId[id])
+        .whereType<ReflexoCardDefinition>()
+        .toList();
   }
 
   static List<ReflexoCardDefinition> buildDeck({
     required int seedOffset,
-    String? presetId,
+    List<String>? customIds,
   }) {
-    final preset = deckPresetById(presetId);
-    final rng = Random(9137 + seedOffset + preset.id.hashCode);
-
-    final units = allCards.where((card) => card.isUnit).toList();
-    final spells = allCards.where((card) => card.isSpell).toList();
-    final traps = allCards.where((card) => card.isTrap).toList();
-
-    final priority = <ReflexoCardDefinition>[
-      for (final id in preset.priorityCardIds)
-        ...allCards.where((card) => card.id == id),
-    ];
-
-    final priorityUnits = priority.where((card) => card.isUnit).toList();
-    final prioritySpells = priority.where((card) => card.isSpell).toList();
-    final priorityTraps = priority.where((card) => card.isTrap).toList();
-
-    units.shuffle(rng);
-    spells.shuffle(rng);
-    traps.shuffle(rng);
-
-    ReflexoCardDefinition takeFrom(
-      List<ReflexoCardDefinition> preferred,
-      List<ReflexoCardDefinition> fallback,
-      int index,
-    ) {
-      final source = preferred.isNotEmpty ? preferred : fallback;
-      return source[index % source.length];
+    final ids = customIds;
+    if (ids != null && ids.length == deckSize && validateDeckIds(ids).isValid) {
+      return cardsFromIds(ids);
     }
+    final template = starterDecks[seedOffset % starterDecks.length];
+    return cardsFromIds(template.cardIds);
+  }
 
-    final deck = <ReflexoCardDefinition>[];
+  static ReflexoDeckValidation validateDeckIds(List<String> ids) {
+    final cards = cardsFromIds(ids);
+    final messages = <String>[];
+    final unitCount = cards.where((c) => c.isUnit).length;
+    final spellCount = cards.where((c) => c.isSpell).length;
+    final trapCount = cards.where((c) => c.isTrap).length;
+    final heavyCount = cards.where((c) => c.isHeavy).length;
 
-    // Mão inicial saudável: 3 unidades + 1 especial.
-    for (var i = 0; i < 3; i++) {
-      deck.add(takeFrom(priorityUnits, units, i));
+    if (ids.length != deckSize)
+      messages.add('O deck precisa ter $deckSize cartas.');
+    if (unitCount < minUnits)
+      messages.add('Use pelo menos $minUnits unidades.');
+    if (spellCount > maxSpells)
+      messages.add('Use no máximo $maxSpells feitiços.');
+    if (trapCount > maxTraps)
+      messages.add('Use no máximo $maxTraps armadilhas.');
+    if (heavyCount > maxHeavyCards)
+      messages.add('Use no máximo $maxHeavyCards cartas pesadas.');
+
+    final counts = <String, int>{};
+    for (final id in ids) {
+      counts[id] = (counts[id] ?? 0) + 1;
     }
-    deck.add(
-      seedOffset.isEven
-          ? takeFrom(prioritySpells, spells, 0)
-          : takeFrom(priorityTraps, traps, 0),
+    final tooMany = counts.entries.where((e) => e.value > maxCopies).toList();
+    if (tooMany.isNotEmpty)
+      messages.add('Máximo de $maxCopies cópias da mesma carta.');
+
+    return ReflexoDeckValidation(
+      status: messages.isEmpty
+          ? ReflexoDeckValidationStatus.valid
+          : ReflexoDeckValidationStatus.invalid,
+      messages: messages,
+      unitCount: unitCount,
+      spellCount: spellCount,
+      trapCount: trapCount,
+      heavyCount: heavyCount,
+      totalCount: ids.length,
     );
-
-    var unitIndex = 3;
-    var spellIndex = 1;
-    var trapIndex = 1;
-    while (deck.length < 30) {
-      final position = deck.length;
-      if (position == 8 || position == 18 || position == 26) {
-        deck.add(takeFrom(prioritySpells, spells, spellIndex++));
-      } else if (position == 13 || position == 23 || position == 28) {
-        deck.add(takeFrom(priorityTraps, traps, trapIndex++));
-      } else {
-        deck.add(takeFrom(priorityUnits, units, unitIndex++));
-      }
-    }
-
-    return deck;
   }
 
   static Map<ReflexoAttribute, int> attributesForPlayer(ReflexoPlayerId id) {
@@ -666,7 +732,6 @@ class ReflexoContent {
           fullText: 'Cura 5 de vida do seu Reflexo.',
         );
         break;
-      case ReflexoArchetype.estrategista:
       default:
         second = const ReflexoTacticOption(
           id: 'plano_economico',
