@@ -1319,7 +1319,7 @@ class ReflexoDuelController extends ChangeNotifier {
     if (!shouldAct) return;
 
     _botBusy = true;
-    Future<void>.delayed(const Duration(milliseconds: 450), () async {
+    Future<void>.delayed(const Duration(milliseconds: 650), () async {
       try {
         if (state.phase == ReflexoMatchPhase.destiny) await _runBotDestiny();
         if (state.phase == ReflexoMatchPhase.tactic) await _runBotTactic();
@@ -1364,11 +1364,11 @@ class ReflexoDuelController extends ChangeNotifier {
   }
 
   Future<void> _runBotTurn() async {
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await Future<void>.delayed(const Duration(milliseconds: 450));
     _botPlayBestCard();
-    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await Future<void>.delayed(const Duration(milliseconds: 750));
     _botAttackIfPossible();
-    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
     if (state.phase == ReflexoMatchPhase.playerTurn &&
         state.activePlayer == ReflexoPlayerId.two)
       endTurn();

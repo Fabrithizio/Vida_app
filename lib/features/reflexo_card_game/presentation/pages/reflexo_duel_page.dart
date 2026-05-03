@@ -797,17 +797,18 @@ class _AttackMotionOverlay extends StatelessWidget {
       }
     }
 
-    Offset slot(int index, bool top) {
-      final clamped = index.clamp(0, 4).toDouble();
-      final x = 0.11 + (0.195 * clamped);
-      final y = top ? 0.17 : 0.79;
+    Offset slot(int index, ReflexoPlayerId? owner) {
+      final clamped = index.clamp(0, 4);
+      final displayIndex = owner == ReflexoPlayerId.two ? 4 - clamped : clamped;
+      final x = 0.11 + (0.195 * displayIndex.toDouble());
+      final y = owner == ReflexoPlayerId.two ? 0.17 : 0.79;
       return Offset(x, y);
     }
 
-    final start = slot(attackerIndex, attackFromTop);
+    final start = slot(attackerIndex, attackerOwner);
     final inferredTargetOwner = targetOwner ?? attackerOwner?.opponent;
     final end = anim.targetUnitId != null
-        ? slot(targetIndex, inferredTargetOwner == ReflexoPlayerId.two)
+        ? slot(targetIndex, inferredTargetOwner)
         : Offset(0.50, attackFromTop ? 0.96 : 0.03);
 
     return LayoutBuilder(
@@ -863,15 +864,17 @@ class _AttackMotionOverlay extends StatelessWidget {
                   left: endX - 28,
                   top: endY - 28,
                   child: Opacity(
-                    opacity: value < 0.6
+                    opacity: value < 0.55
                         ? 0
-                        : (((value - 0.6) / 0.4).clamp(0.0, 1.0)).toDouble(),
+                        : value < 0.82
+                        ? (((value - 0.55) / 0.27).clamp(0.0, 1.0)).toDouble()
+                        : (((1 - value) / 0.18).clamp(0.0, 1.0)).toDouble(),
                     child: Transform.scale(
-                      scale: 0.7 + (value * 0.5),
+                      scale: 0.8 + (value * 0.55),
                       child: const Icon(
                         Icons.bolt_rounded,
                         color: Color(0xFFFBBF24),
-                        size: 48,
+                        size: 52,
                       ),
                     ),
                   ),
