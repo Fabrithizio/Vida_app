@@ -318,6 +318,13 @@ class VoiceCommandRouter {
     final entryType = _entryTypeFromText(normalized, isIncome: isIncome);
     final category = _categoryFromText(normalized, isIncome: isIncome);
     final date = _extractDate(normalized) ?? DateTime.now();
+    final tag = _extractFinanceTag(normalized);
+    final accountName = _extractFinanceAccountName(normalized);
+    final cardName = _extractFinanceCardName(normalized);
+    final recurringDay = _extractFinanceRecurringDay(normalized, date);
+    final installments = _extractFinanceInstallments(normalized);
+    final isInstallment =
+        !isIncome && entryType == FinanceEntryType.credit && installments > 1;
     final title = _buildFinanceTitle(
       original,
       normalized,
@@ -332,6 +339,9 @@ class VoiceCommandRouter {
       entryType: entryType,
       isIncome: isIncome,
       date: date,
+      installments: isInstallment ? installments : 1,
+      recurringDay: recurringDay,
+      tag: tag,
     );
 
     return VoiceCommandResult(
@@ -343,18 +353,47 @@ class VoiceCommandRouter {
       editableTranscript: original,
       onConfirm: () async {
         final store = await _financeStore();
-        final tx = FinanceTransaction(
-          id: 'tx_voice_${DateTime.now().microsecondsSinceEpoch}',
-          title: title,
-          amount: amount,
-          date: date,
-          category: category,
-          entryType: entryType,
-          source: FinanceTransactionSource.manual,
-          isIncome: isIncome,
-          note: 'Lançado por voz: $original',
-        );
-        await store.addTransaction(tx);
+        if (isInstallment) {
+          final groupId = 'voice_inst_${DateTime.now().microsecondsSinceEpoch}';
+          await store.addTransaction(
+            FinanceTransaction(
+              id: groupId,
+              title: title,
+              amount: amount,
+              date: date,
+              category: category,
+              entryType: entryType,
+              source: FinanceTransactionSource.manual,
+              isIncome: false,
+              note: 'Lançado por voz: $original',
+              tag: tag,
+              accountName: accountName,
+              cardName: cardName,
+              installmentGroupId: groupId,
+              installmentIndex: 1,
+              installmentTotal: installments,
+            ),
+          );
+        } else {
+          await store.addTransaction(
+            FinanceTransaction(
+              id: 'tx_voice_${DateTime.now().microsecondsSinceEpoch}',
+              title: title,
+              amount: amount,
+              date: date,
+              category: category,
+              entryType: entryType,
+              source: FinanceTransactionSource.manual,
+              isIncome: isIncome,
+              note: 'Lançado por voz: $original',
+              tag: tag,
+              accountName: accountName,
+              cardName: entryType == FinanceEntryType.credit ? cardName : null,
+              isRecurring: recurringDay != null,
+              recurringDayOfMonth: recurringDay,
+            ),
+          );
+        }
         return VoiceCommandResult(
           message: isIncome
               ? 'Entrada lançada com sucesso.'
@@ -498,10 +537,23 @@ class VoiceCommandRouter {
     var value = text;
     final fixes = <Pattern, String>{
       RegExp(r'\bmadruagada\b', caseSensitive: false): 'madrugada',
+      RegExp(r'\badciionar\b', caseSensitive: false): 'adicionar',
+      RegExp(r'\badcionar\b', caseSensitive: false): 'adicionar',
+      RegExp(r'\badicinar\b', caseSensitive: false): 'adicionar',
       RegExp(r'\badione\b', caseSensitive: false): 'adicione',
       RegExp(r'\bmança\b', caseSensitive: false): 'maçã',
+      RegExp(r'\bmacas\b', caseSensitive: false): 'maçãs',
+      RegExp(r'\bmaças\b', caseSensitive: false): 'maçãs',
+      RegExp(r'\bmaiinha\b', caseSensitive: false): 'mainha',
+      RegExp(r'\bmaininha\b', caseSensitive: false): 'mainha',
       RegExp(r'\bfes\b', caseSensitive: false): 'festa',
       RegExp(r'\bconserta tv\b', caseSensitive: false): 'consertar tv',
+      RegExp(r'\babastesci\b', caseSensitive: false): 'abasteci',
+      RegExp(r'\babastecir\b', caseSensitive: false): 'abastecer',
+      RegExp(r'\bcombutivel\b', caseSensitive: false): 'combustivel',
+      RegExp(r'\bgasosa\b', caseSensitive: false): 'gasolina',
+      RegExp(r'\bjarves\b', caseSensitive: false): 'jarvis',
+      RegExp(r'\bjavis\b', caseSensitive: false): 'jarvis',
     };
     fixes.forEach((pattern, replacement) {
       value = value.replaceAll(pattern, replacement);
@@ -548,7 +600,7 @@ class VoiceCommandRouter {
     );
     value = value.replaceAll(
       RegExp(
-        r'\b(adiciona|adicionar|adicione|adione|coloca|colocar|bota|botar|anota|anotar|agenda|agendar|marca|marcar|evento|eventos|compromisso|compromissos|lista|compras?|afazeres?|tarefas?|fazeres?)\b',
+        r'\b(adiciona|adicionar|adicione|adione|coloca|coloquei|colocar|bota|botei|botar|anota|anotar|agenda|agendar|marca|marcar|evento|eventos|compromisso|compromissos|lista|compras?|afazeres?|tarefas?|fazeres?|gastei|paguei|comprei|abasteci|abastecer|passei|lancei|gasto|despesa)\b',
         caseSensitive: false,
       ),
       ' ',
@@ -717,16 +769,28 @@ class VoiceCommandRouter {
       'banana',
       'maca',
       'maçã',
+      'macas',
+      'maçãs',
       'uva',
+      'uvas',
       'pera',
+      'peras',
       'manga',
+      'mangas',
       'abacaxi',
+      'abacaxis',
       'laranja',
+      'laranjas',
       'limao',
       'limão',
+      'limoes',
+      'limões',
       'morango',
+      'morangos',
       'pao',
       'pão',
+      'paes',
+      'pães',
       'leite',
       'ovo',
       'ovos',
@@ -736,17 +800,23 @@ class VoiceCommandRouter {
       'feijao',
       'feijão',
       'queijo',
+      'queijos',
       'presunto',
       'frango',
       'carne',
+      'carnes',
       'peixe',
+      'peixes',
       'iogurte',
+      'iogurtes',
       'agua',
       'água',
       'suco',
+      'sucos',
       'sabao',
       'sabão',
       'detergente',
+      'detergentes',
       'amaciante',
       'papel',
       'shampoo',
@@ -866,7 +936,28 @@ class VoiceCommandRouter {
       return '';
     }
 
-    return _capitalize(text);
+    return _capitalize(_restoreShoppingDisplayText(text));
+  }
+
+  String _restoreShoppingDisplayText(String text) {
+    const replacements = {
+      'maca': 'maçã',
+      'macas': 'maçãs',
+      'pao': 'pão',
+      'paes': 'pães',
+      'limao': 'limão',
+      'limoes': 'limões',
+      'cafe': 'café',
+      'feijao': 'feijão',
+      'agua': 'água',
+      'sabao': 'sabão',
+      'po': 'pó',
+    };
+
+    return text
+        .split(RegExp(r'\s+'))
+        .map((word) => replacements[word.toLowerCase()] ?? word)
+        .join(' ');
   }
 
   bool _looksLikeHomeTask(String text) {
@@ -1414,6 +1505,12 @@ class VoiceCommandRouter {
         text.contains('salário') ||
         text.contains('paguei') ||
         text.contains('comprei') ||
+        text.contains('coloquei') ||
+        text.contains('botei') ||
+        text.contains('abasteci') ||
+        text.contains('abastecer') ||
+        text.contains('passei') ||
+        text.contains('lancei') ||
         text.contains('investi') ||
         text.contains('depositei') ||
         text.contains('caiu');
@@ -1837,6 +1934,11 @@ class VoiceCommandRouter {
 
     final keywordMap = <String, String>{
       'gasolina': 'transport_fuel',
+      'alcool': 'transport_fuel',
+      'etanol': 'transport_fuel',
+      'diesel': 'transport_fuel',
+      'abasteci': 'transport_fuel',
+      'abastecer': 'transport_fuel',
       'combustivel': 'transport_fuel',
       'combustível': 'transport_fuel',
       'uber': 'transport_ride',
@@ -2021,6 +2123,10 @@ class VoiceCommandRouter {
 
     final fallbackTitles = <String, String>{
       'gasolina': 'Gasolina',
+      'combustivel': 'Combustível',
+      'alcool': 'Combustível',
+      'etanol': 'Combustível',
+      'diesel': 'Diesel',
       'mercado': 'Mercado',
       'internet': 'Internet',
       'aluguel': 'Aluguel',
@@ -2109,6 +2215,20 @@ class VoiceCommandRouter {
     );
     text = text.replaceAll(RegExp(r'\b\d+[\d\s\.,]*\b'), ' ');
     text = text.replaceAll(
+      RegExp(
+        r'^\s*(pix|transferencia|transferência|deposito|depósito)\s+(de\s+)?',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    text = text.replaceAll(
+      RegExp(
+        r'\b(?:via|por|em)?\s*(pix|transferencia|transferência|deposito|depósito)\b',
+        caseSensitive: false,
+      ),
+      ' ',
+    );
+    text = text.replaceAll(
       RegExp(r'\b(hoje|amanha|amanhã|ontem)\b', caseSensitive: false),
       ' ',
     );
@@ -2151,7 +2271,7 @@ class VoiceCommandRouter {
 
     text = text.replaceAll(
       RegExp(
-        r'^(gastei|gastar|paguei|pagar|comprei|comprar|lancei|lancar|adicione?\s+gasto|adicionar\s+gasto|corrige\s+o\s+ultimo|corrigir\s+o\s+ultimo|o\s+ultimo\s+foi)\s+',
+        r'^(gastei|gastar|paguei|pagar|comprei|comprar|coloquei|colocar|botei|botar|abasteci|abastecer|passei|lancei|lancar|adicione?\s+gasto|adicionar\s+gasto|corrige\s+o\s+ultimo|corrigir\s+o\s+ultimo|o\s+ultimo\s+foi)\s+',
         caseSensitive: false,
       ),
       '',
@@ -2159,44 +2279,51 @@ class VoiceCommandRouter {
     text = text.replaceAll(RegExp(r'r\$\s*', caseSensitive: false), ' ');
     text = text.replaceAll(
       RegExp(
-        r'(?:no\s+valor\s+de|valor\s+de|por)\s+(?:(?:[\d\.,]+)|(?:um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil|milhao|milhão|milhoes|milhões|bilhao|bilhão|bilhoes|bilhões|e))+',
+        r'\b(?:no\s+valor\s+de|valor\s+de|por)\b\s+(?:(?:[\d\.,]+)|(?:um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa|cem|cento|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil|milhao|milhão|milhoes|milhões|bilhao|bilhão|bilhoes|bilhões|e))+\b',
         caseSensitive: false,
       ),
       ' ',
     );
     text = _stripTrailingAmountPhrase(text);
     text = text.replaceAll(
-      RegExp(r'(?:rs|reais?|real|conto|contos)', caseSensitive: false),
+      RegExp(
+        r'\b(no|na|para|pro|pra)\s+(carro|moto|caminhao|caminhão|veiculo|veículo)\b',
+        caseSensitive: false,
+      ),
       ' ',
     );
-    text = text.replaceAll(RegExp(r'\d+[\d\s\.,]*'), ' ');
-    text = text.replaceAll(RegExp(r'\d+\s*x', caseSensitive: false), ' ');
+    text = text.replaceAll(
+      RegExp(r'\b(?:rs|reais?|real|conto|contos)\b', caseSensitive: false),
+      ' ',
+    );
+    text = text.replaceAll(RegExp(r'\b\d+[\d\s\.,]*\b'), ' ');
+    text = text.replaceAll(RegExp(r'\b\d+\s*x\b', caseSensitive: false), ' ');
     text = text.replaceAll(
       RegExp(
-        r'(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)',
+        r'\b(no|na|com|em)\s+(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)',
+        r'\b(credito|crédito|debito|débito|pix|dinheiro|boleto|cartao|cartão|transferencia|transferência)\b',
         caseSensitive: false,
       ),
       ' ',
     );
     text = text.replaceAll(
-      RegExp(r'(hoje|amanha|amanhã|ontem)', caseSensitive: false),
+      RegExp(r'\b(hoje|amanha|amanhã|ontem)\b', caseSensitive: false),
       ' ',
     );
     text = text.replaceAll(
       RegExp(
-        r'(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)',
+        r'\b(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\b',
         caseSensitive: false,
       ),
       ' ',
     );
-    text = text.replaceAll(RegExp(r'\d{1,2}/\d{1,2}(?:/\d{2,4})?'), ' ');
+    text = text.replaceAll(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), ' ');
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     text = _cleanLooseCommandWords(text);
 
@@ -2330,6 +2457,107 @@ class VoiceCommandRouter {
     return null;
   }
 
+  int _extractFinanceInstallments(String text) {
+    final xMatch = RegExp(r'\b(\d{1,2})\s*x\b').firstMatch(text);
+    if (xMatch != null) {
+      return (int.tryParse(xMatch.group(1) ?? '') ?? 1).clamp(1, 60);
+    }
+
+    final vezesMatch = RegExp(
+      r'\bem\s+(\d{1,2})\s+(?:vez|vezes|parcelas?)\b',
+    ).firstMatch(text);
+    if (vezesMatch != null) {
+      return (int.tryParse(vezesMatch.group(1) ?? '') ?? 1).clamp(1, 60);
+    }
+
+    final parceladoMatch = RegExp(
+      r'\bparcelad[ao]\s+em\s+(\d{1,2})\b',
+    ).firstMatch(text);
+    if (parceladoMatch != null) {
+      return (int.tryParse(parceladoMatch.group(1) ?? '') ?? 1).clamp(1, 60);
+    }
+
+    return 1;
+  }
+
+  int? _extractFinanceRecurringDay(String text, DateTime date) {
+    final recurring =
+        text.contains('todo mes') ||
+        text.contains('todo mês') ||
+        text.contains('mensal') ||
+        text.contains('recorrente') ||
+        text.contains('todo dia');
+    if (!recurring) return null;
+
+    final explicitDay = RegExp(r'\btodo dia\s+(\d{1,2})\b').firstMatch(text);
+    if (explicitDay != null) {
+      return (int.tryParse(explicitDay.group(1) ?? '') ?? date.day).clamp(
+        1,
+        28,
+      );
+    }
+    return date.day.clamp(1, 28);
+  }
+
+  String? _extractFinanceTag(String text) {
+    final match = RegExp(
+      r'\b(?:tag|para|pra|pro)\s+(viagem|reforma|aniversario|aniversário|presente|faculdade|obra|carro|casa|familia|família)\b',
+    ).firstMatch(text);
+    return match?.group(1);
+  }
+
+  String? _extractFinanceCardName(String text) {
+    final direct = RegExp(
+      r'\b(?:cartao|cartão|credito|crédito)\s+(?:do|da|de)?\s*(nubank|inter|itau|itaú|bradesco|santander|caixa|bb|banco do brasil|mercado pago|picpay|c6)\b',
+    ).firstMatch(text);
+    if (direct != null) return _capitalizeBankName(direct.group(1)!);
+
+    for (final bank in _knownBankNames.entries) {
+      if (text.contains(bank.key) &&
+          (text.contains('credito') ||
+              text.contains('crédito') ||
+              text.contains('cartao') ||
+              text.contains('cartão'))) {
+        return bank.value;
+      }
+    }
+    return null;
+  }
+
+  String? _extractFinanceAccountName(String text) {
+    final direct = RegExp(
+      r'\b(?:conta|debito|débito|pix|dinheiro)\s+(?:do|da|de)?\s*(nubank|inter|itau|itaú|bradesco|santander|caixa|bb|banco do brasil|mercado pago|picpay|c6)\b',
+    ).firstMatch(text);
+    if (direct != null) return _capitalizeBankName(direct.group(1)!);
+
+    if (text.contains('dinheiro')) return 'Dinheiro';
+    for (final bank in _knownBankNames.entries) {
+      if (text.contains(bank.key) && !text.contains('credito')) {
+        return bank.value;
+      }
+    }
+    return null;
+  }
+
+  static const Map<String, String> _knownBankNames = {
+    'nubank': 'Nubank',
+    'inter': 'Inter',
+    'itau': 'Itaú',
+    'itaú': 'Itaú',
+    'bradesco': 'Bradesco',
+    'santander': 'Santander',
+    'caixa': 'Caixa',
+    'bb': 'Banco do Brasil',
+    'banco do brasil': 'Banco do Brasil',
+    'mercado pago': 'Mercado Pago',
+    'picpay': 'PicPay',
+    'c6': 'C6',
+  };
+
+  String _capitalizeBankName(String raw) {
+    return _knownBankNames[_normalize(raw)] ?? _capitalize(raw);
+  }
+
   String _financeSummary({
     required String title,
     required double amount,
@@ -2337,11 +2565,19 @@ class VoiceCommandRouter {
     required FinanceEntryType entryType,
     required bool isIncome,
     required DateTime date,
+    int installments = 1,
+    int? recurringDay,
+    String? tag,
   }) {
     final action = isIncome ? 'entrada' : 'gasto';
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
-    return '$action de ${_formatMoney(amount)} em "$title" (${category.name}, ${entryType.label.toLowerCase()}) em $day/$month';
+    final extras = <String>[];
+    if (installments > 1) extras.add('$installments parcelas');
+    if (recurringDay != null) extras.add('recorrente todo dia $recurringDay');
+    if (tag != null && tag.isNotEmpty) extras.add('tag $tag');
+    final extraText = extras.isEmpty ? '' : ', ${extras.join(', ')}';
+    return '$action de ${_formatMoney(amount)} em "$title" (${category.name}, ${entryType.label.toLowerCase()}$extraText) em $day/$month';
   }
 
   String _formatMoney(double value) {
@@ -2380,7 +2616,7 @@ class VoiceCommandRouter {
   String _stripWakeWords(String text) {
     return text.replaceFirst(
       RegExp(
-        r'^\s*(vida|vi\s*da|assistente|amigo|ei)\s*[,:-]?\s+',
+        r'^\s*(vida|vi\s*da|jarvis|javis|jarves|assistente|amigo|ei)\s*[,:-]?\s+',
         caseSensitive: false,
       ),
       '',

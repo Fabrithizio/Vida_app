@@ -62,7 +62,7 @@ class AreasRpgProfileHistoryService {
   static const String _historyKey = 'areas_rpg_profile_history_v1';
 
   String _scopedKey() {
-    final uid = FirebaseAuth.instance.currentUser?.uid?.trim();
+    final uid = FirebaseAuth.instance.currentUser?.uid.trim();
     if (uid == null || uid.isEmpty) return _historyKey;
     return '$uid:$_historyKey';
   }

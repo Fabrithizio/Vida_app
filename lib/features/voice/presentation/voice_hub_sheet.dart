@@ -110,9 +110,11 @@ class _VoiceHubSheetState extends State<VoiceHubSheet> {
 
     await _speech.listen(
       localeId: 'pt_BR',
-      listenMode: ListenMode.dictation,
-      partialResults: true,
-      cancelOnError: true,
+      listenOptions: SpeechListenOptions(
+        listenMode: ListenMode.dictation,
+        partialResults: true,
+        cancelOnError: true,
+      ),
       pauseFor: const Duration(seconds: 3),
       listenFor: const Duration(seconds: 30),
       onResult: _onSpeechResult,

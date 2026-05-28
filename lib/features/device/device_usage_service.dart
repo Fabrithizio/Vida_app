@@ -215,12 +215,9 @@ class DeviceUsageService {
     final prefs = await SharedPreferences.getInstance();
     final uid = _uidOrAnon();
 
-    bool updated = false;
-
     final totalMin = await getTodayScreenTimeMinutes();
     if (totalMin != null) {
       await prefs.setString('$uid:screen_time', bucketizeScreenTime(totalMin));
-      updated = true;
     }
 
     final socialMin = await getTodaySocialMediaMinutes();
@@ -229,13 +226,11 @@ class DeviceUsageService {
         '$uid:social_media',
         bucketizeSocialMedia(socialMin),
       );
-      updated = true;
     }
 
     final nightMin = await getTodayNightUseMinutes();
     if (nightMin != null) {
       await prefs.setString('$uid:night_use', bucketizeNightUse(nightMin));
-      updated = true;
     }
 
     final studyMin = await getTodayCategoryMinutes(studyPackages);

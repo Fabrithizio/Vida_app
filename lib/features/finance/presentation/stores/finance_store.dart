@@ -44,7 +44,7 @@ class FinanceStore extends ChangeNotifier {
   bool _isLoading = false;
   bool _hasLoaded = false;
   FinanceFilterType _selectedFilter = FinanceFilterType.all;
-  FinancePeriodType _selectedPeriod = FinancePeriodType.currentMonth;
+  FinancePeriodType _selectedPeriod = FinancePeriodType.allTime;
 
   List<FinanceCategory> get categories => List.unmodifiable(_categories);
   List<FinanceTransaction> get transactions => List.unmodifiable(_transactions);
@@ -69,8 +69,17 @@ class FinanceStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<FinanceTransaction> get periodTransactions =>
-      _transactionsForPeriod(_selectedPeriod);
+  List<FinanceTransaction> get rawPeriodTransactions =>
+      _rawTransactionsForPeriod(_selectedPeriod);
+
+  List<FinanceTransaction> get periodTransactions {
+    final items = <FinanceTransaction>[
+      ...rawPeriodTransactions,
+      ..._expandRecurringTransactionsForPeriod(_selectedPeriod),
+    ];
+    items.sort((a, b) => b.date.compareTo(a.date));
+    return items;
+  }
 
   List<FinanceTransaction> get previousPeriodTransactions {
     if (_selectedPeriod == FinancePeriodType.allTime) return [];
@@ -78,21 +87,34 @@ class FinanceStore extends ChangeNotifier {
     final now = DateTime.now();
     switch (_selectedPeriod) {
       case FinancePeriodType.currentMonth:
-        return _transactionsForPeriod(FinancePeriodType.previousMonth);
+        return [
+          ..._rawTransactionsForPeriod(FinancePeriodType.previousMonth),
+          ..._expandRecurringTransactionsForPeriod(
+            FinancePeriodType.previousMonth,
+          ),
+        ];
       case FinancePeriodType.previousMonth:
         final target = DateTime(now.year, now.month - 2, 1);
-        return _transactions
+        final raw = _transactions
             .where(
               (transaction) =>
                   transaction.date.year == target.year &&
                   transaction.date.month == target.month,
             )
             .toList();
+        return [...raw, ..._expandRecurringTransactionsForMonth(target)];
       case FinancePeriodType.currentYear:
         final previousYear = now.year - 1;
-        return _transactions
+        final raw = _transactions
             .where((transaction) => transaction.date.year == previousYear)
             .toList();
+        final recurring = <FinanceTransaction>[];
+        for (var month = 1; month <= 12; month++) {
+          recurring.addAll(
+            _expandRecurringTransactionsForMonth(DateTime(previousYear, month)),
+          );
+        }
+        return [...raw, ...recurring];
       case FinancePeriodType.allTime:
         return [];
     }
@@ -113,11 +135,24 @@ class FinanceStore extends ChangeNotifier {
     }
   }
 
-  List<FinanceTransaction> _transactionsForPeriod(FinancePeriodType period) {
+  List<FinanceTransaction> _rawTransactionsForPeriod(FinancePeriodType period) {
     final now = DateTime.now();
     return _transactions
         .where((transaction) => _matchesPeriod(transaction.date, period, now))
         .toList();
+  }
+
+  FinanceTransaction? transactionById(String id) {
+    for (final transaction in _transactions) {
+      if (transaction.id == id) return transaction;
+    }
+    return null;
+  }
+
+  FinanceTransaction editableSourceFor(FinanceTransaction transaction) {
+    final parentId = transaction.projectionParentId;
+    if (parentId == null || parentId.isEmpty) return transaction;
+    return transactionById(parentId) ?? transaction;
   }
 
   List<double> _splitInstallments(double total, int count) {
@@ -214,17 +249,85 @@ class FinanceStore extends ChangeNotifier {
             note: base.note,
             subcategory: base.subcategory,
             tag: base.tag,
+            accountName: base.accountName,
+            cardName: base.cardName,
             isRecurring: false,
             recurringDayOfMonth: null,
             installmentGroupId: base.installmentGroupId,
             installmentIndex: index + 1,
             installmentTotal: installmentTotal,
+            projectionParentId: base.id,
+            projectionKind: 'credit_installment',
           ),
         );
       }
     }
 
     projected.sort((a, b) => b.date.compareTo(a.date));
+    return projected;
+  }
+
+  List<FinanceTransaction> _expandRecurringTransactionsForPeriod(
+    FinancePeriodType period,
+  ) {
+    if (period == FinancePeriodType.allTime) return const [];
+    final now = DateTime.now();
+    switch (period) {
+      case FinancePeriodType.currentMonth:
+        return _expandRecurringTransactionsForMonth(
+          DateTime(now.year, now.month),
+        );
+      case FinancePeriodType.previousMonth:
+        return _expandRecurringTransactionsForMonth(
+          DateTime(now.year, now.month - 1),
+        );
+      case FinancePeriodType.currentYear:
+        final items = <FinanceTransaction>[];
+        for (var month = 1; month <= 12; month++) {
+          items.addAll(
+            _expandRecurringTransactionsForMonth(DateTime(now.year, month)),
+          );
+        }
+        return items;
+      case FinancePeriodType.allTime:
+        return const [];
+    }
+  }
+
+  List<FinanceTransaction> _expandRecurringTransactionsForMonth(
+    DateTime month,
+  ) {
+    final monthEnd = DateTime(month.year, month.month + 1, 0);
+    final projected = <FinanceTransaction>[];
+
+    for (final base in _transactions) {
+      if (!base.isRecurring || base.installmentTotal > 1) continue;
+      if (base.date.isAfter(monthEnd)) continue;
+      if (base.date.year == month.year && base.date.month == month.month) {
+        continue;
+      }
+
+      final day = (base.recurringDayOfMonth ?? base.date.day).clamp(
+        1,
+        monthEnd.day,
+      );
+      final projectedDate = DateTime(month.year, month.month, day);
+      if (projectedDate.isBefore(
+        DateTime(base.date.year, base.date.month, base.date.day),
+      )) {
+        continue;
+      }
+
+      projected.add(
+        base.copyWith(
+          id: '${base.id}__rec_${month.year}_${month.month}',
+          date: projectedDate,
+          projectionParentId: base.id,
+          projectionKind: 'recurring',
+        ),
+      );
+    }
+
     return projected;
   }
 
@@ -275,6 +378,17 @@ class FinanceStore extends ChangeNotifier {
 
   double get totalCreditExpense => _sumCreditExpense(creditTransactions);
   double get totalDebitExpense => _sumDebitExpense(periodTransactions);
+  Map<String, double> get creditInvoiceByCard {
+    final totals = <String, double>{};
+    for (final transaction in creditTransactions) {
+      final card = (transaction.cardName ?? '').trim().isEmpty
+          ? 'Cartão sem nome'
+          : transaction.cardName!.trim();
+      totals[card] = (totals[card] ?? 0) + transaction.amount;
+    }
+    return totals;
+  }
+
   double get previousPeriodIncome => _sumIncome(previousPeriodTransactions);
   double get previousPeriodExpense => _sumExpense(previousPeriodTransactions);
   double get previousPeriodBalance =>
@@ -470,6 +584,19 @@ class FinanceStore extends ChangeNotifier {
   }
 
   Future<void> updateTransaction(FinanceTransaction updatedTransaction) async {
+    final parentId = updatedTransaction.projectionParentId;
+    if (parentId != null && parentId.isNotEmpty) {
+      final source = transactionById(parentId);
+      if (source == null) return;
+      updatedTransaction = updatedTransaction.copyWith(
+        id: source.id,
+        projectionParentId: null,
+        projectionKind: null,
+        clearProjectionParentId: true,
+        clearProjectionKind: true,
+      );
+    }
+
     final index = _transactions.indexWhere(
       (transaction) => transaction.id == updatedTransaction.id,
     );

@@ -21,6 +21,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../health_sync/health_sync_service.dart';
 
+const Object _unset = Object();
+
 class BodyCareAnswerOption {
   const BodyCareAnswerOption({
     required this.value,
@@ -82,28 +84,34 @@ class BodyCareEntry {
       (steps ?? 0) > 0 || (activeMinutes ?? 0) > 0 || (sleep ?? 0) > 0;
 
   BodyCareEntry copyWith({
-    int? food,
-    int? training,
-    int? water,
-    int? sleep,
-    int? steps,
-    int? activeMinutes,
-    double? weightKg,
-    double? waistCm,
-    String? note,
-    DateTime? updatedAt,
+    Object? food = _unset,
+    Object? training = _unset,
+    Object? water = _unset,
+    Object? sleep = _unset,
+    Object? steps = _unset,
+    Object? activeMinutes = _unset,
+    Object? weightKg = _unset,
+    Object? waistCm = _unset,
+    Object? note = _unset,
+    Object? updatedAt = _unset,
   }) {
     return BodyCareEntry(
-      food: food ?? this.food,
-      training: training ?? this.training,
-      water: water ?? this.water,
-      sleep: sleep ?? this.sleep,
-      steps: steps ?? this.steps,
-      activeMinutes: activeMinutes ?? this.activeMinutes,
-      weightKg: weightKg ?? this.weightKg,
-      waistCm: waistCm ?? this.waistCm,
-      note: note ?? this.note,
-      updatedAt: updatedAt ?? this.updatedAt,
+      food: identical(food, _unset) ? this.food : food as int?,
+      training: identical(training, _unset) ? this.training : training as int?,
+      water: identical(water, _unset) ? this.water : water as int?,
+      sleep: identical(sleep, _unset) ? this.sleep : sleep as int?,
+      steps: identical(steps, _unset) ? this.steps : steps as int?,
+      activeMinutes: identical(activeMinutes, _unset)
+          ? this.activeMinutes
+          : activeMinutes as int?,
+      weightKg: identical(weightKg, _unset)
+          ? this.weightKg
+          : weightKg as double?,
+      waistCm: identical(waistCm, _unset) ? this.waistCm : waistCm as double?,
+      note: identical(note, _unset) ? this.note : note as String?,
+      updatedAt: identical(updatedAt, _unset)
+          ? this.updatedAt
+          : updatedAt as DateTime?,
     );
   }
 
@@ -143,25 +151,49 @@ class BodyCareProfile {
     this.heightCm,
     this.targetWeightKg,
     this.goal,
+    this.weeklyTrainingGoal,
+    this.dailyWaterGoal,
+    this.dailySleepGoal,
     this.updatedAt,
   });
 
   final double? heightCm;
   final double? targetWeightKg;
   final String? goal;
+  final int? weeklyTrainingGoal;
+  final int? dailyWaterGoal;
+  final int? dailySleepGoal;
   final DateTime? updatedAt;
 
   BodyCareProfile copyWith({
-    double? heightCm,
-    double? targetWeightKg,
-    String? goal,
-    DateTime? updatedAt,
+    Object? heightCm = _unset,
+    Object? targetWeightKg = _unset,
+    Object? goal = _unset,
+    Object? weeklyTrainingGoal = _unset,
+    Object? dailyWaterGoal = _unset,
+    Object? dailySleepGoal = _unset,
+    Object? updatedAt = _unset,
   }) {
     return BodyCareProfile(
-      heightCm: heightCm ?? this.heightCm,
-      targetWeightKg: targetWeightKg ?? this.targetWeightKg,
-      goal: goal ?? this.goal,
-      updatedAt: updatedAt ?? this.updatedAt,
+      heightCm: identical(heightCm, _unset)
+          ? this.heightCm
+          : heightCm as double?,
+      targetWeightKg: identical(targetWeightKg, _unset)
+          ? this.targetWeightKg
+          : targetWeightKg as double?,
+      goal: identical(goal, _unset) ? this.goal : goal as String?,
+      weeklyTrainingGoal: identical(weeklyTrainingGoal, _unset)
+          ? this.weeklyTrainingGoal
+          : weeklyTrainingGoal as int?,
+      dailyWaterGoal: identical(dailyWaterGoal, _unset)
+          ? this.dailyWaterGoal
+          : dailyWaterGoal as int?,
+      dailySleepGoal: identical(dailySleepGoal, _unset)
+          ? this.dailySleepGoal
+          : dailySleepGoal as int?,
+      updatedAt: identical(updatedAt, _unset)
+          ? this.updatedAt
+          : updatedAt as DateTime?,
     );
   }
 
@@ -169,6 +201,9 @@ class BodyCareProfile {
     'heightCm': heightCm,
     'targetWeightKg': targetWeightKg,
     'goal': goal,
+    'weeklyTrainingGoal': weeklyTrainingGoal,
+    'dailyWaterGoal': dailyWaterGoal,
+    'dailySleepGoal': dailySleepGoal,
     'updatedAt': updatedAt?.toIso8601String(),
   };
 
@@ -177,6 +212,9 @@ class BodyCareProfile {
       heightCm: (json['heightCm'] as num?)?.toDouble(),
       targetWeightKg: (json['targetWeightKg'] as num?)?.toDouble(),
       goal: json['goal'] as String?,
+      weeklyTrainingGoal: json['weeklyTrainingGoal'] as int?,
+      dailyWaterGoal: json['dailyWaterGoal'] as int?,
+      dailySleepGoal: json['dailySleepGoal'] as int?,
       updatedAt: json['updatedAt'] == null
           ? null
           : DateTime.tryParse(json['updatedAt'] as String),
@@ -645,6 +683,23 @@ class BodyCareService {
   Future<void> saveSleep(DateTime day, int value) async {
     final record = await loadDay(day);
     await saveDay(day, record.copyWith(sleep: value.clamp(0, 4)));
+  }
+
+  Future<void> saveMovementSignals(
+    DateTime day, {
+    int? steps,
+    int? activeMinutes,
+  }) async {
+    final record = await loadDay(day);
+    await saveDay(
+      day,
+      record.copyWith(
+        steps: steps == null || steps <= 0 ? null : steps,
+        activeMinutes: activeMinutes == null || activeMinutes <= 0
+            ? null
+            : activeMinutes,
+      ),
+    );
   }
 
   Future<void> saveWeight(DateTime day, double? value) async {

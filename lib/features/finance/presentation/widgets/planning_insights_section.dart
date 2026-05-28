@@ -353,7 +353,7 @@ class _EmptyPlanningCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: PlanningInsightsSection._panel,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Row(
         children: [
@@ -361,7 +361,7 @@ class _EmptyPlanningCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: PlanningInsightsSection._purple.withOpacity(0.16),
+              color: PlanningInsightsSection._purple.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
@@ -416,7 +416,7 @@ class _DueItemCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: PlanningInsightsSection._panel,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Row(
         children: [
@@ -424,7 +424,7 @@ class _DueItemCard extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.16),
+              color: color.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(item.category.icon, color: color),
@@ -483,7 +483,7 @@ class _ForecastCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: PlanningInsightsSection._panel,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         children: [

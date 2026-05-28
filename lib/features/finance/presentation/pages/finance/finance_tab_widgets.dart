@@ -20,7 +20,6 @@ import '../../../data/models/finance_period_type.dart';
 import '../../../data/models/finance_transaction.dart';
 import 'finance_tab_models.dart';
 
-
 String _compactMoneyText(String value) {
   if (!value.trim().startsWith('R\$') && !value.trim().startsWith('-R\$')) {
     return value;
@@ -124,7 +123,7 @@ class FinanceHeroCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0B6B50).withOpacity(0.22),
+            color: const Color(0xFF0B6B50).withValues(alpha: 0.22),
             blurRadius: 26,
             offset: const Offset(0, 14),
           ),
@@ -143,7 +142,7 @@ class FinanceHeroCard extends StatelessWidget {
                   height: 46,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                   ),
                   child: const Icon(Icons.account_balance_wallet_outlined),
                 ),
@@ -165,7 +164,7 @@ class FinanceHeroCard extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.white.withOpacity(0.70),
+                        color: Colors.white.withValues(alpha: 0.70),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -187,7 +186,7 @@ class FinanceHeroCard extends StatelessWidget {
           Text(
             balanceLabel,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.74),
+              color: Colors.white.withValues(alpha: 0.74),
               fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
@@ -243,8 +242,8 @@ class FinanceMetricCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: Colors.white.withOpacity(0.10),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        color: Colors.white.withValues(alpha: 0.10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: [
@@ -253,7 +252,7 @@ class FinanceMetricCard extends StatelessWidget {
             height: 34,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: metric.color.withOpacity(0.16),
+              color: metric.color.withValues(alpha: 0.16),
             ),
             child: Icon(metric.icon, size: 18, color: metric.color),
           ),
@@ -266,7 +265,7 @@ class FinanceMetricCard extends StatelessWidget {
                 Text(
                   metric.label,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.70),
+                    color: Colors.white.withValues(alpha: 0.70),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -316,7 +315,7 @@ class FinanceSectionTabs extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         color: const Color(0xFF0B1012),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: List.generate(_labels.length, (index) {
@@ -331,13 +330,17 @@ class FinanceSectionTabs extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  color: selected ? const Color(0xFF35D26F) : Colors.transparent,
+                  color: selected
+                      ? const Color(0xFF35D26F)
+                      : Colors.transparent,
                 ),
                 child: Text(
                   _labels[index],
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: selected ? Colors.black : Colors.white.withOpacity(0.72),
+                    color: selected
+                        ? Colors.black
+                        : Colors.white.withValues(alpha: 0.72),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -371,7 +374,7 @@ class FinanceSectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         color: const Color(0xFF071112),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,17 +396,14 @@ class FinanceSectionCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.68),
+                        color: Colors.white.withValues(alpha: 0.68),
                         height: 1.3,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: 12),
-                trailing!,
-              ],
+              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
             ],
           ),
           const SizedBox(height: 16),
@@ -432,8 +432,8 @@ class FinanceValueBadge extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: color.withOpacity(0.10),
-        border: Border.all(color: color.withOpacity(0.28)),
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,7 +441,7 @@ class FinanceValueBadge extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.72),
+              color: Colors.white.withValues(alpha: 0.72),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -487,8 +487,8 @@ class FinanceMiniPercentCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: color.withOpacity(0.10),
-        border: Border.all(color: color.withOpacity(0.26)),
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -496,7 +496,7 @@ class FinanceMiniPercentCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.70),
+              color: Colors.white.withValues(alpha: 0.70),
               fontWeight: FontWeight.w700,
               fontSize: 12,
             ),
@@ -535,7 +535,7 @@ class FinanceSoftInfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,7 +553,7 @@ class FinanceSoftInfoCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   text,
-                  style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.70)),
                 ),
               ],
             ),
@@ -588,7 +588,7 @@ class FinanceSheetFrame extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF071112),
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -600,7 +600,7 @@ class FinanceSheetFrame extends StatelessWidget {
                   width: 44,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.18),
+                    color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -617,7 +617,7 @@ class FinanceSheetFrame extends StatelessWidget {
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.70),
+                  color: Colors.white.withValues(alpha: 0.70),
                   height: 1.3,
                 ),
               ),
@@ -736,7 +736,7 @@ class FinanceCompactStatCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -744,7 +744,7 @@ class FinanceCompactStatCard extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.72),
+              color: Colors.white.withValues(alpha: 0.72),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -791,7 +791,7 @@ class FinanceLegendDot extends StatelessWidget {
         Text(
           text,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.72),
+            color: Colors.white.withValues(alpha: 0.72),
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -823,13 +823,13 @@ class FinanceCategorySummaryTile extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 20,
-            backgroundColor: color.withOpacity(0.18),
+            backgroundColor: color.withValues(alpha: 0.18),
             child: Icon(icon, color: color, size: 18),
           ),
           const SizedBox(width: 12),
@@ -844,7 +844,7 @@ class FinanceCategorySummaryTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(color: Colors.white.withOpacity(0.68)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.68)),
                 ),
               ],
             ),
@@ -878,8 +878,20 @@ class FinanceTransactionTile extends StatelessWidget {
     final accent = transaction.isIncome
         ? const Color(0xFF9CFF3F)
         : (transaction.entryType.name.contains('credit')
-            ? const Color(0xFF6C63FF)
-            : const Color(0xFFFF5D73));
+              ? const Color(0xFF6C63FF)
+              : const Color(0xFFFF5D73));
+    final details = <String>[
+      transaction.category.name,
+      dateLabel,
+      if ((transaction.cardName ?? '').trim().isNotEmpty)
+        'Cartão ${transaction.cardName!.trim()}',
+      if ((transaction.accountName ?? '').trim().isNotEmpty)
+        transaction.accountName!.trim(),
+      if (transaction.isProjection)
+        transaction.projectionKind == 'recurring'
+            ? 'previsão recorrente'
+            : 'parcela prevista',
+    ];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -887,14 +899,14 @@ class FinanceTransactionTile extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: accent.withOpacity(0.16),
+            backgroundColor: accent.withValues(alpha: 0.16),
             child: Icon(transaction.category.icon, color: accent, size: 18),
           ),
           const SizedBox(width: 12),
@@ -908,14 +920,16 @@ class FinanceTransactionTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${transaction.category.name} • $dateLabel',
-                  style: TextStyle(color: Colors.white.withOpacity(0.68)),
+                  details.join(' • '),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.68)),
                 ),
                 if ((transaction.note ?? '').trim().isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     transaction.note!.trim(),
-                    style: TextStyle(color: Colors.white.withOpacity(0.60)),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.60),
+                    ),
                   ),
                 ],
               ],

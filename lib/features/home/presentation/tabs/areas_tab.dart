@@ -30,7 +30,6 @@ import 'package:vida_app/features/device/device_usage_service.dart';
 import 'package:vida_app/features/device/usage_access_overlay.dart';
 import 'package:vida_app/features/home/presentation/tabs/areas_tab_controller.dart';
 import 'package:vida_app/features/life_journey/presentation/pages/life_journey_page.dart';
-import 'package:vida_app/features/reflexo_card_game/presentation/pages/reflexo_game_lobby_page.dart';
 
 class AreasTab extends StatefulWidget {
   const AreasTab({
@@ -300,12 +299,6 @@ class _AreasTabState extends State<AreasTab> {
     );
   }
 
-  Future<void> _openReflexoGameLobby() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const ReflexoGameLobbyPage()),
-    );
-  }
-
   Future<void> _openArea(String areaId) async {
     final def = AreasCatalog.byId(areaId);
     await Navigator.of(context).push(
@@ -456,17 +449,6 @@ class _AreasTabState extends State<AreasTab> {
                   ),
                 ),
 
-                Positioned(
-                  left: 10,
-                  bottom: gridHeight + gridBottom + 18,
-                  child: SafeArea(
-                    top: false,
-                    right: false,
-                    child: _ReflexoDuelFloatingButton(
-                      onTap: _openReflexoGameLobby,
-                    ),
-                  ),
-                ),
                 Positioned(
                   left: 0,
                   right: 0,
@@ -864,61 +846,6 @@ class _MiniActionButton extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
         child: Icon(icon, color: Colors.white, size: 19),
-      ),
-    );
-  }
-}
-
-class _ReflexoDuelFloatingButton extends StatelessWidget {
-  const _ReflexoDuelFloatingButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Abrir Reflexo Card Game',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          width: 136,
-          height: 58,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF7C3AED), Color(0xFF2563EB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white24),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.casino_rounded, color: Colors.white, size: 21),
-              SizedBox(width: 8),
-              Text(
-                'Reflexo',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

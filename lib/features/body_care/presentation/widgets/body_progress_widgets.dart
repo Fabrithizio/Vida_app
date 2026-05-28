@@ -60,6 +60,9 @@ class BodyProgressSection extends StatelessWidget {
     final chartDays = _chartDays(idealWeight: idealWeight);
     final focusedDays = week.where((point) => (point.score ?? 0) >= 3).length;
     final weightBounds = _weightBounds(chartDays, idealWeight);
+    final waterAverage = _averageFromRecent((entry) => entry.water);
+    final sleepAverage = _averageFromRecent((entry) => entry.sleep);
+    final weightAverageScore = _averageWeightCloseness(chartDays, idealWeight);
 
     return _SectionShell(
       title: 'Evolução do corpo',
@@ -98,9 +101,17 @@ class BodyProgressSection extends StatelessWidget {
           _HabitImpactPanel(
             weeklyAverageFood: weeklyAverageFood,
             weeklyAverageTraining: weeklyAverageTraining,
-            waterAverage: _averageFromRecent((entry) => entry.water),
-            sleepAverage: _averageFromRecent((entry) => entry.sleep),
-            weightAverageScore: _averageWeightCloseness(chartDays, idealWeight),
+            waterAverage: waterAverage,
+            sleepAverage: sleepAverage,
+            weightAverageScore: weightAverageScore,
+          ),
+          const SizedBox(height: 12),
+          _HabitFocusPanel(
+            weeklyAverageFood: weeklyAverageFood,
+            weeklyAverageTraining: weeklyAverageTraining,
+            waterAverage: waterAverage,
+            sleepAverage: sleepAverage,
+            weightAverageScore: weightAverageScore,
           ),
           const SizedBox(height: 12),
           _InsightBox(
@@ -154,9 +165,9 @@ class BodyProgressSection extends StatelessWidget {
 
   List<_MetricDay> _chartDays({required double? idealWeight}) {
     final sorted = [...recent]..sort((a, b) => a.key.compareTo(b.key));
-    final usable = sorted.length <= 10
+    final usable = sorted.length <= 14
         ? sorted
-        : sorted.sublist(sorted.length - 10);
+        : sorted.sublist(sorted.length - 14);
 
     return usable.map((item) {
       final entry = item.value;
@@ -375,9 +386,9 @@ class _DailyClosenessCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.035),
+        color: Colors.white.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,7 +410,7 @@ class _DailyClosenessCard extends StatelessWidget {
               Text(
                 '$focusedDays/7 dias fortes',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.72),
+                  color: Colors.white.withValues(alpha: 0.72),
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
@@ -555,9 +566,9 @@ class _HabitsLineChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.035),
+        color: Colors.white.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -570,7 +581,7 @@ class _HabitsLineChart extends StatelessWidget {
           Text(
             'Aqui ficam só os hábitos do dia em escala de 0 a 100.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -603,7 +614,7 @@ class _HabitsLineChart extends StatelessWidget {
                             child: Text(
                               '${day.date.day.toString().padLeft(2, '0')}/${day.date.month.toString().padLeft(2, '0')}',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.58),
+                                color: Colors.white.withValues(alpha: 0.58),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -653,9 +664,9 @@ class _WeightLineChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.035),
+        color: Colors.white.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,7 +681,7 @@ class _WeightLineChart extends StatelessWidget {
                 ? 'Hoje você só tem 1 pesagem recente. O app mostra o ponto atual. Com mais dias salvos, a linha vai ficando mais viva.'
                 : 'A linha do peso conecta os dias em que você realmente se pesou, sem fingir dados onde não houve registro.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontSize: 12,
               fontWeight: FontWeight.w600,
               height: 1.25,
@@ -706,7 +717,7 @@ class _WeightLineChart extends StatelessWidget {
                             child: Text(
                               '${day.date.day.toString().padLeft(2, '0')}/${day.date.month.toString().padLeft(2, '0')}',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.58),
+                                color: Colors.white.withValues(alpha: 0.58),
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -742,8 +753,8 @@ class _WeightLineChart extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _ChartInfoPill(
-                  title: 'Leitura',
-                  body: _weightGraphHint(days),
+                  title: 'TendÃªncia',
+                  body: _weightTrendLabel(days, idealWeight),
                   accent: BodyProgressSection._green,
                 ),
               ),
@@ -801,6 +812,22 @@ class _WeightLineChart extends StatelessWidget {
     final direction = delta > 0 ? 'acima' : 'abaixo';
     return '${delta.abs().toStringAsFixed(1).replaceAll('.', ',')}kg $direction';
   }
+
+  static String _weightTrendLabel(List<_MetricDay> days, double? idealWeight) {
+    final weights = days.where((day) => day.rawWeight != null).toList();
+    if (weights.length < 2) return _weightGraphHint(days);
+    final first = weights.first.rawWeight!;
+    final last = weights.last.rawWeight!;
+    final delta = last - first;
+    if (delta.abs() < 0.2) return 'estÃ¡vel';
+    if (idealWeight == null) {
+      return delta > 0 ? 'subiu' : 'baixou';
+    }
+    final firstDistance = (first - idealWeight).abs();
+    final lastDistance = (last - idealWeight).abs();
+    if (lastDistance < firstDistance) return 'aproximando';
+    return 'afastando';
+  }
 }
 
 class _WeightGoalBar extends StatelessWidget {
@@ -823,9 +850,9 @@ class _WeightGoalBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.035),
+        color: Colors.white.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -853,7 +880,7 @@ class _WeightGoalBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: value,
               minHeight: 9,
-              backgroundColor: Colors.white.withOpacity(0.08),
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
               valueColor: const AlwaysStoppedAnimation(
                 BodyProgressSection._orange,
               ),
@@ -863,7 +890,7 @@ class _WeightGoalBar extends StatelessWidget {
           Text(
             '${distance.abs().toStringAsFixed(1).replaceAll('.', ',')}kg $direction do ideal',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
+              color: Colors.white.withValues(alpha: 0.68),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -886,11 +913,11 @@ class _HabitsProgressPainter extends CustomPainter {
     final chartWidth = size.width - leftPad;
 
     final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.07)
+      ..color = Colors.white.withValues(alpha: 0.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     final labelStyle = TextStyle(
-      color: Colors.white.withOpacity(0.55),
+      color: Colors.white.withValues(alpha: 0.55),
       fontSize: 10,
       fontWeight: FontWeight.w700,
     );
@@ -904,6 +931,29 @@ class _HabitsProgressPainter extends CustomPainter {
       )..layout();
       tp.paint(canvas, Offset(0, y - (tp.height / 2)));
     }
+
+    final targetY = topPad + chartHeight - (chartHeight * 0.75);
+    final targetPaint = Paint()
+      ..color = BodyProgressSection._green.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    _drawDashedLine(
+      canvas,
+      Offset(leftPad, targetY),
+      Offset(size.width, targetY),
+      targetPaint,
+    );
+    final targetLabel = TextPainter(
+      text: TextSpan(
+        text: 'meta',
+        style: labelStyle.copyWith(color: BodyProgressSection._green),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    targetLabel.paint(
+      canvas,
+      Offset(size.width - targetLabel.width - 4, targetY - 16),
+    );
 
     _paintSeries(
       canvas: canvas,
@@ -949,6 +999,17 @@ class _HabitsProgressPainter extends CustomPainter {
         topPad,
       ),
     );
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    const dashWidth = 7.0;
+    const dashGap = 5.0;
+    var currentX = start.dx;
+    while (currentX < end.dx) {
+      final nextX = math.min(currentX + dashWidth, end.dx);
+      canvas.drawLine(Offset(currentX, start.dy), Offset(nextX, end.dy), paint);
+      currentX = nextX + dashGap;
+    }
   }
 
   List<Offset?> _pointsForPercent(
@@ -1037,11 +1098,11 @@ class _WeightProgressPainter extends CustomPainter {
     final range = weightMax - weightMin;
 
     final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.07)
+      ..color = Colors.white.withValues(alpha: 0.07)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
     final labelStyle = TextStyle(
-      color: Colors.white.withOpacity(0.55),
+      color: Colors.white.withValues(alpha: 0.55),
       fontSize: 10,
       fontWeight: FontWeight.w700,
     );
@@ -1248,19 +1309,23 @@ class _HabitImpactPanel extends StatelessWidget {
     if (value == null) {
       return 'Sem dados suficientes de água nos registros recentes.';
     }
-    if (value >= 78)
+    if (value >= 78) {
       return 'Hidratação forte, ajudando recuperação e desempenho.';
-    if (value >= 58)
+    }
+    if (value >= 58) {
       return 'Água razoável, mas ainda tem espaço para estabilizar.';
+    }
     return 'Pouca água registrada; isso costuma bagunçar energia e treino.';
   }
 
   String _foodText(double? value) {
-    if (value == null)
+    if (value == null) {
       return 'Sem dados suficientes de alimentação nesta semana.';
+    }
     if (value >= 3.2) return 'Boa base alimentar para acelerar resultado.';
-    if (value >= 2.2)
+    if (value >= 2.2) {
       return 'Alimentação mediana: dá para melhorar constância.';
+    }
     return 'Alimentação baixa: pode estar travando evolução.';
   }
 
@@ -1273,20 +1338,127 @@ class _HabitImpactPanel extends StatelessWidget {
 
   String _sleepText(double? value) {
     if (value == null) return 'Sem dados suficientes de sono nesta semana.';
-    if (value >= 78)
+    if (value >= 78) {
       return 'Sono forte, ajudando recuperação e controle do dia.';
+    }
     if (value >= 58) return 'Sono razoável, mas ainda pode melhorar.';
     return 'Sono fraco: isso costuma atrapalhar fome, foco e treino.';
   }
 
   String _weightText(double? value) {
-    if (value == null)
+    if (value == null) {
       return 'Sem peso suficiente para medir proximidade do ideal.';
+    }
     if (value >= 80) return 'Peso muito perto da zona ideal calculada.';
-    if (value >= 60)
+    if (value >= 60) {
       return 'Peso caminhando para a zona ideal, mas ainda com folga.';
+    }
     return 'Peso ainda distante da zona ideal; hábitos consistentes fazem diferença aqui.';
   }
+}
+
+class _HabitFocusPanel extends StatelessWidget {
+  const _HabitFocusPanel({
+    required this.weeklyAverageFood,
+    required this.weeklyAverageTraining,
+    required this.waterAverage,
+    required this.sleepAverage,
+    required this.weightAverageScore,
+  });
+
+  final double? weeklyAverageFood;
+  final double? weeklyAverageTraining;
+  final double? waterAverage;
+  final double? sleepAverage;
+  final double? weightAverageScore;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = [
+      _FocusMetric('Água', waterAverage, BodyProgressSection._cyan),
+      _FocusMetric(
+        'Alimentação',
+        _scoreToPercent(weeklyAverageFood),
+        BodyProgressSection._green,
+      ),
+      _FocusMetric(
+        'Treino',
+        _scoreToPercent(weeklyAverageTraining),
+        BodyProgressSection._purple,
+      ),
+      _FocusMetric('Sono', sleepAverage, BodyProgressSection._teal),
+      _FocusMetric('Peso', weightAverageScore, BodyProgressSection._orange),
+    ].where((item) => item.value != null).toList();
+
+    if (metrics.isEmpty) {
+      return const _InsightBox(
+        text:
+            'Prioridade da semana: registre pelo menos dois dias para o app apontar onde ajustar primeiro.',
+      );
+    }
+
+    metrics.sort((a, b) => a.value!.compareTo(b.value!));
+    final weakest = metrics.first;
+    final strongest = metrics.last;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: weakest.color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: weakest.color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.track_changes_rounded, color: weakest.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Prioridade da semana',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${weakest.name} estÃ¡ mais baixo agora. Seu ponto forte recente Ã© ${strongest.name.toLowerCase()}.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.72),
+                    fontWeight: FontWeight.w700,
+                    height: 1.28,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static double? _scoreToPercent(double? value) {
+    if (value == null) return null;
+    return ((value.clamp(0.0, 4.0)) / 4) * 100;
+  }
+}
+
+class _FocusMetric {
+  const _FocusMetric(this.name, this.value, this.color);
+
+  final String name;
+  final double? value;
+  final Color color;
 }
 
 class _ImpactBar extends StatelessWidget {
@@ -1308,9 +1480,9 @@ class _ImpactBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.035),
+        color: Colors.white.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1335,7 +1507,7 @@ class _ImpactBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: percent,
               minHeight: 8,
-              backgroundColor: Colors.white.withOpacity(0.08),
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
               valueColor: AlwaysStoppedAnimation(accent),
             ),
           ),
@@ -1343,7 +1515,7 @@ class _ImpactBar extends StatelessWidget {
           Text(
             detail,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontSize: 12,
               fontWeight: FontWeight.w600,
               height: 1.25,
@@ -1371,9 +1543,9 @@ class _ChartInfoPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1381,7 +1553,7 @@ class _ChartInfoPill extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
+              color: Colors.white.withValues(alpha: 0.68),
               fontSize: 11,
               fontWeight: FontWeight.w800,
             ),
@@ -1413,9 +1585,9 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: tone.withOpacity(0.11),
+        color: tone.withValues(alpha: 0.11),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withOpacity(0.22)),
+        border: Border.all(color: tone.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1424,7 +1596,7 @@ class _StatusChip extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontSize: 10,
               fontWeight: FontWeight.w800,
             ),
@@ -1454,9 +1626,9 @@ class _SmallResultCard extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 76),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.22)),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1466,7 +1638,7 @@ class _SmallResultCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
+              color: Colors.white.withValues(alpha: 0.68),
               fontSize: 11,
               fontWeight: FontWeight.w800,
             ),
@@ -1508,7 +1680,7 @@ class _SectionShell extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF08101E),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1521,7 +1693,7 @@ class _SectionShell extends StatelessWidget {
           Text(
             subtitle,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),
@@ -1545,14 +1717,16 @@ class _InsightBox extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: BodyProgressSection._green.withOpacity(0.08),
+        color: BodyProgressSection._green.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: BodyProgressSection._green.withOpacity(0.18)),
+        border: Border.all(
+          color: BodyProgressSection._green.withValues(alpha: 0.18),
+        ),
       ),
       child: Text(
         text,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.78),
+          color: Colors.white.withValues(alpha: 0.78),
           fontWeight: FontWeight.w700,
           height: 1.3,
         ),
@@ -1573,15 +1747,15 @@ class _EmptyChartHint extends StatelessWidget {
       alignment: Alignment.center,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.035),
+        color: Colors.white.withValues(alpha: 0.035),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Text(
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.68),
+          color: Colors.white.withValues(alpha: 0.68),
           fontWeight: FontWeight.w700,
           height: 1.3,
         ),
@@ -1610,7 +1784,7 @@ class _LegendDot extends StatelessWidget {
         Text(
           text,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.66),
+            color: Colors.white.withValues(alpha: 0.66),
             fontSize: 11,
             fontWeight: FontWeight.w800,
           ),

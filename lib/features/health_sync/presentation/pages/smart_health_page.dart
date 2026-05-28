@@ -152,7 +152,7 @@ class _HeroCard extends StatelessWidget {
               ? const [Color(0xFF0B3A2A), Color(0xFF0C5A43), Color(0xFF10785A)]
               : const [Color(0xFF141B2B), Color(0xFF102744), Color(0xFF20395E)],
         ),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -164,7 +164,7 @@ class _HeroCard extends StatelessWidget {
                 height: 52,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                 ),
                 child: Icon(
                   connected ? Icons.watch_rounded : Icons.watch_off_rounded,
@@ -190,7 +190,7 @@ class _HeroCard extends StatelessWidget {
                           ? 'O app já pode puxar dados reais do Health Connect.'
                           : 'A forma mais simples no Android é conectar pelo Health Connect.',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.78),
+                        color: Colors.white.withValues(alpha: 0.78),
                         height: 1.3,
                       ),
                     ),
@@ -280,7 +280,7 @@ class _QuickCompatibilityCard extends StatelessWidget {
           Text(
             'Funciona melhor com relógios Android cujos apps enviam dados para o Health Connect. Samsung, Xiaomi e outros entram aqui quando o app companheiro compartilha os dados.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.72),
+              color: Colors.white.withValues(alpha: 0.72),
               height: 1.35,
             ),
           ),
@@ -289,7 +289,7 @@ class _QuickCompatibilityCard extends StatelessWidget {
             Text(
               'Não usamos QR code aqui porque ele não resolve a parte real da permissão. O caminho mais estável é tocar em conectar e liberar o acesso.',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.58),
+                color: Colors.white.withValues(alpha: 0.58),
                 height: 1.35,
               ),
             ),
@@ -376,7 +376,7 @@ class _HiddenDetails extends StatelessWidget {
           ),
           subtitle: Text(
             'Treinos e leitura complementar ficam aqui, fora da vitrine principal.',
-            style: TextStyle(color: Colors.white.withOpacity(0.62)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.62)),
           ),
           children: [
             Row(
@@ -446,7 +446,7 @@ class _ConnectStepsCard extends StatelessWidget {
           Text(
             'O app usa o caminho mais estável para Android. Não depende de marca específica e não precisa entrar em Apple Health.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.62),
+              color: Colors.white.withValues(alpha: 0.62),
               height: 1.35,
             ),
           ),
@@ -502,7 +502,7 @@ class _MetricCard extends StatelessWidget {
           Text(
             hint,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.52),
+              color: Colors.white.withValues(alpha: 0.52),
               fontSize: 11,
               height: 1.25,
             ),
@@ -524,7 +524,7 @@ class _MiniMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
@@ -563,9 +563,9 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.16),
+        color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.32)),
+        border: Border.all(color: color.withValues(alpha: 0.32)),
       ),
       child: Text(
         label,
@@ -593,7 +593,7 @@ class _StepRow extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 12,
-            backgroundColor: const Color(0xFF35D26F).withOpacity(0.18),
+            backgroundColor: const Color(0xFF35D26F).withValues(alpha: 0.18),
             child: Text(
               '$index',
               style: const TextStyle(
@@ -608,7 +608,7 @@ class _StepRow extends StatelessWidget {
             child: Text(
               text,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.74),
+                color: Colors.white.withValues(alpha: 0.74),
                 height: 1.35,
               ),
             ),

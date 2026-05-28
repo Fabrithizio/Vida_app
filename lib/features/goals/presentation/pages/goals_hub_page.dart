@@ -167,15 +167,8 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
   }
 
   int get _activeCount => _plans.where((item) => !item.isCompleted).length;
-  int get _completedCount => _plans.where((item) => item.isCompleted).length;
   int get _overdueCount =>
       _plans.where((item) => item.isOverdue(_today)).length;
-  int get _dueSoonCount => _plans
-      .where(
-        (item) =>
-            !item.isOverdue(_today) && item.isDueSoon(_today, withinDays: 7),
-      )
-      .length;
   int get _quickCount =>
       _plans.where((item) => !item.isCompleted && item.isQuickTask).length;
   int get _waitingCount => _plans
@@ -343,10 +336,14 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF3B82F6).withOpacity(0.12),
+                          color: const Color(
+                            0xFF3B82F6,
+                          ).withValues(alpha: 0.12),
                           blurRadius: 24,
                           offset: const Offset(0, 10),
                         ),
@@ -361,7 +358,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                               width: 52,
                               height: 52,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
+                                color: Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(18),
                               ),
                               child: const Icon(
@@ -387,7 +384,9 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                                   Text(
                                     'Tudo que você precisa resolver em um lugar só',
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.82),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.82,
+                                      ),
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -401,16 +400,16 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.05),
+                            color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.07),
+                              color: Colors.white.withValues(alpha: 0.07),
                             ),
                           ),
                           child: Text(
                             _heroSentence(),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.80),
+                              color: Colors.white.withValues(alpha: 0.80),
                               fontWeight: FontWeight.w600,
                               height: 1.35,
                             ),
@@ -452,21 +451,21 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                             hintText:
                                 'Buscar por título, texto bruto, próxima ação ou anotação',
                             hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.42),
+                              color: Colors.white.withValues(alpha: 0.42),
                             ),
                             prefixIcon: const Icon(Icons.search_rounded),
                             filled: true,
-                            fillColor: Colors.white.withOpacity(0.04),
+                            fillColor: Colors.white.withValues(alpha: 0.04),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
                               borderSide: BorderSide(
-                                color: Colors.white.withOpacity(0.06),
+                                color: Colors.white.withValues(alpha: 0.06),
                               ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
                               borderSide: BorderSide(
-                                color: Colors.white.withOpacity(0.06),
+                                color: Colors.white.withValues(alpha: 0.06),
                               ),
                             ),
                             focusedBorder: const OutlineInputBorder(
@@ -505,7 +504,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                         color: const Color(0xFF10182B),
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.07),
+                          color: Colors.white.withValues(alpha: 0.07),
                         ),
                       ),
                       child: Column(
@@ -533,7 +532,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
                                 : 'Crie um novo item ou troque o filtro. Pode ser tarefa pequena, projeto grande, coisa aguardando alguém ou algo para algum dia.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.74),
+                              color: Colors.white.withValues(alpha: 0.74),
                               height: 1.35,
                               fontWeight: FontWeight.w600,
                             ),
@@ -593,18 +592,18 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
         decoration: BoxDecoration(
           color: selected
               ? const Color(0xFF7C3AED)
-              : Colors.white.withOpacity(0.05),
+              : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: selected
                 ? const Color(0xFF9F67FF)
-                : Colors.white.withOpacity(0.07),
+                : Colors.white.withValues(alpha: 0.07),
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(selected ? 0.96 : 0.74),
+            color: Colors.white.withValues(alpha: selected ? 0.96 : 0.74),
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -620,9 +619,9 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Column(
         children: [
@@ -640,7 +639,7 @@ class _GoalsHubPageState extends State<GoalsHubPage> {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontWeight: FontWeight.w700,
               fontSize: 11,
             ),
@@ -700,10 +699,10 @@ class _GoalSummaryCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF10182B),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withOpacity(0.07)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
           boxShadow: [
             BoxShadow(
-              color: accent.withOpacity(0.08),
+              color: accent.withValues(alpha: 0.08),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -718,9 +717,9 @@ class _GoalSummaryCard extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.14),
+                    color: accent.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: accent.withOpacity(0.22)),
+                    border: Border.all(color: accent.withValues(alpha: 0.22)),
                   ),
                   child: Icon(icon, color: accent, size: 22),
                 ),
@@ -760,7 +759,7 @@ class _GoalSummaryCard extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.62),
+                color: Colors.white.withValues(alpha: 0.62),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -782,7 +781,7 @@ class _GoalSummaryCard extends StatelessWidget {
               Text(
                 waitingLabel!,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.72),
+                  color: Colors.white.withValues(alpha: 0.72),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -791,9 +790,9 @@ class _GoalSummaryCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.04),
+                color: Colors.white.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.06)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -801,7 +800,7 @@ class _GoalSummaryCard extends StatelessWidget {
                   Text(
                     'Etapa atual',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.54),
+                      color: Colors.white.withValues(alpha: 0.54),
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -822,7 +821,7 @@ class _GoalSummaryCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.72),
+                      color: Colors.white.withValues(alpha: 0.72),
                       fontWeight: FontWeight.w600,
                       height: 1.25,
                     ),
@@ -836,7 +835,7 @@ class _GoalSummaryCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 10,
-                backgroundColor: Colors.white.withOpacity(0.08),
+                backgroundColor: Colors.white.withValues(alpha: 0.08),
                 valueColor: AlwaysStoppedAnimation<Color>(accent),
               ),
             ),
@@ -855,9 +854,9 @@ class _GoalSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.20)),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
       ),
       child: Text(
         label,

@@ -80,7 +80,7 @@ class _MyDayGoalsSectionState extends State<MyDayGoalsSection> {
       decoration: BoxDecoration(
         color: const Color(0xFF10182B),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,7 +99,7 @@ class _MyDayGoalsSectionState extends State<MyDayGoalsSection> {
                 ? 'Nada puxado para hoje. Excelente… ou suspeito demais.'
                 : 'Tudo que a central de objetivos puxou para o seu Meu Dia.',
             style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
+              color: Colors.white.withValues(alpha: 0.68),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -109,13 +109,13 @@ class _MyDayGoalsSectionState extends State<MyDayGoalsSection> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.04),
+                color: Colors.white.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Text(
                 'Pendências com lembrete, atraso, prazo de hoje ou marcadas para aparecer no Meu Dia entram aqui automaticamente.',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.70),
+                  color: Colors.white.withValues(alpha: 0.70),
                   height: 1.35,
                 ),
               ),
@@ -137,9 +137,9 @@ class _MyDayGoalsSectionState extends State<MyDayGoalsSection> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.04),
+                      color: Colors.white.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: accent.withOpacity(0.22)),
+                      border: Border.all(color: accent.withValues(alpha: 0.22)),
                     ),
                     child: Row(
                       children: [
@@ -147,7 +147,7 @@ class _MyDayGoalsSectionState extends State<MyDayGoalsSection> {
                           width: 38,
                           height: 38,
                           decoration: BoxDecoration(
-                            color: accent.withOpacity(0.14),
+                            color: accent.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(
@@ -177,7 +177,7 @@ class _MyDayGoalsSectionState extends State<MyDayGoalsSection> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.68),
+                                  color: Colors.white.withValues(alpha: 0.68),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

@@ -38,11 +38,86 @@ class FinancePlanningBucket {
   final Color color;
 }
 
+class FinanceFutureMonthForecast {
+  const FinanceFutureMonthForecast({
+    required this.label,
+    required this.income,
+    required this.plannedSpending,
+    required this.knownCommitments,
+    required this.projectedBalance,
+  });
+
+  final String label;
+  final double income;
+  final double plannedSpending;
+  final double knownCommitments;
+  final double projectedBalance;
+}
+
+class FinancePlanningAlert {
+  const FinancePlanningAlert({
+    required this.title,
+    required this.message,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String message;
+  final IconData icon;
+  final Color color;
+}
+
 class FinanceCategoryTotal {
   const FinanceCategoryTotal({required this.category, required this.total});
 
   final FinanceCategory category;
   final double total;
+}
+
+class FinanceManualInvestmentAsset {
+  const FinanceManualInvestmentAsset({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.bucketId,
+    required this.invested,
+    required this.current,
+    required this.monthlyContribution,
+  });
+
+  final String id;
+  final String name;
+  final String type;
+  final String bucketId;
+  final double invested;
+  final double current;
+  final double monthlyContribution;
+
+  double get earnings => current - invested;
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'type': type,
+    'bucketId': bucketId,
+    'invested': invested,
+    'current': current,
+    'monthlyContribution': monthlyContribution,
+  };
+
+  static FinanceManualInvestmentAsset fromMap(Map<String, dynamic> map) {
+    return FinanceManualInvestmentAsset(
+      id: (map['id'] as String?) ?? '',
+      name: (map['name'] as String?) ?? 'Ativo',
+      type: (map['type'] as String?) ?? 'Manual',
+      bucketId: (map['bucketId'] as String?) ?? 'fixed_income',
+      invested: ((map['invested'] as num?) ?? 0).toDouble(),
+      current: ((map['current'] as num?) ?? 0).toDouble(),
+      monthlyContribution: ((map['monthlyContribution'] as num?) ?? 0)
+          .toDouble(),
+    );
+  }
 }
 
 class FinanceInvestmentSnapshot {

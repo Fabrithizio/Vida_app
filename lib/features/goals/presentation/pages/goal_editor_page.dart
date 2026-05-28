@@ -436,7 +436,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             decoration: BoxDecoration(
               color: const Color(0xFF10182B),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withOpacity(0.07)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
             ),
             child: const Text(
               'Jogue aqui qualquer coisa que você precisa resolver: tarefa pequena, consulta, compra, pendência chata, problema da empresa ou projeto grande.',
@@ -483,7 +483,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<GoalKind>(
-                  value: _kind,
+                  initialValue: _kind,
                   dropdownColor: const Color(0xFF10182B),
                   decoration: _input('Tipo', ''),
                   items: GoalKind.values
@@ -503,7 +503,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<GoalArea>(
-                  value: _area,
+                  initialValue: _area,
                   dropdownColor: const Color(0xFF10182B),
                   decoration: _input('Área', ''),
                   items: GoalArea.values
@@ -551,7 +551,7 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<GoalRecurrenceType>(
-            value: _recurrence,
+            initialValue: _recurrence,
             dropdownColor: const Color(0xFF10182B),
             decoration: _input('Recorrência', ''),
             items: GoalRecurrenceType.values
@@ -644,9 +644,9 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.04),
+                color: Colors.white.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withOpacity(0.06)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
               ),
               child: const Text(
                 'Ainda não existem etapas. Gere uma base automática ou crie manualmente. Para pendência pequena, uma etapa com uma ação já resolve.',
@@ -690,14 +690,17 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(color: Colors.white.withOpacity(0.80))),
+          Text(
+            title,
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.80)),
+          ),
           const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -745,9 +748,9 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.04),
+          color: Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -771,13 +774,13 @@ class _GoalEditorPageState extends State<GoalEditorPage> {
     return InputDecoration(
       labelText: label,
       hintText: hint.isEmpty ? null : hint,
-      labelStyle: TextStyle(color: Colors.white.withOpacity(0.78)),
-      hintStyle: TextStyle(color: Colors.white.withOpacity(0.38)),
+      labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
+      hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.38)),
       filled: true,
-      fillColor: Colors.white.withOpacity(0.04),
+      fillColor: Colors.white.withValues(alpha: 0.04),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(18)),
@@ -819,7 +822,7 @@ class _MilestoneEditorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF10182B),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Column(
         children: [

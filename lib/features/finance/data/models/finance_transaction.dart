@@ -27,11 +27,15 @@ class FinanceTransaction {
     this.note,
     this.subcategory,
     this.tag,
+    this.accountName,
+    this.cardName,
     this.isRecurring = false,
     this.recurringDayOfMonth,
     this.installmentGroupId,
     this.installmentIndex = 1,
     this.installmentTotal = 1,
+    this.projectionParentId,
+    this.projectionKind,
   });
 
   final String id;
@@ -50,6 +54,12 @@ class FinanceTransaction {
   /// Ex.: viagem, reforma, aniversário.
   final String? tag;
 
+  /// Conta/carteira de origem. Ex.: Nubank, Inter, Dinheiro.
+  final String? accountName;
+
+  /// Cartão usado na compra. Ex.: Nubank, Inter, Itaú.
+  final String? cardName;
+
   /// Regras simples de recorrência mensal.
   final bool isRecurring;
 
@@ -66,7 +76,13 @@ class FinanceTransaction {
   /// Total de parcelas.
   final int installmentTotal;
 
+  /// Lançamentos projetados não são salvos diretamente; apontam para o registro
+  /// original que gerou a previsão.
+  final String? projectionParentId;
+  final String? projectionKind;
+
   bool get isInstallment => installmentTotal > 1;
+  bool get isProjection => projectionParentId != null;
 
   String get installmentLabel {
     if (!isInstallment) return '';
@@ -88,6 +104,10 @@ class FinanceTransaction {
     bool clearSubcategory = false,
     String? tag,
     bool clearTag = false,
+    String? accountName,
+    bool clearAccountName = false,
+    String? cardName,
+    bool clearCardName = false,
     bool? isRecurring,
     int? recurringDayOfMonth,
     bool clearRecurringDayOfMonth = false,
@@ -95,6 +115,10 @@ class FinanceTransaction {
     bool clearInstallmentGroupId = false,
     int? installmentIndex,
     int? installmentTotal,
+    String? projectionParentId,
+    bool clearProjectionParentId = false,
+    String? projectionKind,
+    bool clearProjectionKind = false,
   }) {
     return FinanceTransaction(
       id: id ?? this.id,
@@ -108,6 +132,8 @@ class FinanceTransaction {
       note: clearNote ? null : (note ?? this.note),
       subcategory: clearSubcategory ? null : (subcategory ?? this.subcategory),
       tag: clearTag ? null : (tag ?? this.tag),
+      accountName: clearAccountName ? null : (accountName ?? this.accountName),
+      cardName: clearCardName ? null : (cardName ?? this.cardName),
       isRecurring: isRecurring ?? this.isRecurring,
       recurringDayOfMonth: clearRecurringDayOfMonth
           ? null
@@ -117,6 +143,12 @@ class FinanceTransaction {
           : (installmentGroupId ?? this.installmentGroupId),
       installmentIndex: installmentIndex ?? this.installmentIndex,
       installmentTotal: installmentTotal ?? this.installmentTotal,
+      projectionParentId: clearProjectionParentId
+          ? null
+          : (projectionParentId ?? this.projectionParentId),
+      projectionKind: clearProjectionKind
+          ? null
+          : (projectionKind ?? this.projectionKind),
     );
   }
 }

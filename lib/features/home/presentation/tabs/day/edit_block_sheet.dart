@@ -322,7 +322,7 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              value: _reminderMinutes,
+              initialValue: _reminderMinutes,
               decoration: const InputDecoration(
                 labelText: 'Lembrete',
                 border: OutlineInputBorder(),
@@ -337,7 +337,7 @@ class _EditBlockSheetState extends State<EditBlockSheet> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<TimelineRepeatType>(
-              value: _repeatType,
+              initialValue: _repeatType,
               decoration: const InputDecoration(
                 labelText: 'Repetição',
                 border: OutlineInputBorder(),

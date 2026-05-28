@@ -45,6 +45,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   final _amountController = TextEditingController();
   final _subcategoryController = TextEditingController();
   final _tagController = TextEditingController();
+  final _accountController = TextEditingController();
+  final _cardController = TextEditingController();
 
   bool _isIncome = false;
   late FinanceEntryType _entryType;
@@ -94,6 +96,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           .replaceAll('.', ',');
       _subcategoryController.text = initial.subcategory ?? '';
       _tagController.text = initial.tag ?? '';
+      _accountController.text = initial.accountName ?? '';
+      _cardController.text = initial.cardName ?? '';
       _isIncome = initial.isIncome;
       _entryType = initial.entryType;
       _category = initial.category;
@@ -123,6 +127,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     _amountController.dispose();
     _subcategoryController.dispose();
     _tagController.dispose();
+    _accountController.dispose();
+    _cardController.dispose();
     super.dispose();
   }
 
@@ -193,8 +199,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     try {
       final subcategory = _nullableText(_subcategoryController.text);
       final tag = _nullableText(_tagController.text);
+      final accountName = _nullableText(_accountController.text);
+      final cardName = _nullableText(_cardController.text);
       final initial = widget.initialTransaction;
       final note = _buildNote(tag: tag, subcategory: subcategory);
+      final nextInstallmentTotal =
+          !_isIncome && _entryType == FinanceEntryType.credit
+          ? _installmentTotal
+          : 1;
 
       if (widget.isEditing) {
         final updated = FinanceTransaction(
@@ -209,14 +221,18 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           note: note,
           subcategory: subcategory,
           tag: tag,
+          accountName: accountName,
+          cardName: _entryType == FinanceEntryType.credit ? cardName : null,
           isRecurring:
-              _entryType == FinanceEntryType.credit && _installmentTotal > 1
+              _entryType == FinanceEntryType.credit && nextInstallmentTotal > 1
               ? false
               : _isRecurring,
           recurringDayOfMonth: _isRecurring ? _recurringDay : null,
-          installmentGroupId: initial.installmentGroupId,
-          installmentIndex: initial.installmentIndex,
-          installmentTotal: initial.installmentTotal,
+          installmentGroupId: nextInstallmentTotal > 1
+              ? (initial.installmentGroupId ?? initial.id)
+              : null,
+          installmentIndex: 1,
+          installmentTotal: nextInstallmentTotal,
         );
         await widget.store.updateTransaction(updated);
       } else {
@@ -239,6 +255,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             note: note,
             subcategory: subcategory,
             tag: tag,
+            accountName: accountName,
+            cardName: cardName,
             installmentGroupId: groupId,
             installmentIndex: 1,
             installmentTotal: _installmentTotal,
@@ -257,6 +275,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             note: note,
             subcategory: subcategory,
             tag: tag,
+            accountName: accountName,
+            cardName: _entryType == FinanceEntryType.credit ? cardName : null,
             isRecurring: _isRecurring,
             recurringDayOfMonth: _isRecurring ? _recurringDay : null,
           );
@@ -476,6 +496,27 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   decoration: const InputDecoration(
                     labelText: 'Tag do evento',
                     hintText: 'Ex.: viagem, reforma, presente',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _accountController,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Conta / carteira',
+                    hintText: 'Ex.: Nubank, Inter, dinheiro',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _cardController,
+                  enabled: !_isIncome && _entryType == FinanceEntryType.credit,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Cartão',
+                    hintText: 'Ex.: Nubank, Inter, Itaú',
                     border: OutlineInputBorder(),
                   ),
                 ),

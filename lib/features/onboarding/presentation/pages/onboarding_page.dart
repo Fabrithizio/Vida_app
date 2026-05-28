@@ -381,10 +381,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.16),
+                            color: Colors.green.withValues(alpha: 0.16),
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
-                              color: Colors.green.withOpacity(0.40),
+                              color: Colors.green.withValues(alpha: 0.40),
                             ),
                           ),
                           child: Text(

@@ -57,12 +57,13 @@ class AreasLearningConsistencyEngine {
   }
 
   Future<DayConsistencySnapshot> _resolveSnapshot() async {
-    if (_dayConsistency != null) {
-      var snapshot = await _dayConsistency!.readSnapshot();
+    final dayConsistency = _dayConsistency;
+    if (dayConsistency != null) {
+      var snapshot = await dayConsistency.readSnapshot();
       if (snapshot != null) return snapshot;
 
-      final summary = await _dayConsistency!.summaryAndPersist();
-      snapshot = await _dayConsistency!.readSnapshot();
+      final summary = await dayConsistency.summaryAndPersist();
+      snapshot = await dayConsistency.readSnapshot();
       if (snapshot != null) return snapshot;
 
       return DayConsistencySnapshot(

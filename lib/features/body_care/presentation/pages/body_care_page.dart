@@ -36,6 +36,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
   int _selectedModuleTab = 0;
 
   final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _stepsController = TextEditingController();
+  final TextEditingController _activeMinutesController =
+      TextEditingController();
 
   BodyCareProfile _profile = const BodyCareProfile();
   BodyCareEntry _entry = const BodyCareEntry();
@@ -66,6 +69,8 @@ class _BodyCarePageState extends State<BodyCarePage> {
   @override
   void dispose() {
     _weightController.dispose();
+    _stepsController.dispose();
+    _activeMinutesController.dispose();
     super.dispose();
   }
 
@@ -97,6 +102,10 @@ class _BodyCarePageState extends State<BodyCarePage> {
       _weightController.text = entry.weightKg == null
           ? ''
           : entry.weightKg!.toStringAsFixed(1).replaceAll('.', ',');
+      _stepsController.text = entry.steps == null ? '' : '${entry.steps}';
+      _activeMinutesController.text = entry.activeMinutes == null
+          ? ''
+          : '${entry.activeMinutes}';
       _isLoading = false;
     });
   }
@@ -131,6 +140,17 @@ class _BodyCarePageState extends State<BodyCarePage> {
     await _loadAll();
   }
 
+  Future<void> _saveMovementSignals() async {
+    final steps = _parseInt(_stepsController.text);
+    final activeMinutes = _parseInt(_activeMinutesController.text);
+    await _service.saveMovementSignals(
+      _selectedDay,
+      steps: steps,
+      activeMinutes: activeMinutes,
+    );
+    await _loadAll();
+  }
+
   Future<void> _openSmartHealthPage() async {
     await Navigator.of(
       context,
@@ -148,6 +168,21 @@ class _BodyCarePageState extends State<BodyCarePage> {
       text: _profile.targetWeightKg == null
           ? ''
           : _profile.targetWeightKg!.toStringAsFixed(1).replaceAll('.', ','),
+    );
+    final weeklyTrainingController = TextEditingController(
+      text: _profile.weeklyTrainingGoal == null
+          ? '3'
+          : '${_profile.weeklyTrainingGoal}',
+    );
+    final waterGoalController = TextEditingController(
+      text: _profile.dailyWaterGoal == null
+          ? '3'
+          : '${_profile.dailyWaterGoal}',
+    );
+    final sleepGoalController = TextEditingController(
+      text: _profile.dailySleepGoal == null
+          ? '3'
+          : '${_profile.dailySleepGoal}',
     );
     String selectedGoal = _profile.goal ?? BodyCareService.goalOptions.first;
 
@@ -167,7 +202,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF08101E),
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: SingleChildScrollView(
                   child: Column(
@@ -178,7 +215,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                           width: 44,
                           height: 5,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.18),
+                            color: Colors.white.withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(999),
                           ),
                         ),
@@ -193,8 +230,10 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Altura, peso alvo e objetivo principal desta fase.',
-                        style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                        'Altura, peso alvo, objetivo principal e metas manuais desta fase.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.70),
+                        ),
                       ),
                       const SizedBox(height: 18),
                       TextField(
@@ -242,20 +281,80 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         }).toList(),
                       ),
                       const SizedBox(height: 18),
+                      const Text(
+                        'Metas de rotina',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: weeklyTrainingController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Treinos',
+                                suffixText: 'sem',
+                                prefixIcon: Icon(Icons.fitness_center_rounded),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: waterGoalController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Água',
+                                suffixText: '/4',
+                                prefixIcon: Icon(Icons.water_drop_outlined),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: sleepGoalController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Sono esperado',
+                          suffixText: '/4',
+                          prefixIcon: Icon(Icons.bedtime_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
                           onPressed: () async {
                             final height = _parseDouble(heightController.text);
                             final target = _parseDouble(targetController.text);
+                            final weeklyTraining = _parseInt(
+                              weeklyTrainingController.text,
+                            );
+                            final waterGoal = _parseInt(
+                              waterGoalController.text,
+                            );
+                            final sleepGoal = _parseInt(
+                              sleepGoalController.text,
+                            );
                             await _service.saveProfile(
                               BodyCareProfile(
                                 heightCm: height <= 0 ? null : height,
                                 targetWeightKg: target <= 0 ? null : target,
                                 goal: selectedGoal,
+                                weeklyTrainingGoal: weeklyTraining
+                                    ?.clamp(1, 7)
+                                    .toInt(),
+                                dailyWaterGoal: waterGoal?.clamp(1, 4).toInt(),
+                                dailySleepGoal: sleepGoal?.clamp(1, 4).toInt(),
                               ),
                             );
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             Navigator.of(context).pop();
                             await _loadAll();
                           },
@@ -291,7 +390,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
             decoration: BoxDecoration(
               color: const Color(0xFF08101E),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withOpacity(0.06)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -302,7 +401,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       width: 44,
                       height: 5,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(999),
                       ),
                     ),
@@ -315,7 +414,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
                   const SizedBox(height: 6),
                   Text(
                     'Use isso para notar retenção, treino forte, sono ruim ou qualquer detalhe importante.',
-                    style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                    ),
                   ),
                   const SizedBox(height: 18),
                   TextField(
@@ -333,7 +434,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         child: OutlinedButton(
                           onPressed: () async {
                             await _saveQuickField(clearNote: true);
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             Navigator.of(context).pop();
                           },
                           child: const Text('Limpar nota'),
@@ -346,7 +447,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                             await _saveQuickField(
                               note: noteController.text.trim(),
                             );
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             Navigator.of(context).pop();
                           },
                           child: const Text('Salvar'),
@@ -366,6 +467,12 @@ class _BodyCarePageState extends State<BodyCarePage> {
   double _parseDouble(String raw) {
     final normalized = raw.trim().replaceAll('.', '').replaceAll(',', '.');
     return double.tryParse(normalized) ?? 0;
+  }
+
+  int? _parseInt(String raw) {
+    final onlyNumbers = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (onlyNumbers.isEmpty) return null;
+    return int.tryParse(onlyNumbers);
   }
 
   String _scoreLabel(double? value) {
@@ -418,7 +525,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5F79FF).withOpacity(0.22),
+            color: const Color(0xFF5F79FF).withValues(alpha: 0.22),
             blurRadius: 28,
             offset: const Offset(0, 14),
           ),
@@ -434,7 +541,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 height: 46,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withValues(alpha: 0.12),
                 ),
                 child: const Icon(Icons.fitness_center_rounded),
               ),
@@ -454,7 +561,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     Text(
                       _overview.goalLabel,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.76),
+                        color: Colors.white.withValues(alpha: 0.76),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -471,7 +578,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
           Text(
             _entry.statusLabel,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.76),
+              color: Colors.white.withValues(alpha: 0.76),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -515,7 +622,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
       decoration: BoxDecoration(
         color: const Color(0xFF050A13),
         borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -546,7 +653,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         color: const Color(0xFF08101E),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
@@ -560,7 +667,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 Text(
                   'Registro do dia',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.72),
+                    color: Colors.white.withValues(alpha: 0.72),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -633,7 +740,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               color: const Color(0xFF111A2A),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -647,7 +754,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                   child: Text(
                     'O melhor horário para se pesar é pela manhã, logo após acordar, em jejum e após ir ao banheiro. Assim a pesagem fica mais precisa e acompanha melhor a evolução.',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.76),
+                      color: Colors.white.withValues(alpha: 0.76),
                       height: 1.35,
                       fontWeight: FontWeight.w600,
                     ),
@@ -699,6 +806,76 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       ? '—'
                       : '${_overview.weightDeltaKg! > 0 ? '+' : ''}${_overview.weightDeltaKg!.toStringAsFixed(1).replaceAll('.', ',')}kg',
                   accent: const Color(0xFF9EC2FF),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMovementSignalsSection() {
+    return _SectionCard(
+      title: 'Movimento detalhado',
+      subtitle:
+          'Opcional: registre passos e minutos ativos manualmente quando nÃ£o usar smartwatch.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _stepsController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Passos',
+                    prefixIcon: Icon(Icons.directions_walk_rounded),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _activeMinutesController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Minutos ativos',
+                    suffixText: 'min',
+                    prefixIcon: Icon(Icons.timer_outlined),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _saveMovementSignals,
+              icon: const Icon(Icons.save_rounded),
+              label: const Text('Salvar movimento'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  title: 'Passos hoje',
+                  value: _entry.steps == null ? 'â€”' : '${_entry.steps}',
+                  accent: const Color(0xFF78B5FF),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MetricCard(
+                  title: 'Ativo hoje',
+                  value: _entry.activeMinutes == null
+                      ? 'â€”'
+                      : '${_entry.activeMinutes}min',
+                  accent: const Color(0xFF8E82FF),
                 ),
               ),
             ],
@@ -777,7 +954,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundColor: accent.withOpacity(0.16),
+                backgroundColor: accent.withValues(alpha: 0.16),
                 child: Icon(icon, color: accent),
               ),
               const SizedBox(width: 12),
@@ -787,7 +964,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       ? 'Ainda sem resposta neste dia.'
                       : options.firstWhere((e) => e.value == value).description,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.70),
+                    color: Colors.white.withValues(alpha: 0.70),
                     height: 1.3,
                   ),
                 ),
@@ -1003,7 +1180,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
             height: 28,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha: 0.05),
             ),
             clipBehavior: Clip.antiAlias,
             child: Row(
@@ -1049,7 +1226,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     child: Text(
                       tip,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.74),
+                        color: Colors.white.withValues(alpha: 0.74),
                         height: 1.3,
                       ),
                     ),
@@ -1118,7 +1295,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(18),
                       color: const Color(0xFF10192A),
-                      border: Border.all(color: Colors.white.withOpacity(0.05)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1140,7 +1319,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
                                   Text(
                                     meal.subtitle,
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.68),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.68,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1167,7 +1348,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                                 Text(
                                   item.portion,
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.66),
+                                    color: Colors.white.withValues(alpha: 0.66),
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -1216,7 +1397,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
             fontWeight: FontWeight.w900,
           ),
           dataTextStyle: TextStyle(
-            color: Colors.white.withOpacity(0.80),
+            color: Colors.white.withValues(alpha: 0.80),
             height: 1.25,
           ),
           columns: const [
@@ -1246,7 +1427,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.60),
+                            color: Colors.white.withValues(alpha: 0.60),
                             fontSize: 12,
                           ),
                         ),
@@ -1331,7 +1512,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                     ? const [Color(0xFF0C3D2B), Color(0xFF0F6A4E)]
                     : const [Color(0xFF10192A), Color(0xFF18304F)],
               ),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1343,7 +1524,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       height: 48,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        color: Colors.white.withOpacity(0.12),
+                        color: Colors.white.withValues(alpha: 0.12),
                       ),
                       child: Icon(
                         snapshot.isConnected
@@ -1372,7 +1553,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                                 ? 'Última sincronização: $syncText'
                                 : 'Use o caminho mais simples no Android: Health Connect.',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.76),
+                              color: Colors.white.withValues(alpha: 0.76),
                               height: 1.3,
                             ),
                           ),
@@ -1449,7 +1630,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
               decoration: BoxDecoration(
                 color: const Color(0xFF10192A),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
               ),
               child: ExpansionTile(
                 tilePadding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1462,7 +1643,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 ),
                 subtitle: Text(
                   'Treinos e leitura complementar ficam escondidos aqui.',
-                  style: TextStyle(color: Colors.white.withOpacity(0.62)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.62)),
                 ),
                 children: [
                   Row(
@@ -1516,7 +1697,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   color: const Color(0xFF10192A),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.05),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1532,7 +1715,7 @@ class _BodyCarePageState extends State<BodyCarePage> {
                         Text(
                           entry.statusLabel,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.70),
+                            color: Colors.white.withValues(alpha: 0.70),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1562,7 +1745,9 @@ class _BodyCarePageState extends State<BodyCarePage> {
                       const SizedBox(height: 8),
                       Text(
                         entry.note!.trim(),
-                        style: TextStyle(color: Colors.white.withOpacity(0.68)),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.68),
+                        ),
                       ),
                     ],
                   ],
@@ -1614,6 +1799,8 @@ class _BodyCarePageState extends State<BodyCarePage> {
           _buildDaySelector(),
           const SizedBox(height: 14),
           _buildWeightSection(),
+          const SizedBox(height: 12),
+          _buildMovementSignalsSection(),
           const SizedBox(height: 12),
           _buildQuestionCard(
             title: 'Alimentação',
@@ -1745,7 +1932,7 @@ class _ModuleTabChip extends StatelessWidget {
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: const Color(0xFF41D26C).withOpacity(0.26),
+                    color: const Color(0xFF41D26C).withValues(alpha: 0.26),
                     blurRadius: 22,
                     offset: const Offset(0, 8),
                   ),
@@ -1754,7 +1941,7 @@ class _ModuleTabChip extends StatelessWidget {
           border: Border.all(
             color: selected
                 ? const Color(0xFF41D26C)
-                : Colors.white.withOpacity(0.06),
+                : Colors.white.withValues(alpha: 0.06),
           ),
         ),
         child: Row(
@@ -1763,13 +1950,17 @@ class _ModuleTabChip extends StatelessWidget {
             Icon(
               icon,
               size: 18,
-              color: selected ? Colors.black : Colors.white.withOpacity(0.76),
+              color: selected
+                  ? Colors.black
+                  : Colors.white.withValues(alpha: 0.76),
             ),
             const SizedBox(width: 8),
             Text(
               label,
               style: TextStyle(
-                color: selected ? Colors.black : Colors.white.withOpacity(0.76),
+                color: selected
+                    ? Colors.black
+                    : Colors.white.withValues(alpha: 0.76),
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -1798,7 +1989,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         color: const Color(0xFF08101E),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1810,7 +2001,7 @@ class _SectionCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: TextStyle(color: Colors.white.withOpacity(0.68)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.68)),
           ),
           const SizedBox(height: 14),
           child,
@@ -1837,8 +2028,8 @@ class _MetricCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: Colors.white.withOpacity(0.08),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: Colors.white.withValues(alpha: 0.08),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1846,7 +2037,7 @@ class _MetricCard extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.70),
+              color: Colors.white.withValues(alpha: 0.70),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1887,14 +2078,14 @@ class _InfoMetricCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF10192A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: accent.withOpacity(0.16),
+            backgroundColor: accent.withValues(alpha: 0.16),
             child: Icon(icon, color: accent, size: 18),
           ),
           const SizedBox(width: 10),
@@ -1905,7 +2096,7 @@ class _InfoMetricCard extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.72),
+                    color: Colors.white.withValues(alpha: 0.72),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1940,7 +2131,7 @@ class _InfoBlock extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF10192A),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1950,7 +2141,7 @@ class _InfoBlock extends StatelessWidget {
           Text(
             body,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.72),
+              color: Colors.white.withValues(alpha: 0.72),
               height: 1.35,
             ),
           ),
@@ -1977,7 +2168,10 @@ class _LegendDot extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
-        Text(text, style: TextStyle(color: Colors.white.withOpacity(0.72))),
+        Text(
+          text,
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
+        ),
       ],
     );
   }
@@ -1994,8 +2188,10 @@ class _KcalPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: const Color(0xFF78B5FF).withOpacity(0.14),
-        border: Border.all(color: const Color(0xFF78B5FF).withOpacity(0.25)),
+        color: const Color(0xFF78B5FF).withValues(alpha: 0.14),
+        border: Border.all(
+          color: const Color(0xFF78B5FF).withValues(alpha: 0.25),
+        ),
       ),
       child: Text(
         value,
@@ -2028,7 +2224,7 @@ class _TipRow extends StatelessWidget {
           child: Text(
             text,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.74),
+              color: Colors.white.withValues(alpha: 0.74),
               height: 1.3,
             ),
           ),
@@ -2049,12 +2245,12 @@ class _TinyTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withOpacity(0.06),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Text(
         label,
-        style: TextStyle(color: Colors.white.withOpacity(0.74)),
+        style: TextStyle(color: Colors.white.withValues(alpha: 0.74)),
       ),
     );
   }

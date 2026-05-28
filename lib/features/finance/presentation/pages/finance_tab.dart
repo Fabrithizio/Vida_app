@@ -13,6 +13,7 @@
 // ============================================================================
 
 import 'dart:math' as math;
+import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -76,9 +77,6 @@ class _FinanceTabState extends State<FinanceTab> {
   bool _planningFreeTransit = false;
   bool _planningHasHealthPlan = false;
 
-  double _investedPrincipal = 0;
-  double _investedCurrentValue = 0;
-  double _monthlyInvestmentContribution = 0;
   double _annualInterestRate = 10;
   double _investmentTarget = 0;
 
@@ -88,12 +86,15 @@ class _FinanceTabState extends State<FinanceTab> {
   Map<String, String> _investmentBucketProfileIds = <String, String>{};
   Map<String, double> _investmentBucketCustomRate = <String, double>{};
   Map<String, double> _investmentBucketGoal = <String, double>{};
+  List<FinanceManualInvestmentAsset> _investmentAssets =
+      <FinanceManualInvestmentAsset>[];
+  double _planningWhatIfExpense = 0;
   FinanceMarketSnapshot? _marketSnapshot;
   bool _loadingMarket = false;
   String? _marketError;
 
   String get _prefsPrefix {
-    final uid = FirebaseAuth.instance.currentUser?.uid?.trim();
+    final uid = FirebaseAuth.instance.currentUser?.uid.trim();
     return (uid == null || uid.isEmpty) ? 'anon' : uid;
   }
 
@@ -355,6 +356,7 @@ class _FinanceTabState extends State<FinanceTab> {
     final nextBucketProfileIds = <String, String>{};
     final nextBucketCustomRate = <String, double>{};
     final nextBucketGoal = <String, double>{};
+    final nextInvestmentAssets = <FinanceManualInvestmentAsset>[];
     for (final bucket in _investmentBucketConfigs) {
       nextBucketPrincipal[bucket.id] =
           prefs.getDouble(
@@ -377,6 +379,22 @@ class _FinanceTabState extends State<FinanceTab> {
           0;
       nextBucketGoal[bucket.id] =
           prefs.getDouble('$_prefsPrefix:invest_bucket:${bucket.id}:goal') ?? 0;
+    }
+
+    for (final raw
+        in prefs.getStringList('$_prefsPrefix:invest_assets') ??
+            const <String>[]) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final asset = FinanceManualInvestmentAsset.fromMap(decoded);
+          if (asset.id.trim().isNotEmpty && asset.name.trim().isNotEmpty) {
+            nextInvestmentAssets.add(asset);
+          }
+        }
+      } catch (_) {
+        // Ignore legacy or partially written asset entries.
+      }
     }
 
     final hasBucketData =
@@ -419,12 +437,8 @@ class _FinanceTabState extends State<FinanceTab> {
           prefs.getBool('$_prefsPrefix:plan_life_free_transit') ?? false;
       _planningHasHealthPlan =
           prefs.getBool('$_prefsPrefix:plan_life_health_plan') ?? false;
-      _investedPrincipal =
-          prefs.getDouble('$_prefsPrefix:invest_principal') ?? 0;
-      _investedCurrentValue =
-          prefs.getDouble('$_prefsPrefix:invest_current_value') ?? 0;
-      _monthlyInvestmentContribution =
-          prefs.getDouble('$_prefsPrefix:invest_monthly_contribution') ?? 0;
+      _planningWhatIfExpense =
+          prefs.getDouble('$_prefsPrefix:plan_what_if_expense') ?? 0;
       _annualInterestRate =
           prefs.getDouble('$_prefsPrefix:invest_annual_rate') ?? 10;
       _investmentTarget = prefs.getDouble('$_prefsPrefix:invest_target') ?? 0;
@@ -434,6 +448,7 @@ class _FinanceTabState extends State<FinanceTab> {
       _investmentBucketProfileIds = nextBucketProfileIds;
       _investmentBucketCustomRate = nextBucketCustomRate;
       _investmentBucketGoal = nextBucketGoal;
+      _investmentAssets = nextInvestmentAssets;
       _loadingPrefs = false;
     });
 
@@ -465,6 +480,39 @@ class _FinanceTabState extends State<FinanceTab> {
         _loadingMarket = false;
       });
     }
+  }
+
+  Future<void> _saveInvestmentAssets(
+    List<FinanceManualInvestmentAsset> assets,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      '$_prefsPrefix:invest_assets',
+      assets.map((asset) => jsonEncode(asset.toMap())).toList(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _investmentAssets = assets;
+    });
+    await _syncAreasFinanceSnapshotFromCurrentState();
+  }
+
+  double _assetInvestedForBucket(String bucketId) {
+    return _investmentAssets
+        .where((asset) => asset.bucketId == bucketId)
+        .fold<double>(0, (sum, asset) => sum + asset.invested);
+  }
+
+  double _assetCurrentForBucket(String bucketId) {
+    return _investmentAssets
+        .where((asset) => asset.bucketId == bucketId)
+        .fold<double>(0, (sum, asset) => sum + asset.current);
+  }
+
+  double _assetMonthlyForBucket(String bucketId) {
+    return _investmentAssets
+        .where((asset) => asset.bucketId == bucketId)
+        .fold<double>(0, (sum, asset) => sum + asset.monthlyContribution);
   }
 
   Future<void> _togglePrivacy() async {
@@ -750,10 +798,11 @@ class _FinanceTabState extends State<FinanceTab> {
   }
 
   Future<void> _openEditTransactionPage(FinanceTransaction transaction) async {
+    final editable = _store.editableSourceFor(transaction);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
-            AddTransactionPage(store: _store, initialTransaction: transaction),
+            AddTransactionPage(store: _store, initialTransaction: editable),
       ),
     );
     await _refreshAll();
@@ -764,7 +813,11 @@ class _FinanceTabState extends State<FinanceTab> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remover lançamento'),
-        content: Text('Deseja remover "${transaction.title}"?'),
+        content: Text(
+          transaction.isProjection
+              ? 'Este item é uma previsão. Deseja remover a regra original "${transaction.title}"?'
+              : 'Deseja remover "${transaction.title}"?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -779,7 +832,8 @@ class _FinanceTabState extends State<FinanceTab> {
     );
 
     if (confirmed != true) return;
-    await _store.removeTransaction(transaction.id);
+    final source = _store.editableSourceFor(transaction);
+    await _store.removeTransaction(source.id);
     await _refreshAll();
   }
 
@@ -996,7 +1050,9 @@ class _FinanceTabState extends State<FinanceTab> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   color: const Color(0xFF111A1A),
-                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -1004,7 +1060,9 @@ class _FinanceTabState extends State<FinanceTab> {
                       children: [
                         CircleAvatar(
                           radius: 18,
-                          backgroundColor: category.color.withOpacity(0.18),
+                          backgroundColor: category.color.withValues(
+                            alpha: 0.18,
+                          ),
                           child: Icon(
                             category.icon,
                             color: category.color,
@@ -1027,7 +1085,7 @@ class _FinanceTabState extends State<FinanceTab> {
                               Text(
                                 FinancePlanningCatalog.bucketLabel(bucket),
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.62),
+                                  color: Colors.white.withValues(alpha: 0.62),
                                   fontSize: 12,
                                 ),
                               ),
@@ -1256,7 +1314,9 @@ class _FinanceTabState extends State<FinanceTab> {
                   const SizedBox(height: 8),
                   Text(
                     'Ative só o que faz sentido para sua vida. O resto fica como opção.',
-                    style: TextStyle(color: Colors.white.withOpacity(0.68)),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.68),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   ...activeCategories.map(buildCategoryEditor),
@@ -1446,7 +1506,9 @@ class _FinanceTabState extends State<FinanceTab> {
                   const SizedBox(height: 8),
                   Text(
                     'Agora cada gaveta pode usar um produto diferente, taxa custom e meta própria.',
-                    style: TextStyle(color: Colors.white.withOpacity(0.70)),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.70),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   ..._investmentBucketConfigs.map((bucket) {
@@ -1464,7 +1526,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         borderRadius: BorderRadius.circular(18),
                         color: const Color(0xFF111A1A),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.06),
+                          color: Colors.white.withValues(alpha: 0.06),
                         ),
                       ),
                       child: Column(
@@ -1474,7 +1536,9 @@ class _FinanceTabState extends State<FinanceTab> {
                             children: [
                               CircleAvatar(
                                 radius: 18,
-                                backgroundColor: bucket.color.withOpacity(0.18),
+                                backgroundColor: bucket.color.withValues(
+                                  alpha: 0.18,
+                                ),
                                 child: Icon(
                                   bucket.icon,
                                   color: bucket.color,
@@ -1497,7 +1561,9 @@ class _FinanceTabState extends State<FinanceTab> {
                                     Text(
                                       bucket.subtitle,
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.64),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.64,
+                                        ),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -1509,7 +1575,7 @@ class _FinanceTabState extends State<FinanceTab> {
                           const SizedBox(height: 12),
                           DropdownButtonFormField<String>(
                             isExpanded: true,
-                            value: selectedProfileId,
+                            initialValue: selectedProfileId,
                             decoration: const InputDecoration(
                               labelText: 'Produto / perfil',
                               prefixIcon: Icon(Icons.account_tree_outlined),
@@ -1718,6 +1784,273 @@ class _FinanceTabState extends State<FinanceTab> {
     );
   }
 
+  Future<void> _openInvestmentAssetsSheet() async {
+    var localAssets = List<FinanceManualInvestmentAsset>.from(
+      _investmentAssets,
+    );
+    final nameController = TextEditingController();
+    final investedController = TextEditingController();
+    final currentController = TextEditingController();
+    final monthlyController = TextEditingController();
+    var selectedBucketId = _investmentBucketConfigs.first.id;
+    var selectedType = 'CDB';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> saveAndClose() async {
+              await _saveInvestmentAssets(localAssets);
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+            }
+
+            void addAsset() {
+              final name = nameController.text.trim();
+              if (name.isEmpty) return;
+              final invested = parseMoney(investedController.text);
+              final current = parseMoney(currentController.text);
+              final monthly = parseMoney(monthlyController.text);
+              setSheetState(() {
+                localAssets = [
+                  FinanceManualInvestmentAsset(
+                    id: 'asset_${DateTime.now().microsecondsSinceEpoch}',
+                    name: name,
+                    type: selectedType,
+                    bucketId: selectedBucketId,
+                    invested: invested,
+                    current: current <= 0 ? invested : current,
+                    monthlyContribution: monthly,
+                  ),
+                  ...localAssets,
+                ];
+                nameController.clear();
+                investedController.clear();
+                currentController.clear();
+                monthlyController.clear();
+              });
+            }
+
+            return FinanceSheetFrame(
+              title: 'Ativos manuais',
+              subtitle:
+                  'Cadastre CDB, Tesouro, ações, FIIs, cripto ou qualquer investimento sem conectar banco.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FinanceTextField(
+                    controller: nameController,
+                    label: 'Nome do ativo',
+                    icon: Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedType,
+                          decoration: const InputDecoration(
+                            labelText: 'Tipo',
+                            prefixIcon: Icon(Icons.category_outlined),
+                          ),
+                          items:
+                              const [
+                                    'CDB',
+                                    'Tesouro',
+                                    'Ação',
+                                    'FII',
+                                    'ETF',
+                                    'Cripto',
+                                    'Caixinha',
+                                    'Outro',
+                                  ]
+                                  .map(
+                                    (type) => DropdownMenuItem<String>(
+                                      value: type,
+                                      child: Text(type),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setSheetState(() => selectedType = value);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: selectedBucketId,
+                          decoration: const InputDecoration(
+                            labelText: 'Gaveta',
+                            prefixIcon: Icon(Icons.account_tree_outlined),
+                          ),
+                          items: _investmentBucketConfigs
+                              .map(
+                                (bucket) => DropdownMenuItem<String>(
+                                  value: bucket.id,
+                                  child: Text(bucket.title),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setSheetState(() => selectedBucketId = value);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: investedController,
+                          label: 'Investido',
+                          prefixText: 'R\$ ',
+                          icon: Icons.south_west_rounded,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: currentController,
+                          label: 'Valor atual',
+                          prefixText: 'R\$ ',
+                          icon: Icons.trending_up_rounded,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FinanceTextField(
+                          controller: monthlyController,
+                          label: 'Aporte/mês',
+                          prefixText: 'R\$ ',
+                          icon: Icons.calendar_month_outlined,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: addAsset,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Adicionar'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (localAssets.isEmpty)
+                    const FinanceSoftInfoCard(
+                      title: 'Nenhum ativo cadastrado',
+                      text:
+                          'Você ainda pode usar as gavetas gerais, mas ativos deixam o patrimônio mais real.',
+                      icon: Icons.inventory_2_outlined,
+                    )
+                  else
+                    ...localAssets.map((asset) {
+                      final bucket = _investmentBucketConfigs.firstWhere(
+                        (item) => item.id == asset.bucketId,
+                        orElse: () => _investmentBucketConfigs.first,
+                      );
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          color: const Color(0xFF111A1A),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: bucket.color.withValues(
+                                alpha: 0.18,
+                              ),
+                              child: Icon(bucket.icon, color: bucket.color),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    asset.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${asset.type} • ${bucket.title}',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.64,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              formatCurrency(
+                                asset.current,
+                                hideValues: _hideValues,
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () {
+                                setSheetState(() {
+                                  localAssets = localAssets
+                                      .where((item) => item.id != asset.id)
+                                      .toList();
+                                });
+                              },
+                              icon: const Icon(Icons.delete_outline_rounded),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: saveAndClose,
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Salvar ativos'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _openCategoryDetails(FinanceCategoryTotal item) async {
     final matches =
         _store.expenseTransactions
@@ -1904,6 +2237,237 @@ class _FinanceTabState extends State<FinanceTab> {
     return result;
   }
 
+  double _averageMonthlyIncome({int months = 3}) {
+    final now = DateTime.now();
+    if (_store.transactions.isEmpty) return 0;
+    double total = 0;
+    for (int offset = 0; offset < months; offset++) {
+      final base = DateTime(now.year, now.month - offset, 1);
+      total += _store.transactions
+          .where(
+            (tx) =>
+                tx.isIncome &&
+                tx.date.year == base.year &&
+                tx.date.month == base.month,
+          )
+          .fold<double>(0.0, (sum, tx) => sum + tx.amount);
+    }
+    return total / months;
+  }
+
+  double _knownCommitmentsForMonth(DateTime month) {
+    final monthStart = DateTime(month.year, month.month, 1);
+    double total = 0;
+    for (final tx in _store.transactions) {
+      if (tx.isIncome) continue;
+      if (tx.isRecurring) {
+        final firstMonth = DateTime(tx.date.year, tx.date.month, 1);
+        if (!monthStart.isBefore(firstMonth)) {
+          total += tx.amount;
+        }
+        continue;
+      }
+
+      if (tx.entryType == FinanceEntryType.credit &&
+          tx.installmentTotal > 1 &&
+          (tx.installmentGroupId ?? '').isNotEmpty) {
+        final first = DateTime(tx.date.year, tx.date.month, 1);
+        final diff =
+            (monthStart.year - first.year) * 12 +
+            (monthStart.month - first.month);
+        if (diff >= 0 && diff < tx.installmentTotal) {
+          total += tx.amount / tx.installmentTotal;
+        }
+      }
+    }
+    return total;
+  }
+
+  List<FinanceFutureMonthForecast> _buildFutureForecasts() {
+    final summary = _buildPlanningSummary();
+    final plannedSpending =
+        (summary['Essenciais'] ?? 0) +
+        (summary['Investir + reserva'] ?? 0) +
+        (summary['Livre'] ?? 0);
+    final income = _monthlyIncomePlan > 0
+        ? _monthlyIncomePlan
+        : _averageMonthlyIncome(months: 3);
+    final now = DateTime.now();
+
+    return List<FinanceFutureMonthForecast>.generate(6, (index) {
+      final month = DateTime(now.year, now.month + index, 1);
+      final commitments = _knownCommitmentsForMonth(month);
+      final spendingBase = math.max(plannedSpending, commitments).toDouble();
+      return FinanceFutureMonthForecast(
+        label: _monthLabelShort(month),
+        income: income,
+        plannedSpending: plannedSpending,
+        knownCommitments: commitments,
+        projectedBalance: income - spendingBase - _planningWhatIfExpense,
+      );
+    });
+  }
+
+  List<FinancePlanningAlert> _buildPlanningAlerts() {
+    final alerts = <FinancePlanningAlert>[];
+    final income = _monthlyIncomePlan > 0
+        ? _monthlyIncomePlan
+        : _averageMonthlyIncome(months: 3);
+    final nextCommitments = _knownCommitmentsForMonth(
+      DateTime(DateTime.now().year, DateTime.now().month + 1, 1),
+    );
+
+    if (_monthlyIncomePlan <= 0) {
+      alerts.add(
+        const FinancePlanningAlert(
+          title: 'Renda ainda não planejada',
+          message:
+              'Defina sua renda manual do mês para a previsão ficar confiável.',
+          icon: Icons.payments_outlined,
+          color: Color(0xFFFFB020),
+        ),
+      );
+    }
+
+    if (income > 0 && nextCommitments > income * 0.65) {
+      alerts.add(
+        FinancePlanningAlert(
+          title: 'Compromissos pesados no próximo mês',
+          message:
+              'Parcelas e recorrências já somam ${formatCurrency(nextCommitments, hideValues: _hideValues)}.',
+          icon: Icons.event_busy_outlined,
+          color: const Color(0xFFFF5D73),
+        ),
+      );
+    }
+
+    final longInstallments = _store.transactions.where(
+      (tx) =>
+          !tx.isIncome &&
+          tx.entryType == FinanceEntryType.credit &&
+          tx.installmentTotal >= 12,
+    );
+    if (longInstallments.isNotEmpty) {
+      final longest = longInstallments.reduce(
+        (a, b) => a.installmentTotal >= b.installmentTotal ? a : b,
+      );
+      alerts.add(
+        FinancePlanningAlert(
+          title: 'Parcela longa no radar',
+          message:
+              '"${longest.title}" ficou em ${longest.installmentTotal} parcelas. Vale acompanhar no futuro.',
+          icon: Icons.credit_card_outlined,
+          color: const Color(0xFFFFB020),
+        ),
+      );
+    }
+
+    if (_planningWhatIfExpense > 0) {
+      alerts.add(
+        FinancePlanningAlert(
+          title: 'Simulação ativa',
+          message:
+              'Seu plano está considerando um gasto extra de ${formatCurrency(_planningWhatIfExpense, hideValues: false)}.',
+          icon: Icons.psychology_alt_outlined,
+          color: const Color(0xFF39D0FF),
+        ),
+      );
+    }
+
+    if (alerts.isEmpty) {
+      alerts.add(
+        const FinancePlanningAlert(
+          title: 'Sem surpresa grande agora',
+          message:
+              'Com os dados manuais atuais, não há alerta forte de fatura, parcela longa ou renda faltando.',
+          icon: Icons.verified_outlined,
+          color: Color(0xFF28C76F),
+        ),
+      );
+    }
+    return alerts;
+  }
+
+  Future<void> _openWhatIfSheet() async {
+    final prefs = await SharedPreferences.getInstance();
+    final controller = TextEditingController(
+      text: _planningWhatIfExpense <= 0
+          ? ''
+          : moneyField(_planningWhatIfExpense),
+    );
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FinanceSheetFrame(
+          title: 'Simular decisão',
+          subtitle:
+              'Teste um gasto manual sem lançar nada no extrato. Serve para decidir antes de comprar.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FinanceTextField(
+                controller: controller,
+                label: 'Gasto extra',
+                prefixText: 'R\$ ',
+                icon: Icons.shopping_bag_outlined,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const FinanceSoftInfoCard(
+                title: 'Como usar',
+                text:
+                    'Ex.: coloque 350 para ver se uma compra nova ainda cabe no plano dos próximos meses.',
+                icon: Icons.lightbulb_outline_rounded,
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await prefs.remove(
+                          '$_prefsPrefix:plan_what_if_expense',
+                        );
+                        if (!context.mounted) return;
+                        setState(() => _planningWhatIfExpense = 0);
+                        Navigator.of(context).pop();
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                      label: const Text('Limpar'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final value = parseMoney(controller.text);
+                        await prefs.setDouble(
+                          '$_prefsPrefix:plan_what_if_expense',
+                          value,
+                        );
+                        if (!context.mounted) return;
+                        setState(() => _planningWhatIfExpense = value);
+                        Navigator.of(context).pop();
+                      },
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Aplicar'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   List<FinancePlanningBucket> _buildPlanningBuckets() {
     final values = _resolvedPlanValues();
     final activeCategories = _sortedPlanningCategories(
@@ -1990,9 +2554,15 @@ class _FinanceTabState extends State<FinanceTab> {
     final items = _investmentBucketConfigs.map((bucket) {
       return FinanceInvestmentBucketData(
         config: bucket,
-        principal: _investmentBucketPrincipal[bucket.id] ?? 0,
-        current: _investmentBucketCurrent[bucket.id] ?? 0,
-        monthlyContribution: _investmentBucketMonthly[bucket.id] ?? 0,
+        principal:
+            (_investmentBucketPrincipal[bucket.id] ?? 0) +
+            _assetInvestedForBucket(bucket.id),
+        current:
+            (_investmentBucketCurrent[bucket.id] ?? 0) +
+            _assetCurrentForBucket(bucket.id),
+        monthlyContribution:
+            (_investmentBucketMonthly[bucket.id] ?? 0) +
+            _assetMonthlyForBucket(bucket.id),
         profileId:
             _investmentBucketProfileIds[bucket.id] ??
             _defaultInvestmentProfileIdForBucket(bucket.id),
@@ -2597,7 +3167,7 @@ class _FinanceTabState extends State<FinanceTab> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: const Color(0xFF111A1A),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
       child: Row(
         children: [
@@ -2622,7 +3192,7 @@ class _FinanceTabState extends State<FinanceTab> {
                 Text(
                   bucket.subtitle,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.62),
+                    color: Colors.white.withValues(alpha: 0.62),
                     fontSize: 12,
                   ),
                 ),
@@ -2657,7 +3227,7 @@ class _FinanceTabState extends State<FinanceTab> {
               const SizedBox(height: 12),
               Text(
                 _store.periodComparisonText,
-                style: TextStyle(color: Colors.white.withOpacity(0.72)),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
               ),
             ],
           ),
@@ -2691,7 +3261,7 @@ class _FinanceTabState extends State<FinanceTab> {
                           borderRadius: BorderRadius.circular(18),
                           color: const Color(0xFF111A1A),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.06),
+                            color: Colors.white.withValues(alpha: 0.06),
                           ),
                         ),
                         child: Column(
@@ -2701,7 +3271,7 @@ class _FinanceTabState extends State<FinanceTab> {
                                 CircleAvatar(
                                   radius: 18,
                                   backgroundColor: item.category.color
-                                      .withOpacity(0.18),
+                                      .withValues(alpha: 0.18),
                                   child: Icon(
                                     item.category.icon,
                                     color: item.category.color,
@@ -2736,7 +3306,9 @@ class _FinanceTabState extends State<FinanceTab> {
                               child: LinearProgressIndicator(
                                 value: progress,
                                 minHeight: 8,
-                                backgroundColor: Colors.white.withOpacity(0.06),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.06,
+                                ),
                                 valueColor: AlwaysStoppedAnimation<Color>(
                                   item.category.color,
                                 ),
@@ -2758,6 +3330,8 @@ class _FinanceTabState extends State<FinanceTab> {
   Widget _buildPlanningSection() {
     final summary = _buildPlanningSummary();
     final preview = _buildPlanningBuckets();
+    final forecasts = _buildFutureForecasts();
+    final alerts = _buildPlanningAlerts();
     final activeCategories = _sortedPlanningCategories(
       _activePlanningCategoryIds.isEmpty
           ? _defaultActivePlanningIds()
@@ -2849,6 +3423,118 @@ class _FinanceTabState extends State<FinanceTab> {
         ),
         const SizedBox(height: 14),
         FinanceSectionCard(
+          title: 'Previsão manual',
+          subtitle:
+              'Próximos meses usando renda planejada, parcelas, recorrências e simulação.',
+          trailing: TextButton.icon(
+            onPressed: _openWhatIfSheet,
+            icon: const Icon(Icons.psychology_alt_outlined),
+            label: const Text('Simular'),
+          ),
+          child: Column(
+            children: forecasts.map((item) {
+              final positive = item.projectedBalance >= 0;
+              final color = positive
+                  ? const Color(0xFF28C76F)
+                  : const Color(0xFFFF5D73);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    color: const Color(0xFF111A1A),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.label,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            formatCurrency(
+                              item.projectedBalance,
+                              hideValues: _hideValues,
+                            ),
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FinanceCompactStatCard(
+                              title: 'Renda',
+                              value: formatCurrency(
+                                item.income,
+                                hideValues: _hideValues,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FinanceCompactStatCard(
+                              title: 'Plano',
+                              value: formatCurrency(
+                                item.plannedSpending,
+                                hideValues: _hideValues,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FinanceCompactStatCard(
+                              title: 'Fixos',
+                              value: formatCurrency(
+                                item.knownCommitments,
+                                hideValues: _hideValues,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
+          title: 'Alertas de surpresa',
+          subtitle:
+              'O app cruza lançamentos manuais, parcelas e recorrências para avisar antes.',
+          child: Column(
+            children: alerts
+                .map(
+                  (alert) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: FinanceSoftInfoCard(
+                      title: alert.title,
+                      text: alert.message,
+                      icon: alert.icon,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
           title: 'Seu perfil do mês',
           subtitle: 'Esses atalhos mudam a divisão automática.',
           child: Column(
@@ -2857,7 +3543,7 @@ class _FinanceTabState extends State<FinanceTab> {
               if (lifeFlags.isEmpty)
                 Text(
                   'Nenhum atalho ligado. Toque em Editar para marcar casa própria, vale alimentação, sem carro e outros.',
-                  style: TextStyle(color: Colors.white.withOpacity(0.72)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
                 )
               else
                 Wrap(
@@ -2973,7 +3659,7 @@ class _FinanceTabState extends State<FinanceTab> {
               width: 22,
               height: 22,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
@@ -3004,8 +3690,8 @@ class _FinanceTabState extends State<FinanceTab> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: color.withOpacity(0.10),
-          border: Border.all(color: color.withOpacity(0.26)),
+          color: color.withValues(alpha: 0.10),
+          border: Border.all(color: color.withValues(alpha: 0.26)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3046,22 +3732,22 @@ class _FinanceTabState extends State<FinanceTab> {
             const SizedBox(height: 8),
             Text(
               'Bruto ${scenario.nominalAnnualRate.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
-              style: TextStyle(color: Colors.white.withOpacity(0.78)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
             ),
             const SizedBox(height: 4),
             Text(
               'Líquido ${scenario.netAnnualRate.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
-              style: TextStyle(color: Colors.white.withOpacity(0.78)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
             ),
             const SizedBox(height: 4),
             Text(
               'Real ${scenario.realAnnualRate.toStringAsFixed(2).replaceAll('.', ',')}% a.a.',
-              style: TextStyle(color: Colors.white.withOpacity(0.78)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.78)),
             ),
             const SizedBox(height: 8),
             Text(
               'Em ${scenario.years} anos, líquido estimado.',
-              style: TextStyle(color: Colors.white.withOpacity(0.64)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.64)),
             ),
           ],
         ),
@@ -3216,7 +3902,7 @@ class _FinanceTabState extends State<FinanceTab> {
                   'Composição atual',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: Colors.white.withOpacity(0.92),
+                    color: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
               ),
@@ -3253,6 +3939,85 @@ class _FinanceTabState extends State<FinanceTab> {
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinanceSectionCard(
+          title: 'Ativos cadastrados',
+          subtitle:
+              'Carteira manual por ativo. Sem banco conectado, mas com controle real do patrimônio.',
+          trailing: TextButton.icon(
+            onPressed: _openInvestmentAssetsSheet,
+            icon: const Icon(Icons.add_chart_outlined),
+            label: const Text('Ativos'),
+          ),
+          child: Column(
+            children: [
+              if (_investmentAssets.isEmpty)
+                const FinanceSoftInfoCard(
+                  title: 'Comece pelo primeiro ativo',
+                  text:
+                      'Cadastre CDB, Tesouro, ação, FII, cripto ou caixinha com valor investido e valor atual.',
+                  icon: Icons.inventory_2_outlined,
+                )
+              else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: FinanceValueBadge(
+                        label: 'Investido',
+                        value: formatCurrency(
+                          _investmentAssets.fold<double>(
+                            0,
+                            (sum, asset) => sum + asset.invested,
+                          ),
+                          hideValues: _hideValues,
+                        ),
+                        color: const Color(0xFF39D0FF),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FinanceValueBadge(
+                        label: 'Valor atual',
+                        value: formatCurrency(
+                          _investmentAssets.fold<double>(
+                            0,
+                            (sum, asset) => sum + asset.current,
+                          ),
+                          hideValues: _hideValues,
+                        ),
+                        color: const Color(0xFF9CFF3F),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ..._investmentAssets.take(5).map((asset) {
+                  final bucket = _investmentBucketConfigs.firstWhere(
+                    (item) => item.id == asset.bucketId,
+                    orElse: () => _investmentBucketConfigs.first,
+                  );
+                  final gain = asset.current - asset.invested;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: FinanceCategorySummaryTile(
+                      icon: bucket.icon,
+                      color: gain >= 0
+                          ? const Color(0xFF28C76F)
+                          : const Color(0xFFFF5D73),
+                      title: asset.name,
+                      subtitle:
+                          '${asset.type} • ${bucket.title} • ganho ${formatCurrency(gain, hideValues: _hideValues)}',
+                      trailing: formatCurrency(
+                        asset.current,
+                        hideValues: _hideValues,
+                      ),
+                    ),
+                  );
+                }),
+              ],
             ],
           ),
         ),
@@ -3355,7 +4120,9 @@ class _FinanceTabState extends State<FinanceTab> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(18),
                       color: const Color(0xFF111A1A),
-                      border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.06),
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -3386,7 +4153,9 @@ class _FinanceTabState extends State<FinanceTab> {
                           child: LinearProgressIndicator(
                             value: goal.progress,
                             minHeight: 8,
-                            backgroundColor: Colors.white.withOpacity(0.06),
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.06,
+                            ),
                             valueColor: const AlwaysStoppedAnimation<Color>(
                               Color(0xFF6C63FF),
                             ),
@@ -3398,7 +4167,7 @@ class _FinanceTabState extends State<FinanceTab> {
                               ? 'Ainda sem prazo confiável para atingir a meta.'
                               : 'Projeção: cerca de ${goal.monthsAtBaseScenario} meses no cenário base.',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.72),
+                            color: Colors.white.withValues(alpha: 0.72),
                           ),
                         ),
                       ],
@@ -3430,7 +4199,9 @@ class _FinanceTabState extends State<FinanceTab> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
                     color: const Color(0xFF111A1A),
-                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3440,8 +4211,8 @@ class _FinanceTabState extends State<FinanceTab> {
                         children: [
                           CircleAvatar(
                             radius: 18,
-                            backgroundColor: bucket.config.color.withOpacity(
-                              0.18,
+                            backgroundColor: bucket.config.color.withValues(
+                              alpha: 0.18,
                             ),
                             child: Icon(
                               bucket.config.icon,
@@ -3466,7 +4237,7 @@ class _FinanceTabState extends State<FinanceTab> {
                                 Text(
                                   '${profile.title} • ${profile.badge}',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.68),
+                                    color: Colors.white.withValues(alpha: 0.68),
                                     fontSize: 12,
                                   ),
                                   maxLines: 2,
@@ -3503,7 +4274,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         child: LinearProgressIndicator(
                           value: share,
                           minHeight: 8,
-                          backgroundColor: Colors.white.withOpacity(0.06),
+                          backgroundColor: Colors.white.withValues(alpha: 0.06),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             bucket.config.color,
                           ),
@@ -3578,7 +4349,9 @@ class _FinanceTabState extends State<FinanceTab> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
                     color: const Color(0xFF111A1A),
-                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -3599,7 +4372,7 @@ class _FinanceTabState extends State<FinanceTab> {
                                 borderRadius: BorderRadius.circular(999),
                                 color: const Color(
                                   0xFF9CFF3F,
-                                ).withOpacity(0.14),
+                                ).withValues(alpha: 0.14),
                               ),
                               child: const Text(
                                 'Atual',
@@ -3630,7 +4403,7 @@ class _FinanceTabState extends State<FinanceTab> {
                         child: LinearProgressIndicator(
                           value: progress,
                           minHeight: 8,
-                          backgroundColor: Colors.white.withOpacity(0.06),
+                          backgroundColor: Colors.white.withValues(alpha: 0.06),
                           valueColor: AlwaysStoppedAnimation<Color>(color),
                         ),
                       ),
@@ -3665,6 +4438,8 @@ class _FinanceTabState extends State<FinanceTab> {
 
   Widget _buildControlSection() {
     final items = _store.filteredTransactions.take(12).toList();
+    final invoices = _store.creditInvoiceByCard.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3705,6 +4480,31 @@ class _FinanceTabState extends State<FinanceTab> {
           ),
         ),
         const SizedBox(height: 14),
+        if (invoices.isNotEmpty) ...[
+          FinanceSectionCard(
+            title: 'Faturas do período',
+            subtitle:
+                'Compras no crédito agrupadas por cartão, incluindo parcelas previstas.',
+            child: Column(
+              children: invoices.map((entry) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: FinanceCategorySummaryTile(
+                    icon: Icons.credit_card_rounded,
+                    color: const Color(0xFF6C63FF),
+                    title: entry.key,
+                    subtitle: 'Crédito previsto no filtro atual',
+                    trailing: formatCurrency(
+                      entry.value,
+                      hideValues: _hideValues,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         FinanceSectionCard(
           title: 'Lançamentos',
           subtitle: 'Últimos registros do filtro atual.',

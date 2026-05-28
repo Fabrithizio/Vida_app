@@ -122,7 +122,7 @@ class DayConsistencyService {
   static const String _updatedAtKey = 'day_consistency:updated_at';
 
   String _uidOrAnon() {
-    final uid = FirebaseAuth.instance.currentUser?.uid?.trim() ?? 'anon';
+    final uid = FirebaseAuth.instance.currentUser?.uid.trim() ?? 'anon';
     return uid.isEmpty ? 'anon' : uid;
   }
 

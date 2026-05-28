@@ -57,7 +57,7 @@ class TimelineSummaryView extends StatelessWidget {
             '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
 
         return Material(
-          color: Colors.white.withOpacity(0.04),
+          color: Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(16),
           child: ListTile(
             shape: RoundedRectangleBorder(

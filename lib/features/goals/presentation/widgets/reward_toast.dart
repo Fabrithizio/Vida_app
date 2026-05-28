@@ -19,14 +19,14 @@ class RewardToastCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
         boxShadow: [
           BoxShadow(
             blurRadius: 24,
             offset: const Offset(0, 10),
-            color: Colors.black.withOpacity(0.35),
+            color: Colors.black.withValues(alpha: 0.35),
           ),
         ],
       ),
@@ -36,11 +36,11 @@ class RewardToastCard extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: cs.primary.withOpacity(0.18),
+              color: cs.primary.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.12)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             ),
-            child: Icon(icon, color: Colors.white.withOpacity(0.92)),
+            child: Icon(icon, color: Colors.white.withValues(alpha: 0.92)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -66,7 +66,7 @@ class RewardToastCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.78),
+                    color: Colors.white.withValues(alpha: 0.78),
                   ),
                 ),
               ],

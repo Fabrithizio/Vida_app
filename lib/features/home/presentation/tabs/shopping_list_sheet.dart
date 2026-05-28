@@ -153,8 +153,6 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
     if (result == true) {
       await widget.store.createList(controller.text, iconName: iconName);
     }
-
-    controller.dispose();
   }
 
   Future<void> _renameCurrentList() async {
@@ -266,7 +264,7 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: DropdownButtonFormField<ShoppingUnit>(
-                            value: unit,
+                            initialValue: unit,
                             dropdownColor: const Color(0xFF171717),
                             style: const TextStyle(color: Colors.white),
                             items: ShoppingUnit.values
@@ -291,7 +289,7 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<ShoppingCategory>(
-                      value: category,
+                      initialValue: category,
                       dropdownColor: const Color(0xFF171717),
                       style: const TextStyle(color: Colors.white),
                       items: ShoppingCategory.values
@@ -313,7 +311,7 @@ class _ShoppingListSheetState extends State<ShoppingListSheet> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: listId,
+                      initialValue: listId,
                       dropdownColor: const Color(0xFF171717),
                       style: const TextStyle(color: Colors.white),
                       items: widget.store.lists

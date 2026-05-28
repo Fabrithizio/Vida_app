@@ -136,7 +136,7 @@ class _AlwaysOnCustomizePageState extends State<AlwaysOnCustomizePage> {
                 return SwitchListTile(
                   value: enabled,
                   contentPadding: EdgeInsets.zero,
-                  activeColor: const Color(0xFF22C55E),
+                  activeThumbColor: const Color(0xFF22C55E),
                   title: Text(
                     preset.title,
                     style: const TextStyle(

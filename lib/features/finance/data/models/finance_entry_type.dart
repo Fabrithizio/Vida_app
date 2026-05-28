@@ -1,4 +1,4 @@
-enum FinanceEntryType {
+﻿enum FinanceEntryType {
   debit,
   credit,
   pixIn,

@@ -106,7 +106,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<HomeTaskEffort>(
-                      value: effort,
+                      initialValue: effort,
                       decoration: const InputDecoration(
                         labelText: 'Tipo',
                         border: OutlineInputBorder(),
@@ -126,7 +126,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<HomeTaskCategory>(
-                      value: category,
+                      initialValue: category,
                       decoration: const InputDecoration(
                         labelText: 'Categoria',
                         border: OutlineInputBorder(),
@@ -146,7 +146,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<HomeTaskArea>(
-                      value: area,
+                      initialValue: area,
                       decoration: const InputDecoration(
                         labelText: 'Cômodo / local',
                         border: OutlineInputBorder(),
@@ -345,7 +345,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<HomeTaskEffort>(
-              value: _effort,
+              initialValue: _effort,
               decoration: const InputDecoration(
                 labelText: 'Tipo',
                 border: OutlineInputBorder(),
@@ -365,7 +365,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<HomeTaskCategory>(
-              value: _category,
+              initialValue: _category,
               decoration: const InputDecoration(
                 labelText: 'Categoria',
                 border: OutlineInputBorder(),
@@ -385,7 +385,7 @@ class _HomeTasksSheetState extends State<HomeTasksSheet> {
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<HomeTaskArea>(
-              value: _area,
+              initialValue: _area,
               decoration: const InputDecoration(
                 labelText: 'Cômodo / local',
                 border: OutlineInputBorder(),
@@ -617,9 +617,9 @@ class _MiniTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: tagColor.withOpacity(0.10),
+        color: tagColor.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tagColor.withOpacity(0.22)),
+        border: Border.all(color: tagColor.withValues(alpha: 0.22)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

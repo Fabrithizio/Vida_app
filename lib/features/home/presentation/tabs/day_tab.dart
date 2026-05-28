@@ -737,6 +737,110 @@ class _DayTabState extends State<DayTab> {
     );
   }
 
+  Widget _buildBodyCareTodayPanel() {
+    return FutureBuilder<Map<String, BodyCareEntry>>(
+      future: _weekBodyCareFuture,
+      builder: (context, entrySnapshot) {
+        return FutureBuilder<BodyCareOverview>(
+          future: _bodyOverviewFuture,
+          builder: (context, overviewSnapshot) {
+            final entry =
+                entrySnapshot.data?[_bodyCare.keyForDay(_selected)] ??
+                const BodyCareEntry();
+            final overview = overviewSnapshot.data ?? BodyCareOverview.empty();
+            final missing = <String>[
+              if (entry.food == null) 'comida',
+              if (entry.training == null) 'treino',
+              if (entry.water == null) 'Ã¡gua',
+              if (entry.sleep == null) 'sono',
+            ];
+            final score = entry.average;
+            final accent = _bodyLevelColor(score?.round());
+            final title = score == null
+                ? 'Corpo sem registro hoje'
+                : entry.statusLabel;
+            final subtitle = missing.isEmpty
+                ? 'Hoje estÃ¡ completo. SequÃªncia: ${overview.currentStreak} dia(s).'
+                : 'Falta registrar: ${missing.join(', ')}.';
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: InkWell(
+                onTap: _openBodyCare,
+                borderRadius: BorderRadius.circular(22),
+                child: Ink(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF09121D),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: accent.withValues(alpha: 0.28)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.08),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Icon(
+                          Icons.monitor_heart_outlined,
+                          color: accent,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.66),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white.withValues(alpha: 0.62),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _legend() {
     Widget chip(String label, IconData icon, Color color) {
       return Container(
@@ -945,6 +1049,7 @@ class _DayTabState extends State<DayTab> {
             if (_range == TimelineRange.day) ...[
               _dateStrip(),
               _buildQuickActionsRow(),
+              _buildBodyCareTodayPanel(),
             ],
             _legend(),
             Expanded(

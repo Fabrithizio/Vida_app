@@ -258,14 +258,17 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(26),
               gradient: LinearGradient(
-                colors: [accent.withOpacity(0.18), const Color(0xFF10182B)],
+                colors: [
+                  accent.withValues(alpha: 0.18),
+                  const Color(0xFF10182B),
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              border: Border.all(color: accent.withOpacity(0.26)),
+              border: Border.all(color: accent.withValues(alpha: 0.26)),
               boxShadow: [
                 BoxShadow(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withValues(alpha: 0.12),
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -300,7 +303,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                       ? 'Este item existe para te ajudar a parar de empurrar a vida com a barriga.'
                       : _plan.whyItMatters,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.82),
+                    color: Colors.white.withValues(alpha: 0.82),
                     height: 1.35,
                     fontWeight: FontWeight.w600,
                   ),
@@ -374,7 +377,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                   child: LinearProgressIndicator(
                     value: _plan.progress,
                     minHeight: 12,
-                    backgroundColor: Colors.white.withOpacity(0.08),
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
                     valueColor: AlwaysStoppedAnimation<Color>(accent),
                   ),
                 ),
@@ -410,7 +413,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
               decoration: BoxDecoration(
                 color: const Color(0xFF10182B),
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withOpacity(0.07)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,7 +429,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
                   Text(
                     _plan.captureText,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.78),
+                      color: Colors.white.withValues(alpha: 0.78),
                       height: 1.35,
                       fontWeight: FontWeight.w600,
                     ),
@@ -476,9 +479,9 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Column(
         children: [
@@ -495,7 +498,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.66),
+              color: Colors.white.withValues(alpha: 0.66),
               fontWeight: FontWeight.w700,
               fontSize: 11,
             ),
@@ -510,9 +513,9 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,7 +523,7 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
+              color: Colors.white.withValues(alpha: 0.68),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -542,9 +545,9 @@ class _GoalDetailsPageState extends State<GoalDetailsPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.26)),
+        border: Border.all(color: color.withValues(alpha: 0.26)),
       ),
       child: Text(
         label,
@@ -589,8 +592,8 @@ class _MilestoneCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: milestone.isDone || isCurrent
-              ? stageAccent.withOpacity(0.28)
-              : Colors.white.withOpacity(0.07),
+              ? stageAccent.withValues(alpha: 0.28)
+              : Colors.white.withValues(alpha: 0.07),
         ),
       ),
       child: Column(
@@ -601,9 +604,9 @@ class _MilestoneCard extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: stageAccent.withOpacity(0.12),
+                color: stageAccent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: stageAccent.withOpacity(0.22)),
+                border: Border.all(color: stageAccent.withValues(alpha: 0.22)),
               ),
               child: Icon(
                 milestone.isDone
@@ -627,7 +630,7 @@ class _MilestoneCard extends StatelessWidget {
                         ? 'Sem ações'
                         : '${milestone.doneActions}/${milestone.totalActions} ações concluídas')
                   : milestone.description,
-              style: TextStyle(color: Colors.white.withOpacity(0.64)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.64)),
             ),
             trailing: Text(
               '${(milestone.progress * 100).toStringAsFixed(0)}%',
@@ -651,7 +654,7 @@ class _MilestoneCard extends StatelessWidget {
                 ),
                 subtitle: Text(
                   action.isDone ? 'Concluído' : 'Ainda falta fazer',
-                  style: TextStyle(color: Colors.white.withOpacity(0.54)),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.54)),
                 ),
                 dense: true,
                 activeColor: accent,
